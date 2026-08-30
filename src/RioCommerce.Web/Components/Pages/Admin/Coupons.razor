@@ -1,0 +1,102 @@
+@page "/admin/coupons"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ICouponAdminService Svc
+<PageTitle>Coupons &amp; Discounts — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Coupons &amp; Discounts</h1>
+    <a href="/admin/coupons/new" class="btn btn-primary btn-sm">➕ New Discount</a>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-card__label">Total</div><div class="kpi-card__value">@(stats?.Total ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Active</div><div class="kpi-card__value" style="color:var(--green)">@(stats?.Active ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Expired</div><div class="kpi-card__value" style="color:var(--warning)">@(stats?.Expired ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Redemptions</div><div class="kpi-card__value">@(stats?.TotalRedemptions ?? 0)</div></div>
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:12px 0">@msg</div> }
+
+<div class="data-card" style="margin-top:20px">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Code</th><th>Discount</th><th>Min Order</th><th>Used</th><th>Validity</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No coupons yet.</td></tr> }
+            else
+            {
+                @foreach (var c in items)
+                {
+                    <tr>
+                        <td>
+                            <strong>@c.Code</strong>
+                            @if (!string.IsNullOrEmpty(c.Name)) { <div style="font-size:12px;color:var(--gray-500)">@c.Name</div> }
+                            @if (c.AffiliateName != null) { <div><span class="verified-badge" style="color:var(--navy);background:var(--gray-100)">🤝 @c.AffiliateName</span></div> }
+                            @* Audience — only called out when it isn't the plain customers-only default. *@
+                            @if (c.IsFranchiseApplicable)
+                            {
+                                <div><span class="verified-badge" style="color:#1F4E79;background:#EFF6FF">🏢 @(c.IsCustomerApplicable ? "Customers + Franchisees" : "Franchisees only")</span></div>
+                            }
+                            else if (!c.IsCustomerApplicable)
+                            {
+                                <div><span class="verified-badge" style="color:var(--gray-500);background:var(--gray-100)">No audience selected</span></div>
+                            }
+                        </td>
+                        <td>@DiscountText(c)</td>
+                        <td>@(c.MinOrder > 0 ? $"₹{c.MinOrder:N0}" : "—")</td>
+                        <td>@c.TotalUsed@(c.TotalLimit.HasValue ? $" / {c.TotalLimit}" : "")</td>
+                        <td style="font-size:12px">@ValidityText(c)</td>
+                        <td><span class="status @StatusClass(c)"><span class="dot"></span>@StatusText(c)</span></td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <a href="/admin/coupons/@c.Id" class="btn btn-ghost btn-sm">✏️ Edit</a>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(c.Id)">@(c.IsActive ? "Disable" : "Enable")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(c.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<CouponAdminItem>? items;
+    private CouponStats? stats;
+    private bool msgOk;
+    private string? msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        items = await Svc.ListAsync();
+        stats = await Svc.StatsAsync();
+    }
+
+    private async Task Toggle(Guid id) { await Svc.ToggleAsync(id); await Reload(); }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteAsync(id);
+        if (ok) { await Reload(); msgOk = true; msg = "Coupon deleted."; }
+        else { msgOk = false; msg = error; }
+    }
+
+    private static string DiscountText(CouponAdminItem c) => c.CouponType == SharingType.Percentage
+        ? $"{c.Value:0.##}%" + (c.MaxDiscount.HasValue ? $" (max ₹{c.MaxDiscount:N0})" : "")
+        : $"₹{c.Value:N0}";
+
+    private static string ValidityText(CouponAdminItem c)
+    {
+        var from = c.StartsAt?.ToString("dd MMM yyyy");
+        var to = c.ExpiresAt?.ToString("dd MMM yyyy");
+        if (from == null && to == null) return "No expiry";
+        return $"{from ?? "—"} → {to ?? "no expiry"}";
+    }
+
+    private static string StatusText(CouponAdminItem c) => !c.IsActive ? "Inactive" : c.IsExpired ? "Expired" : "Active";
+    private static string StatusClass(CouponAdminItem c) => !c.IsActive ? "status--cancelled" : c.IsExpired ? "status--pending" : "status--confirmed";
+}

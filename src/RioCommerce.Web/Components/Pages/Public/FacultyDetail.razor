@@ -1,0 +1,461 @@
+@page "/faculty/{Code}"
+@inject HttpClient Http
+
+<style>
+    /* ── Faculty Profile page (matches mobile mockup; scales to tablet/desktop) ── */
+    .fp-page{max-width:980px;margin:0 auto;padding:18px 14px 24px}
+    .fp-bc{font-size:13px;color:var(--gray-500);margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .fp-bc a{color:var(--gray-500);text-decoration:none}
+    .fp-bc a:hover{color:var(--orange)}
+    .fp-bc .curr{color:var(--orange);font-weight:600}
+
+    .fp-card{background:#fff;border:1px solid var(--gray-200);border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .fp-card__head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+    .fp-link{color:var(--orange);font-weight:700;font-size:13px;text-decoration:none;white-space:nowrap}
+    .fp-link:hover{text-decoration:underline}
+
+    .fp-section-label{display:inline-block;font-size:12px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:1.5px;position:relative;padding-bottom:6px;margin-bottom:10px}
+    .fp-section-label::after{content:"";position:absolute;left:0;bottom:0;width:24px;height:2px;background:var(--orange);border-radius:2px}
+
+    /* hero */
+    .fp-hero{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start;padding:18px}
+    .fp-hero__info{min-width:0}
+    .fp-hero__name{font-size:clamp(24px,4vw,38px);font-weight:900;letter-spacing:-.5px;color:var(--navy);line-height:1.05;margin:6px 0 12px;text-transform:uppercase}
+    .fp-meta{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--gray-700);margin-top:6px;line-height:1.5}
+    .fp-meta svg{width:16px;height:16px;color:var(--orange);flex-shrink:0}
+    .fp-pill{display:inline-flex;align-items:center;gap:8px;background:#FFF1E8;color:var(--navy);font-size:13px;font-weight:700;padding:9px 14px;border-radius:999px;margin-top:14px;border:1px solid #FAD5B4;line-height:1.2}
+    .fp-hero__short{margin:14px 0 0;font-size:15px;color:var(--gray-700);line-height:1.6;max-width:62ch}
+    .fp-pill svg{width:16px;height:16px;color:var(--orange);flex-shrink:0}
+    .fp-hero__photo{width:clamp(96px,18vw,160px);aspect-ratio:1;object-fit:cover;border-radius:16px;background:var(--gray-100);box-shadow:0 8px 20px -10px rgba(15,23,42,.3)}
+    .fp-hero__photo--initials{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--navy-dark,#082B73),var(--navy-light,#0A5BCF));color:#fff;font-size:clamp(22px,4vw,34px);font-weight:800}
+
+    /* stats */
+    .fp-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+    .fp-stat{background:#fff;border:1px solid var(--gray-200);border-radius:14px;padding:14px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .fp-stat__ico{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .fp-stat__ico svg{width:18px;height:18px}
+    .fp-stat__ico--students{background:#FFF1E8;color:var(--orange)}
+    .fp-stat__ico--hours{background:#E8F0FE;color:#2563EB}
+    .fp-stat__ico--sat{background:#FEF3C7;color:#D97706}
+    .fp-stat__ico--air{background:#F1ECFE;color:#0B45AB}
+    .fp-stat__num{font-size:clamp(18px,2.4vw,24px);font-weight:800;color:var(--navy);line-height:1.05}
+    .fp-stat__label{font-size:12px;color:var(--gray-500);line-height:1.3;max-width:120px}
+
+    /* about */
+    .fp-bio{font-size:14.5px;color:var(--gray-700);line-height:1.7;margin-bottom:14px;white-space:pre-wrap}
+    .fp-bio--short{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+    .fp-btn-outline{background:transparent;border:1.5px solid var(--orange);color:var(--orange);padding:9px 16px;border-radius:999px;font-size:13px;font-weight:700;cursor:pointer;transition:background .2s,color .2s;display:inline-flex;align-items:center;gap:6px}
+    .fp-btn-outline:hover{background:var(--orange);color:#fff}
+
+    /* subjects */
+    .fp-subjects{display:flex;flex-wrap:wrap;gap:8px}
+    .fp-chip{display:inline-flex;align-items:center;gap:7px;background:var(--gray-100);color:var(--navy);font-size:13.5px;font-weight:600;padding:7px 13px;border-radius:999px;border:1px solid var(--gray-200)}
+    .fp-chip svg{width:16px;height:16px;color:var(--orange);flex-shrink:0}
+
+    /* courses list */
+    .fp-courses{display:flex;flex-direction:column;gap:10px}
+    .fp-course-row{display:grid;grid-template-columns:104px 1fr auto;gap:0;align-items:stretch;padding:0;background:#fff;border:1px solid var(--gray-200);border-radius:14px;overflow:hidden;text-decoration:none;color:inherit;transition:transform .2s var(--p-ease,ease),box-shadow .2s,border-color .2s}
+    .fp-course-row:hover{transform:translateY(-2px);box-shadow:0 12px 26px -16px rgba(15,23,42,.5);border-color:var(--gray-300)}
+    .fp-course-thumb{position:relative;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px;text-align:center;padding:10px;letter-spacing:.5px;white-space:pre-line;line-height:1.15}
+    .fp-course-thumb__badge{position:absolute;top:6px;left:6px;background:#fff;color:#0B45AB;font-size:8.5px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px;line-height:1.1;box-shadow:0 2px 5px rgba(0,0,0,.15)}
+    .fp-course-thumb--ca-foundation{background:linear-gradient(135deg,#082B73,#0B45AB)}
+    .fp-course-thumb--ca-intermediate{background:linear-gradient(135deg,#0AA9C4,#0AC7E5)}
+    .fp-course-thumb--books{background:linear-gradient(135deg,#1E40AF,#0A5BCF)}
+    .fp-course-thumb--test-series{background:linear-gradient(135deg,#0A5BCF,#0B45AB)}
+    .fp-course-thumb--default{background:linear-gradient(135deg,var(--navy),var(--navy-light))}
+    .fp-course-row__main{padding:14px 4px 14px 16px;display:flex;flex-direction:column;justify-content:center;gap:4px;min-width:0}
+    .fp-course-row__cat{font-size:10.5px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.6px}
+    .fp-course-row__title{font-size:14.5px;font-weight:700;color:var(--navy);line-height:1.35;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .fp-course-row__meta{font-size:12px;color:var(--gray-500);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+    .fp-course-row__meta svg{width:13px;height:13px}
+    .fp-course-row__arrow{align-self:center;padding:0 16px;color:var(--gray-300);font-size:22px;font-weight:700}
+
+    /* tab strip — horizontally-scrolling pills on mobile, inline row on desktop */
+    .fp-tabs{display:flex;gap:6px;overflow-x:auto;padding:6px 2px 14px;scrollbar-width:none;-ms-overflow-style:none}
+    .fp-tabs::-webkit-scrollbar{display:none}
+    .fp-tab{flex:0 0 auto;background:#fff;border:1px solid var(--gray-200);border-radius:999px;padding:9px 16px;color:var(--gray-700);font-size:13.5px;font-weight:700;cursor:pointer;transition:background .15s,color .15s,border-color .15s,box-shadow .15s;font-family:inherit}
+    .fp-tab:hover{border-color:var(--orange);color:var(--navy)}
+    .fp-tab--active{background:var(--navy);color:#fff;border-color:var(--navy);box-shadow:0 8px 18px -10px rgba(15,39,64,.5)}
+    .fp-coming-soon{background:linear-gradient(135deg,#FFF7ED,#FFF)}
+
+    /* primary CTA row above the call/whatsapp bar */
+    .fp-primary-cta{display:flex;gap:10px;margin:6px 0 18px;flex-wrap:wrap}
+    .fp-primary-cta__btn{flex:1;min-width:170px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 18px;border-radius:14px;font-size:14.5px;font-weight:800;text-decoration:none;transition:transform .2s ease,box-shadow .2s ease,filter .2s ease}
+    .fp-primary-cta__btn--ghost{background:#fff;border:1.5px solid var(--orange);color:var(--orange)}
+    .fp-primary-cta__btn--ghost:hover{background:#FFF7ED}
+    .fp-primary-cta__btn--solid{background:linear-gradient(135deg,#0AC7E5,#0AA9C4);color:#fff;border:1.5px solid transparent;box-shadow:0 12px 26px -10px rgba(10,169,196,.55)}
+    .fp-primary-cta__btn--solid:hover{transform:translateY(-1px);filter:brightness(1.05)}
+
+    /* bottom CTA bar (sticky on mobile, inline on desktop) */
+    .fp-cta-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--gray-200);padding:10px 14px;display:flex;gap:10px;z-index:90;box-shadow:0 -10px 30px -12px rgba(15,23,42,.18)}
+    .fp-cta{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 14px;border-radius:11px;font-weight:700;font-size:14px;text-decoration:none;border:none;cursor:pointer;line-height:1}
+    .fp-cta svg{width:18px;height:18px}
+    .fp-cta--call{background:#fff;border:1.5px solid var(--gray-300);color:var(--navy)}
+    .fp-cta--call:hover{border-color:var(--navy);background:var(--gray-50)}
+    .fp-cta--wa{background:linear-gradient(180deg,#34D26A,#25A046);color:#fff;box-shadow:0 8px 20px -8px rgba(53,180,80,.6)}
+    .fp-cta--wa:hover{filter:brightness(1.05);transform:translateY(-1px)}
+    /* leave space at the bottom so the sticky bar doesn't cover the last card on mobile */
+    @@media(max-width:767px){.fp-page{padding-bottom:88px}}
+
+    /* ── tablet ── */
+    @@media(min-width:600px){
+        .fp-stats{grid-template-columns:repeat(4,1fr)}
+        .fp-stat{padding:18px 12px;gap:8px}
+        .fp-courses{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+    }
+    /* ── desktop ── */
+    @@media(min-width:768px){
+        .fp-page{padding:24px 22px 24px}
+        .fp-hero{padding:28px;grid-template-columns:1fr clamp(200px,22vw,260px);gap:30px}
+        .fp-hero__photo{width:100%;max-width:260px}
+        .fp-card{padding:24px}
+        .fp-cta-bar{position:static;background:transparent;border:0;box-shadow:none;padding:6px 0 0;justify-content:flex-start;max-width:520px}
+        .fp-cta{flex:0 1 220px}
+    }
+    @@media(min-width:1024px){
+        .fp-hero{grid-template-columns:1fr 280px;gap:40px}
+        .fp-stats{gap:14px}
+    }
+</style>
+
+@if (loading)
+{
+    <div style="text-align:center;padding:80px">Loading…</div>
+}
+else if (f == null)
+{
+    <div style="text-align:center;padding:80px 20px">
+        <h1>Faculty Not Found</h1>
+        <a href="/faculty" class="btn btn-primary" style="margin-top:16px">Back To Faculty</a>
+    </div>
+}
+else
+{
+    @* Prefer the admin-authored Short Description for the meta tag (it's hand-tuned for SEO);
+       fall back to the truncated Bio so legacy faculty without ShortDescription still produce
+       a useful snippet. *@
+    <SeoHead Seo="@(new SeoMetadata {
+        Title = $"{f.DisplayName} — RioCommerce Faculty",
+        Description = RioCommerce.Core.DTOs.Faculty.FacultyShortDescription.Resolve(f.ShortDescription, f.Bio) ?? ""
+    })" />
+
+    <div class="fp-page">
+        <div class="fp-bc">
+            <a href="/">Home</a><span>›</span>
+            <a href="/faculty">Our Faculty</a><span>›</span>
+            <span class="curr">@f.DisplayName</span>
+        </div>
+
+        @* ── HERO ── *@
+        <div class="fp-card fp-hero">
+            <div class="fp-hero__info">
+                <div class="fp-section-label">Faculty</div>
+                <h1 class="fp-hero__name">@f.DisplayName</h1>
+                @if (!string.IsNullOrEmpty(f.Qualifications))
+                {
+                    <div class="fp-meta">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                        @f.Qualifications
+                    </div>
+                }
+                @if (f.Subjects is { Length: > 0 })
+                {
+                    <div class="fp-meta" style="margin-top:8px">Expertise In : @string.Join(", ", f.Subjects)</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(f.ShortDescription))
+                {
+                    <p class="fp-hero__short">@f.ShortDescription</p>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(f.PhotoUrl))
+            {
+                <img class="fp-hero__photo" src="@f.PhotoUrl" alt="@f.DisplayName" />
+            }
+            else
+            {
+                <div class="fp-hero__photo fp-hero__photo--initials">@Initials(f.DisplayName)</div>
+            }
+        </div>
+
+
+        @* ── TAB STRIP — Overview / Courses live today; Demo Lectures shows the YouTube channel
+              when set; Achievements / Reviews / FAQ are intentionally surfaced as “coming soon”
+              tiles so we can fill them in without UI rework. ── *@
+        <div class="fp-tabs" role="tablist">
+            @foreach (var t in TabDefs)
+            {
+                <button type="button" role="tab" aria-selected="@(tab == t.Key)"
+                        class="fp-tab @(tab == t.Key ? "fp-tab--active" : "")"
+                        @onclick="() => tab = t.Key">@t.Label</button>
+            }
+        </div>
+
+        @if (tab == "overview")
+        {
+            @* ── ABOUT ── *@
+            @if (!string.IsNullOrEmpty(f.Bio))
+            {
+                <div class="fp-card">
+                    <div class="fp-section-label">ABOUT @f.DisplayName.ToUpper()</div>
+                    <p class="fp-bio @(bioOpen ? "" : "fp-bio--short")">@f.Bio</p>
+                    @if ((f.Bio?.Length ?? 0) > 220)
+                    {
+                        <button type="button" class="fp-btn-outline" @onclick="() => bioOpen = !bioOpen">
+                            @(bioOpen ? "Show Less ↑" : $"Know More About {ShortName(f.DisplayName)} →")
+                        </button>
+                    }
+                </div>
+            }
+
+            @* ── SUBJECTS TAUGHT ── *@
+            @if (f.Subjects is { Length: > 0 })
+            {
+                <div class="fp-card">
+                    <div class="fp-section-label">Subjects Taught</div>
+                    <div class="fp-subjects">
+                        @foreach (var s in f.Subjects)
+                        {
+                            <span class="fp-chip">
+                                @((MarkupString)SubjectIcon(s))
+                                @s
+                            </span>
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        @if (tab == "courses" || tab == "overview")
+        {
+            @* ── COURSES — also shown on Overview because it's the strongest conversion hook. ── *@
+            @if (f.Courses.Count > 0)
+            {
+                <div class="fp-card">
+                    <div class="fp-card__head">
+                        <div class="fp-section-label" style="margin-bottom:0">COURSES BY @f.DisplayName.ToUpper()</div>
+                        <a href="/courses/@LevelSlugFromCourses" class="fp-link">View All →</a>
+                    </div>
+                    <div class="fp-courses">
+                        @foreach (var c in f.Courses)
+                        {
+                            <a href="/@c.Slug" class="fp-course-row">
+                                <div class="fp-course-thumb fp-course-thumb--@LevelClass(c.Level)">
+                                    @if (!string.IsNullOrEmpty(c.Badge)) { <span class="fp-course-thumb__badge">@c.Badge</span> }
+                                    <span>@LevelShort(c.Level)</span>
+                                </div>
+                                <div class="fp-course-row__main">
+                                    <div class="fp-course-row__cat">@LevelLabel(c.Level)</div>
+                                    <div class="fp-course-row__title">@c.Title</div>
+                                    <div class="fp-course-row__meta">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="14" height="14" rx="3"/><path d="m16 9.5 6-3v11l-6-3"/></svg>
+                                        @CourseTypeLabel(c.CourseType) · @(string.IsNullOrEmpty(c.Badge) ? "Regular Batch" : c.Badge)
+                                    </div>
+                                </div>
+                                <span class="fp-course-row__arrow">›</span>
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="fp-card"><p style="color:var(--gray-400);margin:0">No active courses right now.</p></div>
+            }
+        }
+
+        @if (tab == "demos")
+        {
+            <div class="fp-card">
+                <div class="fp-section-label">Demo Lectures</div>
+                @if (!string.IsNullOrWhiteSpace(f.YoutubeUrl))
+                {
+                    <p style="color:var(--gray-700);margin:0 0 12px;font-size:14.5px">Subscribe to @f.DisplayName's YouTube channel for free demo lectures, revision marathons and concept videos.</p>
+                    <a href="@f.YoutubeUrl" target="_blank" rel="noopener" class="fp-btn-outline" style="background:linear-gradient(135deg,#EA4335,#C2241D);border-color:transparent;color:#fff">
+                        ▶ Open YouTube Channel
+                    </a>
+                }
+                else
+                {
+                    <p style="color:var(--gray-400);margin:0">Demo lectures will appear here once the faculty publishes them.</p>
+                }
+            </div>
+        }
+
+        @* "achievements" and "faq" were removed from TabDefs, so only the
+           reviews placeholder can still be reached here. *@
+        @if (tab == "reviews")
+        {
+            <div class="fp-card fp-coming-soon">
+                <div class="fp-section-label">@TabDefs.First(t => t.Key == tab).Label.ToUpper()</div>
+                <p style="color:var(--gray-500);margin:0;font-size:14.5px;line-height:1.6">
+                    This section will appear here as soon as the team publishes the first batch of @TabDefs.First(t => t.Key == tab).Label.ToLower().
+                </p>
+            </div>
+        }
+
+        @* ── PRIMARY CTAs — Explore Courses + Enroll Now, sit just above the Call / WhatsApp bar. ── *@
+        <div class="fp-primary-cta">
+            <a href="/courses" class="fp-primary-cta__btn fp-primary-cta__btn--ghost">📚 Explore All Courses</a>
+            @if (f.Courses.Count > 0)
+            {
+                <a href="/@f.Courses[0].Slug" class="fp-primary-cta__btn fp-primary-cta__btn--solid">🚀 Enroll Now</a>
+            }
+        </div>
+
+        @* ── CTA (sticky bottom on mobile, inline on desktop) ── *@
+        <div class="fp-cta-bar">
+            <a href="@($"tel:{CallNumber}")" class="fp-cta fp-cta--call">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
+                Call
+            </a>
+            <a href="@WhatsappHref" target="_blank" rel="noopener" class="fp-cta fp-cta--wa">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.5 14.4c-.3-.1-1.8-.9-2-1-.3-.1-.5-.1-.7.1-.2.3-.8 1-.9 1.2-.2.2-.3.2-.6.1-.3-.1-1.3-.5-2.4-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6.1-.1.3-.3.5-.5.1-.2.2-.3.3-.5.1-.2.1-.4 0-.5-.1-.1-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.8-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.6-.4M12 22h0a10 10 0 0 1-5-1.4l-.4-.2-3.7 1 1-3.6-.2-.4A9.9 9.9 0 0 1 2.2 12C2.2 6.6 6.6 2.2 12 2.2c2.6 0 5.1 1 7 2.9a9.8 9.8 0 0 1 2.9 7c0 5.5-4.4 9.9-9.9 9.9m8.4-18.3A11.8 11.8 0 0 0 12 0C5.5 0 .2 5.3.2 11.9c0 2.1.5 4.1 1.6 5.9L.1 24l6.3-1.7A12 12 0 0 0 12 23.7c6.6 0 11.9-5.3 11.9-11.9a11.8 11.8 0 0 0-3.5-8.4"/></svg>
+                Chat on WhatsApp
+            </a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+
+    private FacultyProfile? f;
+    private bool loading = true;
+    private bool bioOpen;
+    private string tab = "overview";
+
+    // Tab strip — labels rendered through the loop above. Add a new tab here + a matching
+    // @if block in the markup. Keeping it as a static array keeps the page declarative.
+    private static readonly (string Key, string Label)[] TabDefs = new[]
+    {
+        ("overview",     "Overview"),
+        ("courses",      "Courses"),
+        ("demos",        "Demo Lectures"),
+        ("reviews",      "Student Reviews"),
+    };
+
+    private const string DefaultPhone = "9975242929";
+
+    private string CallNumber => string.IsNullOrWhiteSpace(f?.CallNumber) ? DefaultPhone : f.CallNumber.Trim();
+    private string WaNumber   => string.IsNullOrWhiteSpace(f?.WhatsappNumber) ? DefaultPhone : f.WhatsappNumber.Trim();
+    private string WhatsappHref
+    {
+        get
+        {
+            var n = new string(WaNumber.Where(char.IsDigit).ToArray());
+            if (n.Length == 10) n = "91" + n;                  // assume Indian number if no country code
+            var msg = Uri.EscapeDataString($"Hi! I want to enquire about {f?.DisplayName ?? "RioCommerce"} sir's courses.");
+            return $"https://wa.me/{n}?text={msg}";
+        }
+    }
+
+    private bool HasAnyStats => f != null && (
+        !string.IsNullOrEmpty(f.StudentsTaught) ||
+        !string.IsNullOrEmpty(f.HoursOfTeaching) ||
+        !string.IsNullOrEmpty(f.StudentSatisfaction) ||
+        !string.IsNullOrEmpty(f.AirHoldersNote));
+
+    private string LevelSlugFromCourses => f?.Courses.FirstOrDefault()?.Level switch
+    {
+        CourseLevel.CaIntermediate => "ca-intermediate",
+        CourseLevel.CaFinal => "ca-final",
+        CourseLevel.Books => "books",
+        _ => "ca-foundation"
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        bioOpen = false;
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ApiResponse<FacultyProfile>>($"/api/faculty/{Code}");
+            f = r?.Data;
+        }
+        catch { f = null; }
+        loading = false;
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "RC";
+        var parts = name.Replace("CA", "").Replace("CS", "").Replace("Prof.", "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+
+    // Strip honorifics and return last word, capitalised — used for "Know More About Sir" CTA.
+    private static string ShortName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "Sir";
+        var parts = name.Replace("CA", "").Replace("CS", "").Replace("Prof.", "").Trim()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? parts[0] + " Sir" : "Sir";
+    }
+
+    private static string LevelLabel(CourseLevel l) => l switch
+    {
+        CourseLevel.CaFoundation => "CA Foundation",
+        CourseLevel.CaIntermediate => "CA Intermediate",
+        CourseLevel.CaFinal => "CA Final",
+        CourseLevel.Books => "Books",
+        CourseLevel.TestSeries => "Test Series",
+        _ => l.ToString()
+    };
+
+    // Thumb label — \n becomes a line break via CSS white-space: pre-line.
+    private static string LevelShort(CourseLevel l) => l switch
+    {
+        CourseLevel.CaFoundation => "CA\nFOUNDATION",
+        CourseLevel.CaIntermediate => "CA\nINTER",
+        CourseLevel.CaFinal => "CA\nFINAL",
+        CourseLevel.Books => "BOOKS",
+        CourseLevel.TestSeries => "TEST\nSERIES",
+        _ => l.ToString().ToUpper()
+    };
+
+    private static string LevelClass(CourseLevel l) => l switch
+    {
+        CourseLevel.CaFoundation => "ca-foundation",
+        CourseLevel.CaIntermediate => "ca-intermediate",
+        CourseLevel.CaFinal => "ca-final",
+        CourseLevel.Books => "books",
+        CourseLevel.TestSeries => "test-series",
+        _ => "default"
+    };
+
+    private static string CourseTypeLabel(CourseType t) => t switch
+    {
+        CourseType.Regular => "Live Streaming",
+        CourseType.Fastrack => "Fastrack",
+        CourseType.Combo => "Combo",
+        CourseType.FaceToFace => "Face to Face",
+        _ => t.ToString()
+    };
+
+    // Small inline icon for a subject chip — keyword-matched to a Lucide-style SVG.
+    private static string SubjectIcon(string? subject)
+    {
+        var s = (subject ?? "").ToLowerInvariant();
+        string svg =
+            s.Contains("eco") ? IcoChart :
+            s.Contains("audit") || s.Contains("account") ? IcoDoc :
+            s.Contains("cost") ? IcoTable :
+            s.Contains("law") ? IcoScale :
+            s.Contains("tax") ? IcoPercent :
+            s.Contains("fm") || s.Contains("finance") ? IcoFin :
+            s.Contains("isca") || s.Contains("it") || s.Contains("tech") ? IcoLaptop :
+            s.Contains("business") || s.Contains("bcr") ? IcoGlobe :
+            IcoTag;
+        return svg;
+    }
+
+    private const string IcoChart  = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 3v18h18'/><path d='m7 14 4-4 3 3 5-6'/></svg>";
+    private const string IcoDoc    = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6'/><path d='M9 13l2 2 4-4'/></svg>";
+    private const string IcoTable  = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='16' rx='2'/><path d='M3 10h18M9 4v16'/></svg>";
+    private const string IcoScale  = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3v18M5 8h14'/><path d='M3 12h6L6 4 3 12zM15 12h6l-3-8-3 8z'/></svg>";
+    private const string IcoPercent= "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><line x1='19' y1='5' x2='5' y2='19'/><circle cx='6.5' cy='6.5' r='2.5'/><circle cx='17.5' cy='17.5' r='2.5'/></svg>";
+    private const string IcoFin    = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 1 1 0 7H6'/></svg>";
+    private const string IcoLaptop = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='12' rx='2'/><path d='M2 20h20'/></svg>";
+    private const string IcoGlobe  = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/></svg>";
+    private const string IcoTag    = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M20.6 13.4 13.4 20.6a1.4 1.4 0 0 1-2 0L2 11.2V2h9.2l9.4 9.4a1.4 1.4 0 0 1 0 2z'/><circle cx='7' cy='7' r='1'/></svg>";
+}

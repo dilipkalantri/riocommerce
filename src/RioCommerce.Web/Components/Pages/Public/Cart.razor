@@ -1,0 +1,614 @@
+@page "/cart"
+@implements IDisposable
+@inject ICartService CartSvc
+@inject IProductRecommendationService RecoSvc
+@inject AuthenticationStateProvider AuthProvider
+@inject IFranchisePortalService FranchisePortal
+@inject NavigationManager Nav
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Your Cart — RioCommerce" })" />
+
+<style>
+    /* ── Cart-side Offer/Combo Recommendations ── */
+    .cart-reco{margin-top:18px;padding:22px;border-radius:24px;background:rgba(255,255,255,.88);backdrop-filter:saturate(180%) blur(18px);border:1px solid rgba(255,255,255,.7);box-shadow:0 14px 36px -22px rgba(11,31,58,.35),inset 0 1px 0 rgba(255,255,255,.85);position:relative;overflow:hidden;isolation:isolate}
+    .cart-reco::before{content:"";position:absolute;inset:0;border-radius:24px;padding:1px;pointer-events:none;background:linear-gradient(135deg,#0AC7E5,#5AD9EF 35%,#2563eb 100%);opacity:.4;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+    .cart-reco__head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+    .cart-reco__title{font-size:17px;font-weight:800;color:var(--p-navy,#0F2747);margin:0;letter-spacing:-.2px}
+    .cart-reco__sub{font-size:13px;color:var(--gray-500);margin:2px 0 0}
+    .cart-reco__addall{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:11px;border:0;cursor:pointer;font-size:12.5px;font-weight:800;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,#0B45AB,#0A5BCF);box-shadow:0 10px 22px -8px rgba(22,163,74,.55);transition:transform .25s,box-shadow .25s,filter .25s}
+    .cart-reco__addall:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 14px 26px -10px rgba(22,163,74,.7);filter:brightness(1.05)}
+    .cart-reco__addall:disabled{opacity:.7;cursor:wait}
+    .cart-reco__grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+    @@media(max-width:1199px){.cart-reco__grid{grid-template-columns:repeat(2,1fr)}}
+    @@media(max-width:560px){.cart-reco__grid{grid-template-columns:1fr}}
+    .cart-reco__card{position:relative;display:flex;flex-direction:column;gap:6px;padding:12px;border-radius:18px;background:#fff;border:1px solid var(--gray-200);box-shadow:0 6px 14px -10px rgba(15,23,42,.25);transition:transform .25s,box-shadow .25s,border-color .25s}
+    .cart-reco__card:hover{transform:translateY(-3px);box-shadow:0 16px 28px -14px rgba(15,23,42,.4);border-color:transparent}
+    .cart-reco__badge{position:absolute;top:8px;right:8px;z-index:3;font-size:10px;font-weight:800;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,#0AC7E5,#5AD9EF);padding:3px 8px;border-radius:999px;box-shadow:0 4px 10px -3px rgba(10,199,229,.55)}
+    .cart-reco__img{position:relative;aspect-ratio:16/10;border-radius:11px;overflow:hidden;background:linear-gradient(135deg,#082B73,#0A5BCF);display:flex;align-items:center;justify-content:center;text-decoration:none}
+    .cart-reco__img img{width:100%;height:100%;object-fit:cover;transition:transform .4s ease}
+    .cart-reco__card:hover .cart-reco__img img{transform:scale(1.05)}
+    .cart-reco__img-blank{font-size:24px;color:rgba(255,255,255,.5)}
+    .cart-reco__body{display:flex;flex-direction:column;gap:5px;flex:1}
+    .cart-reco__name{font-size:13px;font-weight:800;color:var(--p-navy,#0F2747);line-height:1.3;text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .cart-reco__name:hover{color:#2563eb}
+    .cart-reco__faculty{font-size:11px;color:var(--gray-500);font-weight:500}
+    .cart-reco__pricing{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;margin-top:auto}
+    .cart-reco__price{font-size:15px;font-weight:900;letter-spacing:-.3px;color:var(--p-navy,#0F2747)}
+    .cart-reco__mrp{font-size:11px;color:var(--gray-400);text-decoration:line-through;font-weight:600}
+    .cart-reco__disc{font-size:9.5px;font-weight:800;color:#0B45AB;background:#E6F9FD;padding:2px 6px;border-radius:999px;border:1px solid rgba(11,69,171,.28);text-transform:uppercase;letter-spacing:.4px}
+    .cart-reco__add{margin-top:6px;padding:8px 10px;font-size:11.5px;font-weight:800;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,#0AC7E5,#5AD9EF);border:0;border-radius:9px;cursor:pointer;box-shadow:0 6px 14px -6px rgba(10,199,229,.55);transition:transform .2s,box-shadow .2s,filter .2s}
+    .cart-reco__add:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 22px -8px rgba(10,199,229,.7);filter:brightness(1.05)}
+    .cart-reco__add:disabled{opacity:.7;cursor:wait}
+</style>
+
+<div class="cart-pro">
+    <div class="cart-pro__bg" aria-hidden="true">
+        <span class="cart-pro__blob cart-pro__blob--blue"></span>
+        <span class="cart-pro__blob cart-pro__blob--orange"></span>
+    </div>
+
+    <div class="cart-pro__inner">
+        <nav class="cart-pro__bc">
+            <a href="/">Home</a><span>›</span><span class="cart-pro__bc-current">My Cart</span>
+        </nav>
+
+        <header class="cart-pro__header">
+            <h1 class="cart-pro__title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="19" cy="20" r="1.5"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>
+                My Cart
+            </h1>
+            <p class="cart-pro__sub">You are one step away from starting your CA journey.</p>
+        </header>
+
+        @if (!authed)
+        {
+            <div class="cart-pro__empty">
+                <div class="cart-pro__empty-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </div>
+                <h2>Sign In To See Your Cart</h2>
+                <p>Your saved items are waiting — log in to continue your CA journey.</p>
+                <a href="/login?returnUrl=/cart" class="cart-pro__btn cart-pro__btn--primary">
+                    Log in to continue
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                </a>
+            </div>
+        }
+        else if (loading)
+        {
+            <div class="cart-pro__loading">
+                <div class="skel" style="width:60%;height:18px;margin-bottom:10px"></div>
+                <div class="skel" style="width:40%;height:14px"></div>
+            </div>
+        }
+        else if (cart == null || cart.Items.Count == 0)
+        {
+            <div class="cart-pro__empty">
+                <div class="cart-pro__empty-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="19" cy="20" r="1.5"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>
+                </div>
+                <h2>Your cart is empty</h2>
+                <p>Looks like you haven't added any courses yet. Explore our trending programmes designed by India's top faculty.</p>
+                <a href="/courses" class="cart-pro__btn cart-pro__btn--primary">
+                    Browse courses
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                </a>
+            </div>
+        }
+        else
+        {
+            <div class="cart-pro__layout">
+
+                @* ── LEFT: cart items + coupon ── *@
+                <div class="cart-pro__left">
+                    <div class="cart-pro__count">
+                        <span><strong>@cart.Items.Count</strong> course@(cart.Items.Count == 1 ? "" : "s") · <strong>@cart.ItemCount</strong> item@(cart.ItemCount == 1 ? "" : "s") in your cart</span>
+                    </div>
+
+                    @foreach (var item in cart.Items)
+                    {
+                        var disc = item.Mrp > item.UnitPrice && item.Mrp > 0
+                            ? (int)Math.Round((item.Mrp - item.UnitPrice) / item.Mrp * 100) : 0;
+                        var lineSavings = (item.Mrp - item.UnitPrice) * item.Quantity;
+                        <article class="cart-pro__item">
+                            <button class="cart-pro__remove" title="Remove from cart" @onclick="() => Remove(item.Id)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/></svg>
+                            </button>
+
+                            <div class="cart-pro__item-thumb cart-pro__item-thumb--@LevelClass(item.Level)">
+                                <div class="cart-pro__item-thumb-icon">
+                                    @switch (item.Level)
+                                    {
+                                        case CourseLevel.CaIntermediate:
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
+                                            break;
+                                        case CourseLevel.Books:
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 0 3-3h7z"/></svg>
+                                            break;
+                                        default:
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                                            break;
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="cart-pro__item-body">
+                                <span class="cart-pro__item-level">@LevelLabel(item.Level)</span>
+                                <a href="/@item.Slug" class="cart-pro__item-title">@item.Title</a>
+
+                                @* Live Batch Status badge — reads CartItemView.BatchStatus (sourced from Product.BatchStatus). *@
+                                <div style="margin:6px 0 4px">
+                                    <span class="bs-badge bs-badge--@CartBatchClass(item.BatchStatus)">
+                                        <span class="bs-badge__dot"></span>@item.BatchStatusText
+                                    </span>
+                                </div>
+
+                                <div class="cart-pro__item-meta">
+                                    @if (!string.IsNullOrEmpty(item.FacultyName))
+                                    {
+                                        <span class="cart-pro__item-by">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>
+                                            by @item.FacultyName
+                                        </span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(item.ModeName))
+                                    {
+                                        <span class="cart-pro__item-mode">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg>
+                                            @item.ModeName
+                                        </span>
+                                    }
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(item.Attributes))
+                                {
+                                    <p class="cart-pro__item-attrs">@item.Attributes</p>
+                                }
+
+                                @* ── 📦 Estimated Delivery Information — per-product, DB-driven. ── *@
+                                <div class="ed-mini" aria-label="Estimated Delivery">
+                                    <div class="ed-mini__row ed-mini__row--orange">
+                                        <span class="ed-mini__ico">🚀</span>
+                                        <span class="ed-mini__label">Lecture Access:</span>
+                                        <strong class="ed-mini__value">@item.LectureAccessTiming</strong>
+                                    </div>
+                                    <div class="ed-mini__row ed-mini__row--blue">
+                                        <span class="ed-mini__ico">📦</span>
+                                        <span class="ed-mini__label">Notes Dispatch:</span>
+                                        <strong class="ed-mini__value">@item.NotesDispatchTimeline</strong>
+                                    </div>
+                                </div>
+
+                                <div class="cart-pro__item-pricing">
+                                    <span class="cart-pro__item-price">₹@item.UnitPrice.ToString("N0")</span>
+                                    @if (item.Mrp > item.UnitPrice)
+                                    {
+                                        <span class="cart-pro__item-mrp">₹@item.Mrp.ToString("N0")</span>
+                                    }
+                                    @if (disc > 0)
+                                    {
+                                        <span class="cart-pro__item-disc">@disc% OFF</span>
+                                    }
+                                </div>
+                                @if (lineSavings > 0)
+                                {
+                                    <div class="cart-pro__item-save">
+                                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
+                                        You save ₹@lineSavings.ToString("N0") on this course
+                                    </div>
+                                }
+
+                                @* ── premium quantity stepper + live line total ── *@
+                                @if (isFranchisee)
+                                {
+                                <div class="cart-pro__item-actions">
+                                    <div class="cart-pro__qtystepper @(updatingItemId == item.Id ? "is-busy" : "")">
+                                        <button type="button" class="cart-pro__qtybtn" disabled="@(item.Quantity <= 1 || updatingItemId == item.Id)"
+                                                @onclick="() => ChangeQuantity(item, item.Quantity - 1)" aria-label="Decrease quantity">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg>
+                                        </button>
+                                        <span class="cart-pro__qtyval">
+                                            @if (updatingItemId == item.Id)
+                                            {
+                                                <span class="cart-pro__qtyspin" aria-hidden="true"></span>
+                                            }
+                                            else
+                                            {
+                                                @item.Quantity
+                                            }
+                                        </span>
+                                        <button type="button" class="cart-pro__qtybtn" disabled="@(item.Quantity >= MaxCartLineQty || updatingItemId == item.Id)"
+                                                @onclick="() => ChangeQuantity(item, item.Quantity + 1)" aria-label="Increase quantity">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                                        </button>
+                                    </div>
+                                    @if (item.Quantity > 1)
+                                    {
+                                        <div class="cart-pro__item-line">
+                                            <span class="lbl">Line total</span>
+                                            <span class="val">₹@((item.UnitPrice * item.Quantity).ToString("N0"))</span>
+                                        </div>
+                                    }
+                                </div>
+                                }
+                            </div>
+                        </article>
+                    }
+
+                    @* ── Coupon applied chip (when active) ── *@
+                    @if (cart.CouponCode != null)
+                    {
+                        <div class="cart-pro__coupon-active">
+                            <div class="cart-pro__coupon-active-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                            </div>
+                            <div class="cart-pro__coupon-active-body">
+                                <div class="cart-pro__coupon-active-row">
+                                    <span class="cart-pro__coupon-active-label">Coupon applied</span>
+                                    <span class="cart-pro__coupon-active-status">✓ Active</span>
+                                </div>
+                                <div class="cart-pro__coupon-active-code">@cart.CouponCode</div>
+                                @if (!string.IsNullOrEmpty(cart.CouponMessage))
+                                {
+                                    <div class="cart-pro__coupon-active-msg">@cart.CouponMessage</div>
+                                }
+                            </div>
+                            <button type="button" class="cart-pro__coupon-remove" @onclick="RemoveCoupon" title="Remove coupon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                                <span>Remove</span>
+                            </button>
+                        </div>
+                    }
+
+                    @* ── Coupon input panel (always visible) ── *@
+                    <div class="cart-pro__coupon">
+                        <div class="cart-pro__coupon-head">
+                            <div class="cart-pro__coupon-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a1.4 1.4 0 0 1-2 0L2 11.2V2h9.2l9.4 9.4a1.4 1.4 0 0 1 0 2z"/><circle cx="7" cy="7" r="1.4"/></svg>
+                            </div>
+                            <div>
+                                <h3>@(cart.CouponCode != null ? "Try another coupon" : "Have a coupon code?")</h3>
+                                <p>Apply to unlock instant savings on this order.</p>
+                            </div>
+                        </div>
+                        <div class="cart-pro__coupon-row">
+                            <input type="text" class="cart-pro__coupon-input" placeholder="Enter coupon code (e.g. WELCOME10)" @bind="couponInput" @onkeydown="OnCouponKey" />
+                            <button class="cart-pro__coupon-apply" @onclick="ApplyCoupon">
+                                Apply
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                            </button>
+                        </div>
+                        @if (cart.CouponCode == null && !string.IsNullOrEmpty(cart.CouponMessage))
+                        {
+                            <div class="cart-pro__coupon-msg cart-pro__coupon-msg--err">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                                @cart.CouponMessage
+                            </div>
+                        }
+                    </div>
+
+                    @* ── Complete Your Preparation (admin-curated recommendations) ── *@
+                    @if (recoCards is { Count: > 0 })
+                    {
+                        <div class="cart-reco">
+                            <div class="cart-reco__head">
+                                <div>
+                                    <h3 class="cart-reco__title">💡 Complete Your Preparation</h3>
+                                    <p class="cart-reco__sub">Students who picked these courses also added the following.</p>
+                                </div>
+                                @if (recoCards.Count >= 2)
+                                {
+                                    <button type="button" class="cart-reco__addall" disabled="@addAllBusy" @onclick="AddAllRecommended">
+                                        @(addAllBusy ? "Adding…" : "✨ Add all to cart")
+                                    </button>
+                                }
+                            </div>
+                            <div class="cart-reco__grid">
+                                @foreach (var rc in recoCards)
+                                {
+                                    <article class="cart-reco__card">
+                                        <div class="bs-badge bs-badge--overlay bs-badge--@CartBatchClass(rc.BatchStatus)"><span class="bs-badge__dot"></span>@rc.BatchStatusText</div>
+                                        @if (!string.IsNullOrEmpty(rc.BadgeText))
+                                        {
+                                            <span class="cart-reco__badge" style="@(string.IsNullOrEmpty(rc.BadgeColor) ? "" : $"background:{rc.BadgeColor}")">@rc.BadgeText</span>
+                                        }
+                                        <a href="/@rc.Slug" class="cart-reco__img">
+                                            @if (!string.IsNullOrEmpty(rc.ImageUrl)) { <img src="@rc.ImageUrl" alt="@rc.Title" loading="lazy" /> }
+                                            else { <span class="cart-reco__img-blank">🎓</span> }
+                                        </a>
+                                        <div class="cart-reco__body">
+                                            <a href="/@rc.Slug" class="cart-reco__name">@rc.Title</a>
+                                            @if (!string.IsNullOrEmpty(rc.FacultyName)) { <div class="cart-reco__faculty">by @rc.FacultyName</div> }
+                                            <div class="cart-reco__pricing">
+                                                <span class="cart-reco__price">₹@rc.Price.ToString("N0")</span>
+                                                @if (rc.Mrp.HasValue && rc.Mrp.Value > rc.Price)
+                                                { <span class="cart-reco__mrp">₹@rc.Mrp.Value.ToString("N0")</span> }
+                                                @if (rc.DiscountPercent > 0)
+                                                { <span class="cart-reco__disc">@rc.DiscountPercent% OFF</span> }
+                                            </div>
+                                            <button type="button" class="cart-reco__add" disabled="@(recoBusyIds.Contains(rc.Id))"
+                                                    @onclick="() => AddRecoCard(rc.Id)">
+                                                @(recoBusyIds.Contains(rc.Id) ? "Adding…" : "🛒 Add to cart")
+                                            </button>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @* ── RIGHT: sticky order summary ── *@
+                <aside class="cart-pro__summary">
+                    <div class="cart-pro__summary-head">
+                        <h3>Order Summary</h3>
+                        <span class="cart-pro__summary-count">@cart.ItemCount item@(cart.ItemCount == 1 ? "" : "s")</span>
+                    </div>
+
+                    <div class="cart-pro__rows">
+                        <div class="cart-pro__row">
+                            <span class="label">Subtotal</span>
+                            <span class="value">₹@cart.Subtotal.ToString("N0")</span>
+                        </div>
+                        @if (cart.Discount > 0)
+                        {
+                            <div class="cart-pro__row cart-pro__row--ok">
+                                <span class="label">
+                                    @(cart.CouponCode != null ? "Coupon" : "Discount")
+                                    @if (cart.CouponCode != null) { <code>@cart.CouponCode</code> }
+                                </span>
+                                <span class="value">− ₹@cart.Discount.ToString("N0")</span>
+                            </div>
+                        }
+                        <div class="cart-pro__row">
+                            <span class="label">GST <small>(18% incl.)</small></span>
+                            <span class="value">₹@cart.GstIncluded.ToString("N0")</span>
+                        </div>
+                    </div>
+
+                    <div class="cart-pro__total">
+                        <span class="cart-pro__total-label">Grand Total</span>
+                        <span class="cart-pro__total-value">₹@cart.Total.ToString("N0")</span>
+                    </div>
+
+                    @if (cart.Savings > 0)
+                    {
+                        <div class="cart-pro__save-box">
+                            <div class="cart-pro__save-ico">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 9 9H2l5.5 4.5L5 21l7-4.5L19 21l-2.5-7.5L22 9h-7l-3-7z"/></svg>
+                            </div>
+                            <div>
+                                <strong>Congratulations!</strong>
+                                <span>You saved <b>₹@cart.Savings.ToString("N0")</b> on this purchase.</span>
+                            </div>
+                        </div>
+                    }
+
+                    @* ── Motivational nudge directly above the Checkout button (shared with /checkout) ── *@
+                    <CheckoutMotivationCard />
+
+
+                    <button class="cart-pro__checkout" @onclick="GoToCheckout">
+                        <span>Proceed to Checkout</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                    </button>
+                    <a href="/courses/ca-foundation" class="cart-pro__continue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                        Continue shopping
+                    </a>
+
+                    <div class="cart-pro__trust">
+                        <span class="cart-pro__trust-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            SSL Secure Checkout
+                        </span>
+                        <span class="cart-pro__trust-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+                            100% Safe Payment
+                        </span>
+                        <span class="cart-pro__trust-item">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg>
+                            Instant Course Access
+                        </span>
+                    </div>
+
+                    <div class="cart-pro__pay">
+                        <span class="cart-pro__pay-label">We accept</span>
+                        <div class="cart-pro__pay-logos">
+                            <span class="cart-pro__pay-logo cart-pro__pay-logo--rzp">Razorpay</span>
+                            <span class="cart-pro__pay-logo cart-pro__pay-logo--upi">UPI</span>
+                            <span class="cart-pro__pay-logo cart-pro__pay-logo--visa">VISA</span>
+                            <span class="cart-pro__pay-logo cart-pro__pay-logo--mc">MasterCard</span>
+                            <span class="cart-pro__pay-logo cart-pro__pay-logo--rupay">RuPay</span>
+                            <span class="cart-pro__pay-logo">NetBanking</span>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        }
+    </div>
+
+    @if (toastMsg != null)
+    {
+        <div class="cart-pro__toast cart-pro__toast--@(toastOk ? "ok" : "err")">
+            @if (toastOk)
+            {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            }
+            else
+            {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            }
+            <span>@toastMsg</span>
+        </div>
+    }
+</div>
+
+@code {
+    private CartView? cart;
+    private bool authed, loading = true;
+    private bool isFranchisee;
+    private Guid userId;
+    private string couponInput = "";
+    private string? appliedCoupon;
+    private Guid? updatingItemId;          // disables a row's stepper while its request is in-flight
+    // ── Offer / Combo Recommendations ──
+    private List<RecommendationCard>? recoCards;
+    private HashSet<Guid> recoBusyIds = new();
+    private bool addAllBusy;
+    private string? toastMsg;              // floating inline toast — auto-clears
+    private bool toastOk;
+    private System.Threading.Timer? toastTimer;
+    private const int MaxCartLineQty = 10; // mirrors CartService.MaxCartLineQuantity
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var id = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (Guid.TryParse(id, out userId))
+        {
+            // Franchise accounts buy via the Franchise Portal, not the customer cart.
+            if (await FranchisePortal.ResolveFranchiseIdAsync(userId) != null)
+            {
+                Nav.NavigateTo("/franchise/order", forceLoad: false);
+                return;
+            }
+            authed = true;
+            await Reload();
+        }
+        isFranchisee = state.User.IsInRole("franchise_admin");
+        loading = false;
+    }
+
+    private async Task Reload()
+    {
+        cart = await CartSvc.GetAsync(userId, appliedCoupon);
+        await LoadRecommendationsAsync();
+    }
+
+    // Pulls recommendations for every product currently in the cart, de-dupes server-side, caps at 4 cards.
+    private async Task LoadRecommendationsAsync()
+    {
+        try
+        {
+            var pids = cart?.Items.Select(i => i.ProductId).Distinct().ToList() ?? new();
+            if (pids.Count == 0) { recoCards = null; return; }
+            recoCards = await RecoSvc.GetForProductsAsync(pids, 4);
+        }
+        catch { recoCards = null; }
+    }
+
+    private async Task AddRecoCard(Guid productId)
+    {
+        if (recoBusyIds.Contains(productId)) return;
+        recoBusyIds.Add(productId);
+        try
+        {
+            var (ok, err) = await CartSvc.AddAsync(userId, productId, null);
+            if (!ok) { Toast(false, err ?? "Could not add to cart."); return; }
+        }
+        catch { }
+        finally { recoBusyIds.Remove(productId); }
+        await Reload();
+        Toast(true, "Course added to your cart.");
+    }
+
+    private async Task AddAllRecommended()
+    {
+        if (addAllBusy || recoCards == null || recoCards.Count == 0) return;
+        addAllBusy = true;
+        var added = 0;
+        try
+        {
+            foreach (var rc in recoCards)
+            {
+                try { var (ok, _) = await CartSvc.AddAsync(userId, rc.Id, null); if (ok) added++; } catch { }
+            }
+        }
+        finally { addAllBusy = false; }
+        await Reload();
+        if (added > 0) Toast(true, $"{added} course(s) added to your cart.");
+        else Toast(false, "All recommended courses are already in your cart.");
+    }
+
+    private async Task Remove(Guid id) { await CartSvc.RemoveAsync(userId, id); await Reload(); }
+
+    private async Task ApplyCoupon()
+    {
+        appliedCoupon = string.IsNullOrWhiteSpace(couponInput) ? null : couponInput.Trim();
+        await Reload();
+        if (cart?.CouponCode != null) Toast(true, "Coupon applied — totals updated.");
+    }
+
+    private async Task OnCouponKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await ApplyCoupon();
+    }
+
+    // Pure client-side coupon clear — re-fetches cart with no coupon, no extra API surface needed.
+    private async Task RemoveCoupon()
+    {
+        appliedCoupon = null;
+        couponInput = "";
+        await Reload();
+        Toast(true, "Coupon removed successfully.");
+    }
+
+    private async Task ChangeQuantity(CartItemView item, int newQty)
+    {
+        if (updatingItemId != null) return;            // prevent double-click
+        if (newQty < 1) return;
+        if (newQty > MaxCartLineQty) { Toast(false, $"Maximum quantity is {MaxCartLineQty}."); return; }
+
+        updatingItemId = item.Id;
+        var (ok, err) = await CartSvc.UpdateQuantityAsync(userId, item.Id, newQty);
+        if (!ok) Toast(false, err ?? "Could not update quantity.");
+        await Reload();
+        updatingItemId = null;
+    }
+
+    private void Toast(bool ok, string msg)
+    {
+        toastOk = ok; toastMsg = msg;
+        toastTimer?.Dispose();
+        toastTimer = new System.Threading.Timer(_ => InvokeAsync(() => { toastMsg = null; StateHasChanged(); }), null, 2500, System.Threading.Timeout.Infinite);
+    }
+
+    public void Dispose() => toastTimer?.Dispose();
+
+    private void GoToCheckout()
+    {
+        var url = appliedCoupon != null ? $"/checkout?coupon={Uri.EscapeDataString(appliedCoupon)}" : "/checkout";
+        Nav.NavigateTo(url);
+    }
+
+    private static string LevelLabel(CourseLevel l) => l switch
+    {
+        CourseLevel.CaFoundation => "CA Foundation",
+        CourseLevel.CaIntermediate => "CA Intermediate",
+        CourseLevel.CaFinal => "CA Final",
+        CourseLevel.Books => "Books",
+        _ => "Course"
+    };
+
+    // Enum -> CSS variant only. The user-facing string comes from CartItemView.BatchStatusText /
+    // RecommendationCard.BatchStatusText (single source of truth on the DTOs).
+    private static string CartBatchClass(BatchStatus s) => s switch
+    {
+        BatchStatus.Upcoming => "upcoming",
+        BatchStatus.Ongoing => "ongoing",
+        BatchStatus.PreRecorded => "prerec",
+        BatchStatus.OutOfStock => "oos",
+        BatchStatus.ComingSoon => "soon",
+        _ => "upcoming"
+    };
+
+    // CSS variant for the gradient thumb, keyed by course level.
+    private static string LevelClass(CourseLevel l) => l switch
+    {
+        CourseLevel.CaIntermediate => "inter",
+        CourseLevel.CaFinal => "final",
+        CourseLevel.Books => "books",
+        _ => "foundation"
+    };
+}

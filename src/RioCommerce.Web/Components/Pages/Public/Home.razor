@@ -1,0 +1,616 @@
+@page "/"
+@implements IDisposable
+@inject HttpClient Http
+@inject ILeadService Leads
+@inject IJSRuntime JS
+
+<SeoHead Seo="@seo" />
+
+@* Homepage banner slider — renders below the header, homepage only. *@
+<HeroBanner />
+
+<!-- Hero -->
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero__bg" aria-hidden="true">
+        <span class="hero__blob hero__blob--orange"></span>
+        <span class="hero__blob hero__blob--blue"></span>
+        <span class="hero__blob hero__blob--green"></span>
+        <span class="hero__grid"></span>
+    </div>
+    <div class="hero__inner">
+        <h1 class="hero__title reveal" data-delay="1">Your <span class="highlight">Trusted</span> Learning Platform</h1>
+        <p class="hero__subtitle reveal" data-delay="2">
+            Learn from expert faculty. Live streaming, recorded lectures, study material &amp; mentorship.
+            <span class="hero__note">(Click a button below for more information)</span>
+        </p>
+        <div class="hero__course-btns reveal" data-delay="3">
+            <a href="/ca-foundation" class="hero__course-btn hero__course-btn--foundation magnetic">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                CA Foundation Courses
+            </a>
+            <a href="/ca-intermediate" class="hero__course-btn hero__course-btn--inter magnetic">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
+                CA Intermediate Courses
+            </a>
+            <a href="/ca-final" class="hero__course-btn hero__course-btn--final magnetic">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4.5 6v6c0 4.4 3.2 8.4 7.5 9.5 4.3-1.1 7.5-5.1 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>
+                CA Final Courses
+            </a>
+            <a href="/books" class="hero__course-btn hero__course-btn--books magnetic">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                Our Books
+            </a>
+        </div>
+    </div>
+    <div class="hero__wave" aria-hidden="true">
+        @* Three layered waves with 1440-unit periodic paths inside a 2880-wide viewBox.
+           All three layers flow left at different speeds. Each layer deeply overlaps the bottom of the
+           container so there is no visible gap between the curves.
+
+           svg-noclamp is REQUIRED here: responsive-normalize.css clamps every loose
+           <svg> without a width attribute to icon size (16–24px). These are full-bleed
+           decorations sized in CSS (width:200%;height:100%), and that clamp — which
+           outranks .hjc-app .hero__wave-svg on specificity — collapsed all three to an
+           ~18px square in the hero's bottom-left corner, which read as a "cut corner"
+           notch on the banner. The class is the escape hatch that file provides. *@
+        <svg class="hero__wave-svg hero__wave-svg--back svg-noclamp"  viewBox="0 0 2880 120" preserveAspectRatio="none"><path fill="currentColor" d="M0,50 C240,20 480,20 720,50 C960,80 1200,80 1440,50 C1680,20 1920,20 2160,50 C2400,80 2640,80 2880,50 L2880,120 L0,120 Z"/></svg>
+        <svg class="hero__wave-svg hero__wave-svg--mid svg-noclamp"   viewBox="0 0 2880 120" preserveAspectRatio="none"><path fill="currentColor" d="M0,65 C240,45 480,45 720,65 C960,85 1200,85 1440,65 C1680,45 1920,45 2160,65 C2400,85 2640,85 2880,65 L2880,120 L0,120 Z"/></svg>
+        <svg class="hero__wave-svg hero__wave-svg--front svg-noclamp" viewBox="0 0 2880 120" preserveAspectRatio="none"><path fill="currentColor" d="M0,85 C240,70 480,70 720,85 C960,100 1200,100 1440,85 C1680,70 1920,70 2160,85 C2400,100 2640,100 2880,85 L2880,120 L0,120 Z"/></svg>
+    </div>
+</section>
+
+<!-- Most Popular Courses -->
+<section class="section section--gray trending-section">
+    <div class="trending-bg" aria-hidden="true">
+        <span class="trending-blob trending-blob--blue"></span>
+        <span class="trending-blob trending-blob--orange"></span>
+    </div>
+    <div class="section__inner">
+        <div class="section__header reveal">
+            <div class="section__label">★ Most Popular Courses</div>
+            <h2 class="section__title">Most Popular Courses</h2>
+            <p class="section__subtitle">Explore our most popular courses, designed by expert faculty.</p>
+        </div>
+        <div class="course-grid">
+            @if (featured == null)
+            {
+                @for (var i = 0; i < 4; i++)
+                {
+                    <div class="course-card course-card--skel"><div class="skel" style="height:240px"></div><div style="padding:18px"><div class="skel" style="height:14px;width:40%;margin-bottom:8px"></div><div class="skel" style="height:18px;width:90%;margin-bottom:6px"></div><div class="skel" style="height:18px;width:70%;margin-bottom:12px"></div><div class="skel" style="height:24px;width:55%"></div></div></div>
+                }
+            }
+            else if (featured.Count == 0)
+            {
+                <p style="text-align:center;grid-column:1/-1;color:var(--gray-400)">No courses yet. Add products from the admin panel.</p>
+            }
+            else
+            {
+                @foreach (var p in featured) { <CourseCard Product="p" /> }
+            }
+        </div>
+        <div style="text-align:center;margin-top:34px">
+            <a href="/courses" class="btn btn-outline">View All Courses →</a>
+        </div>
+    </div>
+</section>
+
+<!-- Mode of Teaching -->
+@* section--modes is a styling hook only: it scopes the compact mobile layout to
+   this section so the shared .section spacing on every other block is untouched. *@
+<section class="section section--modes">
+    <div class="section__inner">
+        <div class="section__header reveal">
+            <div class="section__label">Mode Of Teaching</div>
+            <h2 class="section__title">Learn The Way That Suits You</h2>
+        </div>
+        <div class="mode-grid">
+            <div class="mode-card reveal">
+                <div class="mode-card__icon mode-card__icon--live">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1A10 10 0 0 1 4.9 4.9"/><path d="M7.8 16.2a6 6 0 0 1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.5"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/></svg>
+                </div>
+                <h3>Live Streaming</h3><p>Attend live lectures from anywhere. Real-time interaction and doubt solving during class.</p>
+            </div>
+            <div class="mode-card reveal" data-delay="1">
+                <div class="mode-card__icon mode-card__icon--rec">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+                </div>
+                <h3>Recorded Lectures</h3><p>Watch anytime, pause &amp; rewind. Recorded backup for all live batches with extended validity.</p>
+            </div>
+            <div class="mode-card reveal" data-delay="2">
+                <div class="mode-card__icon mode-card__icon--f2f">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01"/></svg>
+                </div>
+                <h3>Face To Face</h3><p>Offline classes at Prestige Point, Shukrawar Peth, Pune — AC classrooms with smart boards.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Core Team — premium faculty showcase, data-driven from /api/faculty -->
+<section class="section fcs-section">
+    <div class="fcs-bg" aria-hidden="true">
+        <span class="fcs-blob fcs-blob--orange"></span>
+        <span class="fcs-blob fcs-blob--blue"></span>
+    </div>
+    @* Floating decorations — book, pencil, graduation cap, open book, star *@
+    <div class="fcs-deco" aria-hidden="true">
+        <span class="fcs-deco__item fcs-deco__item--1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        </span>
+        <span class="fcs-deco__item fcs-deco__item--2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+        </span>
+        <span class="fcs-deco__item fcs-deco__item--3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19 19 12l-5-5L4 17v3h3z"/><path d="m14 6 3 3"/></svg>
+        </span>
+        <span class="fcs-deco__item fcs-deco__item--4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4.5C2 4 2.4 3.5 3 3.5h7c2 0 3 1 3 3v14c0-1.5-1-2.5-3-2.5H3c-.6 0-1-.4-1-1V4.5Z"/><path d="M22 4.5C22 4 21.6 3.5 21 3.5h-7c-2 0-3 1-3 3v14c0-1.5 1-2.5 3-2.5h7c.6 0 1-.4 1-1V4.5Z"/></svg>
+        </span>
+        <span class="fcs-deco__item fcs-deco__item--5">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
+        </span>
+        <span class="fcs-deco__item fcs-deco__item--6">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+        </span>
+    </div>
+    <div class="section__inner">
+        <div class="section__header fcs-header reveal">
+            <span class="fcs-trustpill">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
+                India's Trusted CA Faculty
+            </span>
+            <h2 class="fcs-title">Meet Our Expert Faculty</h2>
+            <p class="fcs-subtitle">Learn from India's top Chartered Accountants and industry experts with years of practical experience.</p>
+        </div>
+        <div class="fcs-viewport">
+            <button type="button" class="fcs-nav fcs-nav--prev" aria-label="Previous faculty" data-fcs-dir="-1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <button type="button" class="fcs-nav fcs-nav--next" aria-label="Next faculty" data-fcs-dir="1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+            <div class="fcs-grid">
+            @if (facultyList == null)
+            {
+                @for (var i = 0; i < 5; i++)
+                {
+                    <div class="fcs-skel"><div class="skel" style="width:104px;height:104px;border-radius:50%;margin:0 auto 14px"></div><div class="skel" style="width:70%;height:14px;margin:0 auto 8px"></div><div class="skel" style="width:50%;height:11px;margin:0 auto"></div></div>
+                }
+            }
+            else if (facultyList.Count == 0)
+            {
+                <p style="text-align:center;grid-column:1/-1;color:var(--gray-400);font-size:14px">Our faculty profiles will be live shortly.</p>
+            }
+            else
+            {
+                var fi = 0;
+                @foreach (var f in facultyList)
+                {
+                    var idx = fi++;
+                    <a href="/faculty/@f.Code" class="fcs-card reveal" data-delay="@Math.Min(idx, 4)">
+                        <span class="fcs-card__glow" aria-hidden="true"></span>
+                        <span class="fcs-card__spotlight" aria-hidden="true"></span>
+
+                        @* top row: verified left + rating right *@
+                        <div class="fcs-card__top">
+                            <span class="fcs-pill fcs-pill--verified">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 9.5 4.5 6 4l-.5 3.5L2 9l1.5 3-1.5 3 3.5 1.5L6 20l3.5-.5L12 22l2.5-2.5 3.5.5.5-3.5L22 15l-1.5-3 1.5-3-3.5-1.5L18 4l-3.5.5L12 2Zm-1 13-3-3 1.4-1.4L11 12.2l4.6-4.6L17 9l-6 6Z"/></svg>
+                                Verified Faculty
+                            </span>
+                            <span class="fcs-pill fcs-pill--rating">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
+                                @(f.RatingCount > 0 ? f.AvgRating.ToString("0.0") : "4.9") Rating
+                            </span>
+                        </div>
+
+                        <div class="fcs-card__photo-wrap">
+                            <span class="fcs-card__halo" aria-hidden="true"></span>
+                            <span class="fcs-card__ring"></span>
+                            @if (!string.IsNullOrEmpty(f.PhotoUrl))
+                            {
+                                <img class="fcs-card__photo" src="@f.PhotoUrl" alt="@f.DisplayName" loading="lazy" />
+                            }
+                            else
+                            {
+                                <div class="fcs-card__photo fcs-card__photo--initials">@FacultyInitials(f.DisplayName)</div>
+                            }
+                        </div>
+
+                        <h3 class="fcs-card__name">@f.DisplayName</h3>
+                        @if (!string.IsNullOrEmpty(f.Designation)) { <div class="fcs-card__role">@f.Designation</div> }
+
+                        @if (f.Subjects is { Length: > 0 })
+                        {
+                            <div class="fcs-card__subjects">
+                                @{ var k = 0; }
+                                @foreach (var s in f.Subjects.Take(4))
+                                {
+                                    <span class="@(k++ == 0 ? "is-active" : "")">@s</span>
+                                }
+                            </div>
+                        }
+
+                        <div class="fcs-card__statbox">
+                            <div class="fcs-stat">
+                                <svg class="fcs-stat__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                                <div class="fcs-stat__num">@(string.IsNullOrEmpty(f.YearsOfExperience) ? "8+" : f.YearsOfExperience)</div>
+                                <div class="fcs-stat__label">Years</div>
+                            </div>
+                            <div class="fcs-stat">
+                                <svg class="fcs-stat__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 4h3v3a3 3 0 0 1-3 3M7 4H4v3a3 3 0 0 0 3 3"/></svg>
+                                <div class="fcs-stat__num">@(string.IsNullOrEmpty(f.StudentsTaught) ? "25000+" : f.StudentsTaught)</div>
+                                <div class="fcs-stat__label">Students</div>
+                            </div>
+                            <div class="fcs-stat">
+                                <svg class="fcs-stat__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                <div class="fcs-stat__num">@(f.CourseCount > 0 ? f.CourseCount + "+" : "35+")</div>
+                                <div class="fcs-stat__label">Courses</div>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(f.Bio))
+                        {
+                            <p class="fcs-card__tagline">@Tagline(f.Bio)</p>
+                        }
+
+                        <span class="fcs-card__cta">
+                            View Full Profile
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                        </span>
+                    </a>
+                }
+            }
+            </div>
+            <div class="fcs-dots" aria-hidden="true"></div>
+        </div>
+        @* Mobile-only footer link for the compact faculty directory. Hidden at
+           ≥769px, where the carousel already pages through everyone. Uses the
+           existing /faculty listing route — no new page. *@
+        <div class="fcs-more">
+            <a href="/faculty" class="fcs-more__btn">View All Faculty →</a>
+        </div>
+    </div>
+</section>
+
+<!-- Testimonials -->
+<section class="section">
+    <div class="section__inner">
+        <div class="section__header reveal">
+            <div class="section__label">Student Feedback</div>
+            <h2 class="section__title">What Our Students Say</h2>
+        </div>
+    </div>
+    <div class="tm-marquee reveal">
+        <div class="tm-track">
+            @foreach (var pass in new[] { 0, 1 })
+            {
+                @foreach (var t in reviews)
+                {
+                    <div class="tm-card" aria-hidden="@(pass == 1 ? "true" : null)">
+                        <div class="tm-card__quote">&ldquo;</div>
+                        <div class="tm-card__stars">★★★★★</div>
+                        <div class="tm-card__text">@t.Text</div>
+                        <div class="tm-card__author">
+                            <div class="tm-card__avatar" style="background:@t.Color">@t.Initials</div>
+                            <div><div class="tm-card__name">@t.Name</div><div class="tm-card__score">@t.Score</div></div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</section>
+
+<!-- Blogs -->
+@if (blogs is { Count: > 0 })
+{
+    <section class="section section--gray">
+        <div class="section__inner">
+            <div class="section__header reveal">
+                <div class="section__label">Latest Blogs</div>
+                <h2 class="section__title">CA Exam Tips &amp; Updates</h2>
+            </div>
+            @* pb-grid--home scopes the compact mobile tile layout to this section only.
+               BlogCard/.pb-grid are shared with /blog and the related-posts strip, which
+               keep their existing design. *@
+            <div class="pb-grid pb-grid--home reveal">
+                @foreach (var b in blogs)
+                {
+                    <BlogCard Post="b" />
+                }
+            </div>
+            @if (blogTotal > blogs.Count)
+            {
+                <div class="pb-more reveal">
+                    <a href="/blog" class="pb-btn">View All Blogs <span class="pb-btn__arrow" aria-hidden="true">→</span></a>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+<!-- Map -->
+<section class="section">
+    <div class="section__inner">
+        <div class="section__header reveal">
+            <div class="section__label">Find Us</div>
+            <h2 class="section__title">Visit Our Centre In Pune</h2>
+            <p class="section__subtitle">Office No. 66, 2nd Floor, Prestige Point, Bajirao Road, Shukrawar Peth, Pune — 411002</p>
+        </div>
+        <div class="map-container reveal">
+            <iframe src="https://www.google.com/maps?q=Prestige+Point,+Bajirao+Road,+Shukrawar+Peth,+Pune+411002&output=embed" loading="lazy" title="RioCommerce location"></iframe>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-banner">
+    <div class="cta-banner__inner reveal">
+        <h2>Ready To Begin Your CA Journey?</h2>
+        <p>Call: <a href="tel:9975242929">9975242929</a> · <a href="tel:9766582929">9766582929</a> · <a href="tel:9766182929">9766182929</a></p>
+        <a href="/courses" class="btn btn-primary btn-lg">Explore Courses</a>
+    </div>
+</section>
+
+<!-- Enquiry popup -->
+@if (showEnquiry)
+{
+    <div class="enquiry-overlay" @onclick="CloseEnquiry">
+        <div class="enquiry-modal" @onclick:stopPropagation="true">
+            <button class="enquiry-modal__close" @onclick="CloseEnquiry">✕</button>
+            <div class="enquiry-modal__header">
+                <h3>Enquire Now</h3>
+                <p>@(enquirySubmitted ? "We'll reach out shortly!" : "Fill in your details & our team will reach out")</p>
+            </div>
+            <div class="enquiry-modal__body">
+                @if (enquirySubmitted)
+                {
+                    <p style="text-align:center;color:var(--green);font-weight:600;padding:12px 0">✅ Thank you, @enq.Name!</p>
+                    <button class="btn btn-outline" style="width:100%" @onclick="CloseEnquiry">Close</button>
+                }
+                else
+                {
+                    <div class="form-group"><label class="form-label">Full Name *</label><input class="form-input" @bind="enq.Name" placeholder="Your full name" /></div>
+                    <div class="form-group"><label class="form-label">Phone *</label><input class="form-input" @bind="enq.Phone" placeholder="10-digit mobile number" /></div>
+                    <div class="form-group"><label class="form-label">City</label><input class="form-input" @bind="enq.City" placeholder="Pune" /></div>
+                    <div class="form-group"><label class="form-label">Course Interest</label>
+                        <select class="form-input" @bind="enq.Course"><option>General Enquiry</option><option>Courses</option><option>Books / Study Material</option><option>Other</option></select>
+                    </div>
+                    <button class="btn btn-primary btn-lg" style="width:100%" @onclick="SubmitEnquiry">Submit Enquiry</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- FOMO toast -->
+@if (showFomo)
+{
+    var f = fomo[fomoIndex];
+    <div class="fomo-toast">
+        <div class="fomo-toast__ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+        </div>
+        <div>
+            <div class="fomo-toast__text"><strong>@f.Name</strong> enrolled in <strong>@f.Course</strong></div>
+            <div class="fomo-toast__time">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>@f.Time
+            </div>
+        </div>
+        <button class="fomo-toast__close" @onclick="DismissFomo" aria-label="Close notification">✕</button>
+    </div>
+}
+
+@code {
+    private List<ProductListItem>? featured;
+    private List<FacultyCard>? facultyList;
+    private List<BlogListItem>? blogs;   // latest 3 published posts for the homepage section
+    private int blogTotal;               // total published posts — drives the "View All Blogs" button
+
+    private SeoMetadata seo = new()
+    {
+        Title = "RioCommerce — Online Learning Platform",
+        Description = "Expert-led courses with live streaming, recorded lectures, and study material.",
+        Keywords = "online courses, learning platform, RioCommerce"
+    };
+
+    // Enquiry popup
+    private bool showEnquiry, enquirySubmitted;
+    private EnquiryForm enq = new();
+    private Timer? enquiryTimer;
+
+    // FOMO
+    private bool showFomo;
+    private bool fomoDismissed;
+    private int fomoIndex;
+    private Timer? fomoTimer;
+
+    // Session-scoped: closing the sales notification keeps it closed for the rest
+    // of this tab's session; a brand-new session starts fresh.
+    private const string FomoDismissedKey = "rc_fomo_dismissed";
+
+    private async Task DismissFomo()
+    {
+        showFomo = false;
+        fomoDismissed = true;
+        try { await JS.InvokeVoidAsync("sessionStorage.setItem", FomoDismissedKey, "1"); }
+        catch { /* non-fatal: it still stays closed for this page */ }
+    }
+    private bool disposed;
+    private readonly (string Name, string Course, string Time)[] fomo =
+    {
+        ("Ankita from Pune", "Sample Course — Regular", "3 min ago"),
+        ("Rahul from Nagpur", "Sample Course — Beginner", "5 min ago"),
+        ("Priya from Mumbai", "Sample Course — Fastrack", "8 min ago"),
+        ("Vikram from Nashik", "Sample Course — Combo", "12 min ago"),
+        ("Sneha from Kolhapur", "Sample Course — Advanced", "15 min ago")
+    };
+
+    // Student testimonials (rendered as the auto-scrolling marquee).
+    private record Review(string Text, string Name, string Score, string Initials, string Color);
+    private readonly Review[] reviews =
+    {
+        new("\"The course content was excellent. The faculty connects theory to practice effortlessly.\"", "Sample Student A", "Verified Student", "SA", "linear-gradient(135deg,#0B45AB,#0A5BCF)"),
+        new("\"Great teaching methodology and personal mentoring made all the difference.\"", "Sample Student B", "Top Performer", "SB", "linear-gradient(135deg,#0AC7E5,#5AD9EF)"),
+        new("\"Recorded lectures with notes were perfect for revision. The test series helped me find weak areas.\"", "Sample Student C", "1st Attempt Clear", "SC", "linear-gradient(135deg,#0AA9C4,#0A5BCF)"),
+        new("\"Outstanding classes with practical examples. Highly recommended!\"", "Sample Student D", "Verified Student", "SD", "linear-gradient(135deg,#082B73,#0B45AB)")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ApiResponse<List<ProductListItem>>>("/api/products/featured?count=4");
+            featured = r?.Data ?? new();
+        }
+        catch { featured = new(); }
+        try
+        {
+            // Only faculty the admin has ticked "Show on Home Page".
+            var fr = await Http.GetFromJsonAsync<ApiResponse<List<FacultyCard>>>("/api/faculty?homeOnly=true");
+            facultyList = fr?.Data ?? new();
+        }
+        catch { facultyList = new(); }
+        try
+        {
+            // Latest 3 published blogs; TotalCount tells us whether to show "View All Blogs".
+            var br = await Http.GetFromJsonAsync<ApiResponse<PagedResult<BlogListItem>>>("/api/content/blog?page=1&pageSize=3");
+            blogs = br?.Data?.Items ?? new();
+            blogTotal = br?.Data?.TotalCount ?? 0;
+        }
+        catch { blogs = new(); blogTotal = 0; }
+    }
+
+    private static string FacultyInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "RC";
+        var parts = name.Replace("CA", "").Replace("CS", "").Replace("Prof.", "").Trim()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+
+    // Trims the bio to ~3 lines worth — keeps the first 1-2 sentences when they're short.
+    private static string Tagline(string? bio)
+    {
+        if (string.IsNullOrWhiteSpace(bio)) return "";
+        var b = bio.Trim();
+        if (b.Length <= 170) return b;
+        var cut = b[..170];
+        var lastDot = cut.LastIndexOf('.');
+        if (lastDot > 80) return cut[..(lastDot + 1)];
+        return cut.TrimEnd() + "…";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Re-scan for scroll-reveal / counters / magnetic targets (idempotent on the JS side).
+        try { await JS.InvokeVoidAsync("hjc.homeFx"); } catch { }
+        // Once the dynamic faculty cards are in the DOM, wire up the carousel.
+        try { await JS.InvokeVoidAsync("hjc.facultyCarousel"); } catch { }
+        // Same for the testimonials strip — the reviews arrive after the first render, and on
+        // phones the strip is a scroller that needs its auto-advance wired up. No-op on desktop.
+        try { await JS.InvokeVoidAsync("hjc.testimonialCarousel"); } catch { }
+        if (!firstRender) return;
+        // Enquiry popup is gated by localStorage (per browser/device): at most 3 displays total,
+        // and suppressed for 30 days after a successful submission. The timer only proposes showing
+        // it — MaybeShowEnquiry decides based on stored history.
+        enquiryTimer = new Timer(_ => InvokeAsync(MaybeShowEnquiry), null, 2500, Timeout.Infinite);
+        // Once dismissed the toast stays gone for the whole browsing session, so the
+        // tick is a no-op rather than re-showing the next notification.
+        fomoTimer = new Timer(_ => Show(() =>
+        {
+            if (fomoDismissed) return;
+            showFomo = true;
+            fomoIndex = (fomoIndex + 1) % fomo.Length;
+        }), null, 4000, 6000);
+
+        // Restore a dismissal made earlier in this tab.
+        try
+        {
+            if (await JS.InvokeAsync<string?>("sessionStorage.getItem", FomoDismissedKey) == "1")
+            {
+                fomoDismissed = true;
+                showFomo = false;
+                StateHasChanged();
+            }
+        }
+        catch { /* storage blocked — the toast simply behaves as before */ }
+    }
+
+    private void Show(Action change)
+    {
+        if (disposed) return;
+        InvokeAsync(() => { change(); StateHasChanged(); });
+    }
+
+    private void CloseEnquiry() => showEnquiry = false;
+
+    // ── Enquiry popup display gate (localStorage; per browser/device) ──
+    // Keys: hjc_enq_count (# times shown), hjc_enq_submitted (epoch ms of last successful submit).
+    private const string EnqCountKey = "rc_enq_count";
+    private const string EnqSubmittedKey = "rc_enq_submitted";
+    private const int EnqMaxShows = 3;
+    private const long EnqSuppressMs = 30L * 24 * 60 * 60 * 1000; // 30 days
+
+    private async Task MaybeShowEnquiry()
+    {
+        if (disposed || showEnquiry) return;
+        try
+        {
+            // Suppress for 30 days after a successful submission.
+            var submittedRaw = await JS.InvokeAsync<string?>("localStorage.getItem", EnqSubmittedKey);
+            if (long.TryParse(submittedRaw, out var submittedAt) && submittedAt > 0)
+            {
+                var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                if (nowMs - submittedAt < EnqSuppressMs) return; // still within the 30-day window
+            }
+
+            // Cap total displays at 3.
+            var countRaw = await JS.InvokeAsync<string?>("localStorage.getItem", EnqCountKey);
+            int.TryParse(countRaw, out var count);
+            if (count >= EnqMaxShows) return;
+
+            // Eligible → show and record this display.
+            await JS.InvokeVoidAsync("localStorage.setItem", EnqCountKey, (count + 1).ToString());
+            showEnquiry = true;
+            StateHasChanged();
+        }
+        catch
+        {
+            // If localStorage is unavailable (private mode / blocked), fail safe: don't nag.
+        }
+    }
+
+    private async Task SubmitEnquiry()
+    {
+        if (string.IsNullOrWhiteSpace(enq.Name) || string.IsNullOrWhiteSpace(enq.Phone)) return;
+        await Leads.CaptureAsync(new CaptureLeadRequest(enq.Name, enq.Phone, enq.City, enq.Course, "website_popup",
+            LeadSource: LeadSource.HomePage));
+        enquirySubmitted = true;
+        // Record the successful submission so the popup is suppressed for the next 30 days. Also
+        // reset the display counter so that, once the 30-day window passes, the visitor gets a
+        // fresh allowance of shows rather than being permanently capped by a pre-submit count.
+        try
+        {
+            var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+            await JS.InvokeVoidAsync("localStorage.setItem", EnqSubmittedKey, nowMs);
+            await JS.InvokeVoidAsync("localStorage.setItem", EnqCountKey, "0");
+        }
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        disposed = true;
+        enquiryTimer?.Dispose();
+        fomoTimer?.Dispose();
+    }
+
+    private class EnquiryForm
+    {
+        public string Name = "", Phone = "", City = "";
+        public string Course = "General Enquiry";
+    }
+}

@@ -1,0 +1,110 @@
+@page "/admin/customer-roles/new"
+@page "/admin/customer-roles/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IAdminUserService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>@(IsNew ? "Add" : "Edit") customer role — RioCommerce Admin</PageTitle>
+
+<style>
+    .pe-bar{position:sticky;top:52px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border:1px solid var(--gray-200);border-radius:14px;padding:10px 14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 24px -16px rgba(15,23,42,.35)}
+    .pe-bar__title{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .pe-bar__title h1{font-size:clamp(15px,1.8vw,19px);font-weight:800;color:var(--navy);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw}
+    .pe-bar__title a{font-size:12px;color:var(--orange);font-weight:600}
+    .pe-bar__actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+    .pe-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .pe-card__body{padding:clamp(16px,1.8vw,22px)}
+    .pe-chk{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--gray-700);cursor:pointer}
+    @@media(max-width:560px){.pe-bar{top:0;border-radius:0;margin:-4px -4px 14px}.pe-bar__title h1{max-width:70vw}.pe-bar__actions .btn{flex:1}}
+</style>
+
+@if (notFound)
+{
+    <div class="pe-card"><div class="pe-card__body">Customer role not found. <a href="/admin/customer-roles">Back to roles</a></div></div>
+}
+else if (model == null)
+{
+    <div class="pe-card"><div class="pe-card__body"><div class="skel" style="height:18px;width:220px;margin-bottom:14px"></div>@for (var i = 0; i < 4; i++) { <div class="skel" style="height:14px;width:@(60 - i * 8)%;margin-bottom:10px"></div> }</div></div>
+}
+else
+{
+    <div class="pe-bar">
+        <div class="pe-bar__title">
+            <h1>@(IsNew ? "Add a new customer role" : $"Edit customer role — {model.DisplayName}")</h1>
+            <a href="/admin/customer-roles">← back to customer role list</a>
+        </div>
+        <div class="pe-bar__actions">
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "💾 Save")</button>
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="SaveContinue">Save &amp; continue edit</button>
+            @if (!IsNew && !model.IsSystem) { <button class="btn btn-danger btn-sm" @onclick="Delete">🗑 Delete</button> }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error)) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@error</div> }
+
+    <div class="pe-card">
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group form-group--full"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="model.DisplayName" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Description</label><textarea class="form-input" rows="2" @bind="model.Description"></textarea></div>
+                <div class="form-group form-group--full"><label class="form-label">System name @(model.IsSystem ? "(read-only — system role)" : "")</label>
+                    <input class="form-input" @bind="model.SystemName" readonly="@model.IsSystem" placeholder="@(IsNew ? "auto-generated from name if blank" : "")" />
+                </div>
+            </div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:6px">
+                <label class="pe-chk"><input type="checkbox" @bind="model.IsActive" /> Active</label>
+                <span class="pe-chk">Is system role: <strong style="color:@(model.IsSystem ? "var(--green)" : "var(--gray-500)")">@(model.IsSystem ? "Yes" : "No")</strong></span>
+            </div>
+            @if (model.IsSystem) { <p style="font-size:12px;color:var(--gray-400);margin-top:8px">This is a built-in system role — its system name is fixed and it can't be deleted.</p> }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+
+    private RoleEditModel? model;
+    private bool notFound, saving;
+    private string? error;
+    private Guid? actorId; private string actorName = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsNew) { model = new RoleEditModel { IsActive = true }; notFound = false; }
+        else { model = await Svc.GetRoleAsync(Id); notFound = model == null; }
+    }
+
+    private Task Save() => DoSave(false);
+    private Task SaveContinue() => DoSave(true);
+
+    private async Task DoSave(bool stay)
+    {
+        if (model == null) return;
+        if (string.IsNullOrWhiteSpace(model.DisplayName)) { error = "Name is required."; return; }
+        error = null; saving = true;
+        var (ok, err, newId) = await Svc.SaveRoleAsync(model, actorId, actorName);
+        saving = false;
+        if (!ok) { error = err; Toast.Error(err ?? "Save failed."); return; }
+        Toast.Success("Customer role saved.");
+        if (!stay) Nav.NavigateTo("/admin/customer-roles");
+        else if (IsNew) Nav.NavigateTo($"/admin/customer-roles/{newId}");
+        else model = await Svc.GetRoleAsync(Id);
+    }
+
+    private async Task Delete()
+    {
+        var (ok, err) = await Svc.DeleteRoleAsync(Id, actorId, actorName);
+        if (ok) { Toast.Info("Customer role deleted."); Nav.NavigateTo("/admin/customer-roles"); }
+        else Toast.Error(err ?? "Could not delete.");
+    }
+}

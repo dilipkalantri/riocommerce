@@ -1,0 +1,169 @@
+@inject IBannerService Banners
+@implements IAsyncDisposable
+
+@* ─────────────────────────────────────────────────────────────────────────────
+   HeroBanner — homepage centre-mode carousel. The active slide sits centred at
+   ~86% of the container with the previous/next slides peeking at either edge,
+   scaled down and faded.
+
+   Infinite loop without any JS DOM surgery: Blazor itself renders one clone of
+   the LAST slide before the first, and one clone of the FIRST slide after the
+   last. The track therefore reads [lastClone][s0…sn-1][firstClone], so moving
+   past either end lands on a clone that looks identical to the real slide; the
+   JS then silently snaps back to the real one once the transition finishes.
+   Because the clones come from the render tree, JS never inserts nodes into
+   Blazor-managed DOM.
+
+   Device-appropriate artwork is served via <picture> (no JS for the switch),
+   off-screen slides lazy-load, and autoplay / swipe / arrow nav live in a tiny
+   JS module so the carousel works before the circuit is interactive.
+   Renders nothing when there are no live banners.
+   ───────────────────────────────────────────────────────────────────────────── *@
+
+@if (view is { Slides.Count: > 0 })
+{
+    var slides = view.Slides;
+    var single = slides.Count == 1;
+
+    @* Wrapper matches the site content container (max-width 1280px) so the
+       carousel lines up with the page grid; its horizontal padding is the gutter
+       the desktop arrows overlap into. *@
+    <div class="hjc-banner-wrap">
+        <section class="hjc-banner @(single ? "hjc-banner--single" : "")"
+                 data-autoplay="@((view.Autoplay && !single).ToString().ToLower())"
+                 data-interval="@view.AutoplayIntervalMs"
+                 data-pause-hover="@view.PauseOnHover.ToString().ToLower()"
+                 aria-roledescription="carousel" aria-label="Promotions">
+
+            @* The viewport clips the track horizontally; vertical padding + matching
+               negative margin keep the active card's shadow from being cut off. *@
+            <div class="hjc-banner__viewport">
+                <div class="hjc-banner__track" role="list">
+                    @if (!single)
+                    {
+                        @SlideCell(slides[^1], null, false, true)
+                    }
+                    @for (var i = 0; i < slides.Count; i++)
+                    {
+                        @SlideCell(slides[i], $"{i + 1} of {slides.Count}", i == 0, false)
+                    }
+                    @if (!single)
+                    {
+                        @SlideCell(slides[0], null, false, true)
+                    }
+                </div>
+            </div>
+
+            @if (view.ShowArrows && !single)
+            {
+                <button type="button" class="hjc-banner__arrow hjc-banner__arrow--prev" data-dir="prev" aria-label="Previous banner">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <button type="button" class="hjc-banner__arrow hjc-banner__arrow--next" data-dir="next" aria-label="Next banner">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+            }
+
+            @if (view.ShowDots && !single)
+            {
+                <div class="hjc-banner__dots" role="tablist" aria-label="Choose banner">
+                    @for (var i = 0; i < slides.Count; i++)
+                    {
+                        <button type="button" class="hjc-banner__dot @(i == 0 ? "is-active" : "")"
+                                data-go="@i" role="tab" aria-label="@($"Go to banner {i + 1}")"></button>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    private BannerSliderView? view;
+    private IJSObjectReference? module;
+    private bool wired;
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { view = await Banners.GetSliderAsync("homepage"); }
+        catch { view = null; }   // never let a banner read break the whole page
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Initialise the carousel JS once, only when there's more than one slide to drive.
+        if (wired || view is not { Slides.Count: > 1 }) return;
+        wired = true;
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>(
+                "import", "/_content/RioCommerce.Web/js/hero-banner.js");
+            await module.InvokeVoidAsync("init");
+        }
+        catch { /* interop unavailable (e.g. prerender) — CSS still centres the first slide */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { if (module is not null) { await module.InvokeVoidAsync("dispose"); await module.DisposeAsync(); } }
+        catch { }
+    }
+
+    // ── Render fragments ────────────────────────────────────────────────────
+
+    // One track cell. Clones are the infinite-loop bookends: same artwork, hidden
+    // from assistive tech and never lazy-eager, and marked so the JS can count the
+    // real slides (cells - 2).
+    private RenderFragment SlideCell(BannerSlide s, string? label, bool eager, bool clone) => @<div
+        class="hjc-banner__slide @(eager ? "is-active" : "") @(clone ? "hjc-banner__slide--clone" : "")"
+        role="@(clone ? null : "listitem")"
+        aria-hidden="@(clone ? "true" : null)"
+        aria-label="@label"
+        data-clone="@(clone ? "1" : null)">
+        @{
+            // The whole slide is clickable when a link is set; otherwise it's a plain figure.
+            var hasLink = !string.IsNullOrWhiteSpace(s.LinkUrl);
+        }
+        @if (hasLink)
+        {
+            <a class="hjc-banner__link" href="@s.LinkUrl" aria-label="@(s.Title ?? "Open banner")" tabindex="@(clone ? "-1" : null)">
+                @SlidePicture(s, eager)
+                @SlideOverlay(s)
+            </a>
+        }
+        else
+        {
+            @SlidePicture(s, eager)
+            @SlideOverlay(s)
+        }
+    </div>;
+
+    private RenderFragment SlidePicture(BannerSlide s, bool eager) => @<picture>
+        @* Mobile artwork below 768px, desktop above. The <img> is the desktop source. *@
+        <source media="(max-width: 767.98px)" srcset="@s.MobileImageUrl" />
+        <source media="(min-width: 768px)" srcset="@s.DesktopImageUrl" />
+        <img class="hjc-banner__img" src="@s.DesktopImageUrl"
+             alt="@(s.Title ?? "Banner")"
+             loading="@(eager ? "eager" : "lazy")"
+             fetchpriority="@(eager ? "high" : "low")"
+             decoding="async" draggable="false" />
+    </picture>;
+
+    private RenderFragment SlideOverlay(BannerSlide s) => @<text>
+        @if (!string.IsNullOrWhiteSpace(s.Title) || !string.IsNullOrWhiteSpace(s.Description) || !string.IsNullOrWhiteSpace(s.ButtonText))
+        {
+            <div class="hjc-banner__overlay">
+                <div class="hjc-banner__content">
+                    @if (!string.IsNullOrWhiteSpace(s.Title)) { <h2 class="hjc-banner__title">@s.Title</h2> }
+                    @if (!string.IsNullOrWhiteSpace(s.Description)) { <p class="hjc-banner__desc">@s.Description</p> }
+                    @if (!string.IsNullOrWhiteSpace(s.ButtonText))
+                    {
+                        <span class="hjc-banner__btn">@s.ButtonText</span>
+                    }
+                </div>
+            </div>
+        }
+    </text>;
+}

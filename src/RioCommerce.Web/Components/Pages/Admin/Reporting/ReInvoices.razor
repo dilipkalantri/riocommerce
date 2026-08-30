@@ -1,0 +1,272 @@
+@*
+    §13 — raising franchisee re-invoices.
+
+    The report shows the original → re-invoice relationship; this page is where that relationship is
+    created. An admin picks a customer invoice on a franchise order and raises the corresponding
+    re-invoice on the franchisee.
+*@
+@page "/admin/reports/franchisee-reinvoice/manage"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations")]
+@using RioCommerce.Core.DTOs.Admin
+@inject IFranchiseReInvoiceService Svc
+@inject IFranchiseService Franchise
+@inject AuthenticationStateProvider AuthProvider
+
+<PageTitle>Franchisee Re-Invoices — RioCommerce Admin</PageTitle>
+
+<div class="page__header ri__header">
+    <div>
+        <h1>Franchisee Re-Invoices</h1>
+        <p class="ri__desc">
+            Raise a re-invoice on a franchisee against an invoice already issued to a customer.
+            The tax split follows the original, so the two documents reconcile.
+        </p>
+    </div>
+    <a class="btn btn-outline btn-sm" href="/admin/reports/franchisee-reinvoice">📈 View Report</a>
+</div>
+
+<div class="form-card" style="margin-bottom:18px">
+    <div class="form-card__title">Find invoices</div>
+    <div class="ri__filters">
+        <div class="form-group">
+            <label class="form-label">From</label>
+            <input type="date" class="form-input" @bind="from" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">To</label>
+            <input type="date" class="form-input" @bind="to" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Franchisee</label>
+            <select class="form-input" @bind="franchiseId">
+                <option value="">All franchisees</option>
+                @if (franchises != null)
+                {
+                    @foreach (var f in franchises)
+                    {
+                        <option value="@f.Id">@f.Name (@f.Code)</option>
+                    }
+                }
+            </select>
+        </div>
+        <div class="form-group ri__toggle">
+            <label class="ri__check">
+                <input type="checkbox" @bind="onlyPending" />
+                <span>Only invoices not yet re-invoiced</span>
+            </label>
+        </div>
+        <div class="form-group ri__go">
+            <button class="btn btn-primary" disabled="@busy" @onclick="Load">@(busy ? "Loading…" : "Search")</button>
+        </div>
+    </div>
+</div>
+
+@if (message is not null)
+{
+    <div class="ri__note ri__note--@(messageOk ? "ok" : "bad")">@message</div>
+}
+
+<div class="ri__wrap">
+    <table class="ri__table">
+        <thead>
+            <tr>
+                <th>Invoice No.</th>
+                <th>Invoice Date</th>
+                <th>Order No.</th>
+                <th>Franchisee</th>
+                <th class="ri--num">Invoice Amt (₹)</th>
+                <th class="ri--num">Franchisee Share (₹)</th>
+                <th>Re-Invoice</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (rows is null)
+            {
+                <tr><td colspan="8" class="ri__state">Loading…</td></tr>
+            }
+            else if (rows.Count == 0)
+            {
+                <tr><td colspan="8" class="ri__state">No franchise invoices in this range.</td></tr>
+            }
+            else
+            {
+                @foreach (var r in rows)
+                {
+                    <tr>
+                        <td><strong>@r.InvoiceNumber</strong></td>
+                        <td>@r.InvoiceDate.ToString("dd MMM yyyy")</td>
+                        <td>@r.OrderNumber</td>
+                        <td>@r.FranchiseName</td>
+                        <td class="ri--num">@r.TotalAmount.ToString("N2")</td>
+                        <td class="ri--num">@(r.FranchiseShareAmount > 0 ? r.FranchiseShareAmount.ToString("N2") : "—")</td>
+                        <td>
+                            @if (r.AlreadyReInvoiced)
+                            {
+                                <span class="ri__pill ri__pill--on">@r.ExistingReInvoiceNumber</span>
+                            }
+                            else
+                            {
+                                <span class="ri__pill">Not raised</span>
+                            }
+                        </td>
+                        <td class="ri--right">
+                            @if (!r.AlreadyReInvoiced)
+                            {
+                                <button class="btn btn-primary btn-sm" @onclick="() => OpenIssue(r)">Raise Re-Invoice</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<Modal @bind-Visible="showIssue" Title="Raise franchisee re-invoice" Size="md">
+    <ChildContent>
+        @if (target is not null)
+        {
+            <div class="ri__summary">
+                <div><span>Original invoice</span><strong>@target.InvoiceNumber</strong></div>
+                <div><span>Invoice date</span><strong>@target.InvoiceDate.ToString("dd MMM yyyy")</strong></div>
+                <div><span>Order</span><strong>@target.OrderNumber</strong></div>
+                <div><span>Franchisee</span><strong>@target.FranchiseName</strong></div>
+                <div><span>Amount</span><strong>₹@target.TotalAmount.ToString("N2")</strong></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Re-invoice date</label>
+                <input type="date" class="form-input" @bind="issueDate" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Notes (optional)</label>
+                <textarea class="form-input" rows="2" @bind="issueNotes"
+                          placeholder="Anything worth recording on the document…"></textarea>
+            </div>
+            <p class="form-hint">
+                Once raised the document is final. A mistake is corrected by cancelling it and
+                raising a new one, which is how tax documents are amended.
+            </p>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showIssue = false">Cancel</button>
+        <button class="btn btn-primary" disabled="@busy" @onclick="ConfirmIssue">
+            @(busy ? "Raising…" : "Raise Re-Invoice")
+        </button>
+    </Footer>
+</Modal>
+
+<style>
+    .ri__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .ri__desc { font-size: 13.5px; color: var(--gray-600); margin: 4px 0 0; max-width: 70ch; }
+
+    .ri__filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }
+    .ri__toggle, .ri__go { display: flex; align-items: flex-end; }
+    .ri__check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--gray-700); cursor: pointer; }
+    .ri__check input { margin: 0; }
+
+    .ri__wrap { overflow-x: auto; border: 1px solid var(--gray-200); border-radius: 8px; background: #fff; }
+    table.ri__table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    table.ri__table thead th {
+        background: var(--gray-100); text-align: left; padding: 9px 11px; white-space: nowrap;
+        font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 650;
+        color: var(--gray-600); border-bottom: 1px solid var(--gray-300);
+    }
+    table.ri__table tbody td { padding: 9px 11px; border-bottom: 1px solid var(--gray-100); color: var(--gray-800); }
+    table.ri__table tbody tr:last-child td { border-bottom: 0; }
+    .ri--num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .ri--right { text-align: right; }
+    .ri__state { padding: 26px 12px; text-align: center; color: var(--gray-500); }
+
+    .ri__pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+                background: var(--gray-100); color: var(--gray-600); white-space: nowrap; }
+    .ri__pill--on { background: #e6f4ec; color: #14683f; }
+
+    .ri__note { padding: 10px 14px; border-radius: 6px; font-size: 13.5px; margin-bottom: 14px; }
+    .ri__note--ok { background: #e6f4ec; border: 1px solid #a8d5bf; color: #14683f; }
+    .ri__note--bad { background: #fbe9ec; border: 1px solid #e3b3bd; color: #97243a; }
+
+    .ri__summary { display: grid; gap: 6px; margin-bottom: 14px; padding: 12px; background: var(--gray-100); border-radius: 6px; }
+    .ri__summary > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+    .ri__summary span { color: var(--gray-600); }
+</style>
+
+@code {
+    private DateTime? from = DateTime.UtcNow.AddMonths(-3).Date;
+    private DateTime? to = DateTime.UtcNow.Date;
+    private string? franchiseId;
+    private bool onlyPending = true;
+
+    private List<FranchiseCard>? franchises;
+    private List<ReInvoiceCandidate>? rows;
+
+    private bool busy;
+    private string? message;
+    private bool messageOk;
+
+    private bool showIssue;
+    private ReInvoiceCandidate? target;
+    private DateTime issueDate = DateTime.UtcNow.Date;
+    private string? issueNotes;
+
+    private Guid? actorId;
+    private string actorName = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(
+            state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+
+        franchises = await Franchise.FranchisesAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        busy = true;
+        try
+        {
+            Guid? fid = Guid.TryParse(franchiseId, out var g) ? g : null;
+            rows = await Svc.ListCandidatesAsync(from, to, fid, onlyPending);
+        }
+        finally { busy = false; }
+    }
+
+    private void OpenIssue(ReInvoiceCandidate r)
+    {
+        target = r;
+        issueDate = DateTime.UtcNow.Date;
+        issueNotes = null;
+        message = null;
+        showIssue = true;
+    }
+
+    private async Task ConfirmIssue()
+    {
+        if (target is null) return;
+        busy = true;
+        try
+        {
+            var (doc, error) = await Svc.IssueAsync(
+                target.InvoiceId, DateOnly.FromDateTime(issueDate), issueNotes, actorId, actorName);
+
+            if (error is not null)
+            {
+                message = error;
+                messageOk = false;
+            }
+            else
+            {
+                message = $"Re-invoice {doc!.ReInvoiceNumber} raised on {doc.FranchiseName} for ₹{doc.TotalAmount:N2}.";
+                messageOk = true;
+                showIssue = false;
+                await Load();
+            }
+        }
+        finally { busy = false; }
+    }
+}

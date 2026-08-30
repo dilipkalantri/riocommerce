@@ -1,0 +1,189 @@
+@page "/admin/catalog/specification-attributes"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IAttributeAdminService Svc
+<PageTitle>Specification Attributes — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Specification Attributes</h1>
+    <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" @onclick="() => showGroups = !showGroups">🗂️ @(showGroups ? "Hide" : "Manage") Groups</button>
+        <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ Add Attribute</button>
+    </div>
+</div>
+<p style="color:var(--gray-400);margin-top:-8px">Descriptive specs (e.g. <em>Medium</em>, <em>Validity</em>) shown on course pages and usable as storefront filters.</p>
+
+@if (showGroups)
+{
+    <div class="form-card">
+        <div class="form-card__title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Specification Attribute Groups</span>
+            <button class="btn btn-ghost btn-sm" @onclick="AddGroupRow">➕ Add Group</button>
+        </div>
+        @if (groupErr != null) { <div class="inline-alert inline-alert--err">@groupErr</div> }
+        <div class="table-wrap"><table>
+            <thead><tr><th>Name</th><th>Order</th><th>Attributes</th><th></th></tr></thead>
+            <tbody>
+                @if (groups == null) { <tr><td colspan="4" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+                else if (groups.Count == 0 && newGroup == null) { <tr><td colspan="4" style="text-align:center;color:var(--gray-400)">No groups. Groups are optional.</td></tr> }
+                else
+                {
+                    @foreach (var g in groups)
+                    {
+                        <tr>
+                            <td><strong>@g.Name</strong></td>
+                            <td>@g.DisplayOrder</td>
+                            <td>@g.AttributeCount</td>
+                            <td><button class="btn btn-danger btn-sm" @onclick="() => DeleteGroup(g.Id)">Delete</button></td>
+                        </tr>
+                    }
+                    @if (newGroup != null)
+                    {
+                        <tr>
+                            <td><input class="form-input" @bind="newGroup.Name" placeholder="Group name" /></td>
+                            <td><input type="number" class="form-input" @bind="newGroup.DisplayOrder" style="width:70px" /></td>
+                            <td>—</td>
+                            <td style="display:flex;gap:6px">
+                                <button class="btn btn-primary btn-sm" @onclick="SaveGroup">Save</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => newGroup = null">Cancel</button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table></div>
+    </div>
+}
+
+@if (editing != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editing.Id == null ? "New Specification Attribute" : "Edit Specification Attribute")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="editing.Name" /></div>
+            <div class="form-group">
+                <label class="form-label">Group</label>
+                <select class="form-input" @bind="editing.SpecificationAttributeGroupId">
+                    <option value="">(no group)</option>
+                    @if (groups != null) { @foreach (var g in groups) { <option value="@g.Id">@g.Name</option> } }
+                </select>
+            </div>
+            <div class="form-group"><label class="form-label">Display Order</label><input type="number" class="form-input" @bind="editing.DisplayOrder" /></div>
+        </div>
+
+        <div class="form-label" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+            <span>Options</span>
+            <button class="btn btn-ghost btn-sm" @onclick="AddOption">➕ Add Option</button>
+        </div>
+        <div class="table-wrap"><table>
+            <thead><tr><th>Name</th><th>Color (hex)</th><th>Order</th><th></th></tr></thead>
+            <tbody>
+                @if (editing.Options.Count == 0) { <tr><td colspan="4" style="text-align:center;color:var(--gray-400)">Add at least one option (e.g. Hindi, English).</td></tr> }
+                @foreach (var o in editing.Options)
+                {
+                    <tr>
+                        <td><input class="form-input" @bind="o.Name" style="min-width:160px" /></td>
+                        <td><input class="form-input" @bind="o.ColorSquaresRgb" placeholder="#RRGGBB" style="width:110px" /></td>
+                        <td><input type="number" class="form-input" @bind="o.DisplayOrder" style="width:70px" /></td>
+                        <td><button class="btn btn-danger btn-sm" @onclick="() => editing.Options.Remove(o)">✕</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Group</th><th>Options</th><th>Order</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No specification attributes yet.</td></tr> }
+            else
+            {
+                @foreach (var a in items)
+                {
+                    <tr>
+                        <td><strong>@a.Name</strong></td>
+                        <td>@(a.GroupName ?? "—")</td>
+                        <td>@a.OptionCount</td>
+                        <td>@a.DisplayOrder</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(a.Id)">Edit</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(a.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<SpecificationAttributeAdminItem>? items;
+    private List<SpecAttributeGroupItem>? groups;
+    private SpecificationAttributeEditModel? editing;
+    private SpecAttributeGroupEditModel? newGroup;
+    private bool saving, msgOk, showGroups;
+    private string? err, msg, groupErr;
+
+    protected override async Task OnInitializedAsync() { await Reload(); await ReloadGroups(); }
+    private async Task Reload() => items = await Svc.ListSpecificationAttributesAsync();
+    private async Task ReloadGroups() => groups = await Svc.ListSpecGroupsAsync();
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null
+            ? new SpecificationAttributeEditModel { DisplayOrder = (items?.Count ?? 0) + 1 }
+            : await Svc.GetSpecificationAttributeAsync(id.Value);
+    }
+
+    private void AddOption()
+        => editing?.Options.Add(new SpecOptionEditModel { DisplayOrder = (editing.Options.Count + 1) });
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveSpecificationAttributeAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); await ReloadGroups(); Flash(true, "Attribute saved."); }
+        else err = error;
+    }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteSpecificationAttributeAsync(id);
+        if (ok) { await Reload(); Flash(true, "Attribute deleted."); }
+        else Flash(false, error!);
+    }
+
+    private void AddGroupRow() { groupErr = null; newGroup = new SpecAttributeGroupEditModel { DisplayOrder = (groups?.Count ?? 0) + 1 }; }
+
+    private async Task SaveGroup()
+    {
+        if (newGroup == null) return;
+        var (ok, error, _) = await Svc.SaveSpecGroupAsync(newGroup);
+        if (ok) { newGroup = null; await ReloadGroups(); }
+        else groupErr = error;
+    }
+
+    private async Task DeleteGroup(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteSpecGroupAsync(id);
+        if (ok) await ReloadGroups(); else groupErr = error;
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

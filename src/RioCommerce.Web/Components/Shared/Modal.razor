@@ -1,0 +1,31 @@
+@* Reusable modal with backdrop + transition. Bind-able via @bind-Visible. *@
+@if (Visible)
+{
+    <div class="modal-backdrop" @onclick="OnBackdrop">
+        <div class="modal-box modal-box--@Size" @onclick:stopPropagation="true">
+            <div class="modal-head">
+                <h3>@Title</h3>
+                <button type="button" class="modal-close" @onclick="CloseAsync" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body">@ChildContent</div>
+            @if (Footer != null) { <div class="modal-foot">@Footer</div> }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string Size { get; set; } = "md";   // sm | md | lg
+    [Parameter] public bool CloseOnBackdrop { get; set; } = true;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    private async Task CloseAsync()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+    private async Task OnBackdrop() { if (CloseOnBackdrop) await CloseAsync(); }
+}

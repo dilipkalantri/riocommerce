@@ -1,0 +1,283 @@
+@page "/admin/categories/new"
+@page "/admin/categories/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ICatalogAdminService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+<PageTitle>@(IsNew ? "Add" : "Edit") Category — RioCommerce Admin</PageTitle>
+
+<style>
+    .pe-bar{position:sticky;top:52px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border:1px solid var(--gray-200);border-radius:14px;padding:10px 14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 24px -16px rgba(15,23,42,.35)}
+    .pe-bar__title{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .pe-bar__title h1{font-size:clamp(15px,1.8vw,19px);font-weight:800;color:var(--navy);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw}
+    .pe-bar__title a{font-size:12px;color:var(--orange);font-weight:600}
+    .pe-bar__actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+    .pe-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .pe-card__head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;cursor:pointer;font-weight:700;color:var(--navy);font-size:14px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,var(--gray-50))}
+    .pe-card__head .chev{color:var(--gray-400);font-size:11px;transition:transform .18s}
+    .pe-card.is-collapsed .pe-card__head{border-bottom:0}
+    .pe-card.is-collapsed .chev{transform:rotate(-90deg)}
+    .pe-card__body{padding:clamp(14px,1.6vw,20px)}
+    .pe-card.is-collapsed .pe-card__body{display:none}
+    .pe-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 18px}
+    .pe-chk{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--gray-700);cursor:pointer}
+    .pe-pic{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+    .pe-pic img{width:96px;height:96px;object-fit:cover;border-radius:12px;border:1px solid var(--gray-200)}
+    .pe-pics th,.pe-pics td{border:1px solid var(--gray-200);padding:8px 10px;font-size:13px;text-align:left;vertical-align:middle}
+    .pe-pics th{background:var(--gray-50);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500)}
+    .ce-pick{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border:1px solid var(--gray-200);border-radius:9px;margin-bottom:7px}
+    .richtext .ql-container{min-height:140px;font-family:inherit;font-size:14px}
+    .richtext .ql-toolbar,.richtext .ql-container{border-color:var(--gray-200)}
+    @@media(max-width:560px){.pe-bar{top:0;border-radius:0;margin:-4px -4px 14px}.pe-bar__title h1{max-width:70vw}.pe-bar__actions .btn{flex:1}}
+</style>
+
+@if (notFound)
+{
+    <div class="pe-card"><div class="pe-card__body">Category not found. <a href="/admin/categories">Back to categories</a></div></div>
+}
+else if (model == null)
+{
+    <div class="pe-card"><div class="pe-card__body"><div class="skel" style="height:18px;width:220px;margin-bottom:14px"></div>@for (var i = 0; i < 4; i++) { <div class="skel" style="height:14px;width:@(70 - i * 8)%;margin-bottom:10px"></div> }</div></div>
+}
+else
+{
+    @* ── sticky action bar ── *@
+    <div class="pe-bar">
+        <div class="pe-bar__title">
+            <h1 title="@model.Name">@(IsNew ? "Add a new category" : $"Edit — {model.Name}")</h1>
+            <a href="/admin/categories">← back to category list</a>
+        </div>
+        <div class="pe-bar__actions">
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "💾 Save")</button>
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="SaveContinue">Save &amp; continue edit</button>
+            @if (!IsNew) { <button class="btn btn-danger btn-sm" @onclick="Delete">🗑 Delete</button> }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error)) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@error</div> }
+
+    @* ── Category info ── *@
+    <div class="pe-card @(IsCollapsed("info") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("info")'><span>ℹ️ Category info</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group form-group--full"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="model.Name" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Description</label><RichText @bind-Value="model.Description" /></div>
+                <div class="form-group"><label class="form-label">Parent category</label>
+                    <select class="form-input" @onchange="OnParent">
+                        <option value="">[None]</option>
+                        @if (parents != null) { @foreach (var p in parents) { <option value="@p.Id" selected="@(p.Id == model.ParentId)">@p.Name</option> } }
+                    </select>
+                </div>
+                <div class="form-group"><label class="form-label">Display order</label><input type="number" class="form-input" @bind="model.DisplayOrder" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Picture</label>
+                    <div class="pe-pic">
+                        @if (!string.IsNullOrEmpty(model.ImageUrl)) { <img src="@model.ImageUrl" alt="category" /> }
+                        <InputFile OnChange="OnPicSelected" accept="image/*" />
+                        @if (picBusy) { <span style="color:var(--gray-400);font-size:13px">Uploading…</span> }
+                        @if (!string.IsNullOrEmpty(model.ImageUrl)) { <button class="btn btn-danger btn-sm" type="button" @onclick="RemovePicture">Remove picture</button> }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Display ── *@
+    <div class="pe-card @(IsCollapsed("display") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("display")'><span>🖥 Display</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="pe-checks">
+                <label class="pe-chk"><input type="checkbox" @bind="model.IsActive" /> Published</label>
+                <label class="pe-chk"><input type="checkbox" @bind="model.ShowOnHomePage" /> Show on home page</label>
+                <label class="pe-chk"><input type="checkbox" @bind="model.IncludeInTopMenu" /> Include in top menu</label>
+            </div>
+        </div>
+    </div>
+
+    @* ── SEO ── *@
+    <div class="pe-card @(IsCollapsed("seo") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("seo")'><span>🔍 SEO</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group form-group--full"><label class="form-label">Search engine friendly page name (slug)</label><input class="form-input" @bind="model.Slug" placeholder="auto-generated from name if blank" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Meta title</label><input class="form-input" @bind="model.SeoTitle" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Meta keywords</label><input class="form-input" @bind="model.SeoKeywords" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Meta description</label><textarea class="form-input" rows="2" @bind="model.SeoDescription"></textarea></div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Products ── *@
+    @if (!IsNew)
+    {
+        <div class="pe-card @(IsCollapsed("products") ? "is-collapsed" : "")">
+            <div class="pe-card__head" @onclick='() => Toggle("products")'><span>📦 Products @(products?.Count > 0 ? $"({products.Count})" : "")</span><span class="chev">▾</span></div>
+            <div class="pe-card__body">
+                <p style="font-size:12.5px;color:var(--gray-500);margin-bottom:10px">Display Order sets how products appear on this category's public page (lowest first; ties by name). It's saved on the category mapping only — the same product can have a different order in another category.</p>
+                <div class="table-wrap"><table class="pe-pics" style="width:100%;border-collapse:collapse">
+                    <thead><tr><th>Product</th><th>Featured</th><th style="width:120px">Display Order</th><th>View</th><th>Edit</th><th>Remove</th></tr></thead>
+                    <tbody>
+                        @if (products == null) { <tr><td colspan="6"><div class="skel" style="height:30px"></div></td></tr> }
+                        else if (products.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No products in this category.</td></tr> }
+                        else
+                        {
+                            @foreach (var p in products)
+                            {
+                                <tr>
+                                    <td><strong>@p.Title</strong><div style="font-size:12px;color:var(--gray-400)">₹@p.SellingPrice.ToString("N0")</div></td>
+                                    <td>@(p.IsFeatured ? "✓" : "—")</td>
+                                    <td><input type="number" class="form-input" style="width:90px;padding:6px 8px" @bind="p.DisplayOrder" /></td>
+                                    <td><a href="/@p.Slug" target="_blank" class="btn btn-ghost btn-sm">View</a></td>
+                                    <td><a href="/admin/products/@p.Id" class="btn btn-ghost btn-sm">Edit</a></td>
+                                    <td><button class="btn btn-danger btn-sm" @onclick="() => Unassign(p.Id)">Remove</button></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table></div>
+
+                @if (products is { Count: > 0 })
+                {
+                    <div style="margin-top:12px">
+                        <button class="btn btn-primary btn-sm" disabled="@savingOrder" @onclick="SaveOrder">@(savingOrder ? "Saving…" : "💾 Save Display Order")</button>
+                    </div>
+                }
+
+                <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--gray-200)">
+                    <div style="display:flex;gap:8px;max-width:520px">
+                        <input class="form-input" placeholder="Search products to add…" @bind="prodQuery" @bind:event="oninput" @onkeydown="OnProdKey" />
+                        <button class="btn btn-outline btn-sm" @onclick="SearchProducts">Search</button>
+                    </div>
+                    @if (prodResults != null)
+                    {
+                        <div style="margin-top:10px;max-width:520px">
+                            @if (prodResults.Count == 0) { <p style="color:var(--gray-400);font-size:13px">No matching products.</p> }
+                            else { @foreach (var r in prodResults) { <div class="ce-pick"><span>@r.Name</span><button class="btn btn-primary btn-sm" @onclick="() => Assign(r.Id)">＋ Add</button></div> } }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+
+    private CategoryEditModel? model;
+    private List<IdName>? parents;
+    private List<ProdRow>? products;
+    private List<IdName>? prodResults;
+    private string prodQuery = "";
+    private bool saving, notFound, picBusy, savingOrder;
+    private string? error;
+
+    // Mutable row so the per-category Display Order can be edited with @bind (the DTO is immutable).
+    private sealed class ProdRow
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public bool IsFeatured { get; set; }
+        public decimal SellingPrice { get; set; }
+        public int DisplayOrder { get; set; }
+    }
+
+    private async Task ReloadProductsAsync() =>
+        products = (await Svc.ListCategoryProductsAsync(Id))
+            .Select(r => new ProdRow { Id = r.Id, Title = r.Title, Slug = r.Slug, IsFeatured = r.IsFeatured, SellingPrice = r.SellingPrice, DisplayOrder = r.DisplayOrder })
+            .ToList();
+    private readonly HashSet<string> collapsed = new();
+
+    private void Toggle(string k) { if (!collapsed.Remove(k)) collapsed.Add(k); }
+    private bool IsCollapsed(string k) => collapsed.Contains(k);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        parents = null; products = null; prodResults = null; prodQuery = "";
+        parents = await Svc.GetCategoryParentOptionsAsync(IsNew ? null : Id);
+        if (IsNew) { model = new CategoryEditModel { IsActive = true }; notFound = false; }
+        else
+        {
+            model = await Svc.GetCategoryAsync(Id);
+            notFound = model == null;
+            if (model != null) await ReloadProductsAsync();
+        }
+    }
+
+    private void OnParent(ChangeEventArgs e) { if (model != null) model.ParentId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; }
+
+    private Task Save() => DoSave(stay: false);
+    private Task SaveContinue() => DoSave(stay: true);
+
+    private async Task DoSave(bool stay)
+    {
+        if (model == null) return;
+        if (string.IsNullOrWhiteSpace(model.Name)) { error = "Name is required."; collapsed.Remove("info"); return; }
+        error = null; saving = true;
+        var (ok, err, newId) = await Svc.SaveCategoryAsync(model);
+        saving = false;
+        if (!ok) { error = err; Toast.Error(err ?? "Save failed."); return; }
+        Toast.Success("Category saved.");
+        if (!stay) { Nav.NavigateTo("/admin/categories"); return; }
+        if (IsNew) Nav.NavigateTo($"/admin/categories/{newId}");
+        else { model = await Svc.GetCategoryAsync(Id); await ReloadProductsAsync(); }
+    }
+
+    private async Task Delete()
+    {
+        var (ok, err) = await Svc.DeleteCategoryAsync(Id);
+        if (ok) { Toast.Info("Category deleted."); Nav.NavigateTo("/admin/categories"); }
+        else Toast.Error(err ?? "Could not delete.");
+    }
+
+    // ── Picture ──
+    private async Task OnPicSelected(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f == null || model == null) return;
+        if (!f.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) { Toast.Error("Only image files are allowed."); return; }
+        picBusy = true;
+        try
+        {
+            await using var s = f.OpenReadStream(8 * 1024 * 1024);
+            model.ImageUrl = await Svc.UploadCategoryImageAsync(Path.GetExtension(f.Name), s);
+            Toast.Success("Picture uploaded — Save to keep it.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        picBusy = false;
+    }
+    private void RemovePicture() { if (model != null) model.ImageUrl = null; }
+
+    // ── Products ──
+    private async Task OnProdKey(KeyboardEventArgs e) { if (e.Key == "Enter") await SearchProducts(); }
+    private async Task SearchProducts() => prodResults = await Svc.SearchUnassignedProductsAsync(Id, prodQuery);
+
+    private async Task Assign(Guid productId)
+    {
+        await Svc.AssignProductAsync(Id, productId);
+        await ReloadProductsAsync();
+        prodResults = await Svc.SearchUnassignedProductsAsync(Id, prodQuery);
+        Toast.Success("Product added to category.");
+    }
+
+    private async Task Unassign(Guid productId)
+    {
+        await Svc.UnassignProductAsync(Id, productId);
+        await ReloadProductsAsync();
+        Toast.Info("Product removed from category.");
+    }
+
+    private async Task SaveOrder()
+    {
+        if (products == null || products.Count == 0) return;
+        savingOrder = true;
+        var orders = products.Select(p => new CategoryProductOrder(p.Id, p.DisplayOrder)).ToList();
+        await Svc.SaveCategoryProductOrderAsync(Id, orders);
+        await ReloadProductsAsync();   // reflect the new sort order in the grid
+        savingOrder = false;
+        Toast.Success("Display order saved.");
+    }
+}

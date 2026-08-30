@@ -1,0 +1,105 @@
+@page "/admin/promotions/referredby"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IReferralAdminService Svc
+@inject NavigationManager Nav
+@inject ToastService Toast
+<PageTitle>Referred By Options — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Referred By Options</h1>
+    <a href="/admin/promotions/referredby/new" class="btn btn-primary btn-sm">➕ Add Referred By</a>
+</div>
+
+<p style="color:var(--gray-500);font-size:13.5px;margin:6px 0 12px">
+    Options listed below appear on the storefront checkout's <strong>Referred By</strong> dropdown. Customers pick one;
+    the name &amp; type are snapshotted onto the order so admin edits later never rewrite historical reports.
+</p>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead>
+            <tr>
+                <th style="width:90px">Order</th>
+                <th>Option Name</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Default</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No referred-by options yet. Create the first one to surface it on checkout.</td></tr> }
+            else
+            {
+                @foreach (var r in items)
+                {
+                    <tr>
+                        <td>@r.DisplayOrder</td>
+                        <td>
+                            <div style="display:flex;align-items:center;gap:8px">
+                                @if (!string.IsNullOrWhiteSpace(r.ColorBadge))
+                                {
+                                    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:@r.ColorBadge;border:1px solid var(--gray-200)" title="Colour badge"></span>
+                                }
+                                <strong>@r.Name</strong>
+                            </div>
+                        </td>
+                        <td><span class="status status--info"><span class="dot"></span>@TypeLabel(r.Type)</span></td>
+                        <td><span class="status @(r.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(r.IsActive ? "Active" : "Inactive")</span></td>
+                        <td>@(r.IsDefault ? "⭐ Default" : "—")</td>
+                        <td>@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <a href="/admin/promotions/referredby/@r.Id" class="btn btn-ghost btn-sm">✏️ Edit</a>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(r.Id)">@(r.IsActive ? "Disable" : "Enable")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(r.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<ReferralSourceAdminItem>? items;
+    private bool msgOk;
+    private string? msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => items = await Svc.ListAsync();
+
+    private async Task Toggle(Guid id)
+    {
+        await Svc.ToggleAsync(id);
+        await Reload();
+    }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, err) = await Svc.DeleteAsync(id);
+        if (ok) { await Reload(); Flash(true, "Referral option deleted."); }
+        else Flash(false, err!);
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+
+    private static string TypeLabel(ReferralSourceType t) => t switch
+    {
+        ReferralSourceType.Counsellor => "Counsellor",
+        ReferralSourceType.Faculty => "Faculty",
+        ReferralSourceType.Franchise => "Franchise",
+        ReferralSourceType.Affiliate => "Affiliate",
+        ReferralSourceType.MarketingCampaign => "Marketing Campaign",
+        ReferralSourceType.Friend => "Friend",
+        ReferralSourceType.Self => "Self",
+        ReferralSourceType.Other => "Other",
+        _ => t.ToString()
+    };
+}

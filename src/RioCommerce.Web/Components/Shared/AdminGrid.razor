@@ -1,0 +1,235 @@
+@typeparam TItem
+@inject IUserPreferenceService Prefs
+@inject AuthenticationStateProvider AuthProvider
+
+<div class="data-card ag @(density == "compact" ? "ag--compact" : "")">
+
+    @* ── toolbar: page actions (left) + density/columns (right) ── *@
+    <div class="ag__toolbar">
+        <div class="ag__toolbar-left">@Toolbar</div>
+        <div class="ag__toolbar-right">
+            @ToolbarEnd
+            <button class="ag__icon-btn" title="@(density == "compact" ? "Comfortable rows" : "Compact rows")" @onclick="ToggleDensity">@(density == "compact" ? "≡" : "⇕")</button>
+            <button class="ag__icon-btn" title="Columns" @onclick="() => pickerOpen = true">⚙</button>
+        </div>
+    </div>
+
+    @if (Filters != null) { <div class="ag__filters">@Filters</div> }
+    @if (BulkBar != null && SelectedCount > 0) { <div class="ag__bulk">@BulkBar</div> }
+
+    <div class="ag__wrap">
+        <table class="ag__table">
+            <thead>
+                <tr>
+                    @if (EnableSelection) { <th class="ag__sel"><input type="checkbox" checked="@AllSelected" @onchange="ToggleAll" /></th> }
+                    @foreach (var col in VisibleColumns)
+                    {
+                        <th class="@col.PriorityClass @col.AlignClass @(col.Sortable ? "is-sortable" : "")" @onclick="() => HeaderClick(col)">
+                            @col.Title @(col.Sortable ? SortArrow(col) : "")
+                        </th>
+                    }
+                    @if (RowActions != null) { <th class="ag__actions-col"></th> }
+                </tr>
+            </thead>
+            <tbody>
+                @if (Items == null)
+                {
+                    <AdminGridSkeleton Rows="6" Cols="@ColCount" />
+                }
+                else if (Items.Count == 0)
+                {
+                    <tr><td colspan="@ColCount"><AdminGridEmptyState Text="@EmptyText" /></td></tr>
+                }
+                else
+                {
+                    @foreach (var item in Items)
+                    {
+                        var id = RowId?.Invoke(item);
+                        <tr @key="item" class="@RowCss(item)" @onclick="() => RowClicked(item)">
+                            @if (EnableSelection)
+                            {
+                                <td class="ag__sel" @onclick:stopPropagation="true">
+                                    <input type="checkbox" checked="@(id.HasValue && Selected != null && Selected.Contains(id.Value))" @onchange="e => ToggleRow(item, e)" />
+                                </td>
+                            }
+                            @foreach (var col in VisibleColumns)
+                            {
+                                <td class="@col.PriorityClass @col.AlignClass" data-label="@col.Title">@col.Cell(item)</td>
+                            }
+                            @if (RowActions != null) { <td class="ag__actions" @onclick:stopPropagation="true">@RowActions(item)</td> }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (Items != null && Total > 0)
+    {
+        <div class="ag__footer">
+            <span>Showing @From–@To of @Total</span>
+            <div class="ag__pager">
+                @if (OnPageSizeChange.HasDelegate)
+                {
+                    <select class="ag__pagesize" @onchange="OnPageSizeSelected">
+                        @foreach (var n in PageSizeOptions) { <option value="@n" selected="@(n == PageSize)">@n / page</option> }
+                    </select>
+                }
+                <button disabled="@(Page <= 1)" @onclick="() => GoTo(1)">«</button>
+                <button disabled="@(Page <= 1)" @onclick="() => GoTo(Page - 1)">‹</button>
+                <span style="padding:0 8px">@Page / @Math.Max(1, TotalPages)</span>
+                <button disabled="@(Page >= TotalPages)" @onclick="() => GoTo(Page + 1)">›</button>
+                <button disabled="@(Page >= TotalPages)" @onclick="() => GoTo(TotalPages)">»</button>
+            </div>
+        </div>
+    }
+</div>
+
+@* ── column picker ── *@
+<Modal @bind-Visible="pickerOpen" Title="Columns" Size="sm">
+    <ChildContent>
+        <div class="ag-colpick">
+            @foreach (var col in Columns.Where(c => !string.IsNullOrEmpty(c.Title)))
+            {
+                <label>
+                    <input type="checkbox" checked="@(!hidden.Contains(col.Key))" @onchange="() => ToggleColumn(col.Key)" />
+                    @col.Title
+                </label>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost btn-sm" @onclick="ResetColumns">Reset</button>
+        <button class="btn btn-primary btn-sm" @onclick="() => pickerOpen = false">Done</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public string GridId { get; set; } = "grid";
+    [Parameter] public IReadOnlyList<TItem>? Items { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<AdminGridColumn<TItem>> Columns { get; set; } = new List<AdminGridColumn<TItem>>();
+    [Parameter] public Func<TItem, Guid>? RowId { get; set; }
+    [Parameter] public Func<TItem, string?>? RowClass { get; set; }
+    [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "No records found.";
+
+    // sorting
+    [Parameter] public string? SortBy { get; set; }
+    [Parameter] public bool SortDesc { get; set; }
+    [Parameter] public EventCallback<string> OnSort { get; set; }
+
+    // pagination
+    [Parameter] public int Page { get; set; } = 1;
+    [Parameter] public int PageSize { get; set; } = 20;
+    [Parameter] public int Total { get; set; }
+    [Parameter] public EventCallback<int> OnPageChange { get; set; }
+    [Parameter] public EventCallback<int> OnPageSizeChange { get; set; }
+    [Parameter] public int[] PageSizeOptions { get; set; } = { 10, 20, 50, 100 };
+
+    // selection
+    [Parameter] public bool EnableSelection { get; set; }
+    [Parameter] public HashSet<Guid>? Selected { get; set; }
+    [Parameter] public EventCallback SelectionChanged { get; set; }
+
+    // slots
+    [Parameter] public RenderFragment? Toolbar { get; set; }
+    [Parameter] public RenderFragment? ToolbarEnd { get; set; }
+    [Parameter] public RenderFragment? Filters { get; set; }
+    [Parameter] public RenderFragment? BulkBar { get; set; }
+    [Parameter] public RenderFragment<TItem>? RowActions { get; set; }
+
+    private readonly HashSet<string> hidden = new();
+    private string density = "comfortable";
+    private bool pickerOpen;
+    private Guid? userId;
+
+    private IEnumerable<AdminGridColumn<TItem>> VisibleColumns => Columns.Where(c => !hidden.Contains(c.Key));
+    private int ColCount => (EnableSelection ? 1 : 0) + VisibleColumns.Count() + (RowActions != null ? 1 : 0);
+    private int SelectedCount => Selected?.Count ?? 0;
+    private int TotalPages => (int)Math.Ceiling(Total / (double)Math.Max(1, PageSize));
+    private int From => Total == 0 ? 0 : ((Page - 1) * PageSize) + 1;
+    private int To => Math.Min(Page * PageSize, Total);
+    private bool AllSelected => Items is { Count: > 0 } && RowId != null && Selected != null && Items.All(i => Selected.Contains(RowId(i)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        userId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        if (userId is { } uid)
+        {
+            density = await Prefs.GetAsync<string>(uid, DensityKey) ?? "comfortable";
+            var savedHidden = await Prefs.GetAsync<List<string>>(uid, HiddenKey);
+            if (savedHidden != null) foreach (var k in savedHidden) hidden.Add(k);
+        }
+        // honour per-column default-hidden when the user hasn't customised
+        foreach (var c in Columns.Where(c => c.DefaultHidden)) hidden.Add(c.Key);
+    }
+
+    private string HiddenKey => $"grid:{GridId}:hidden";
+    private string DensityKey => $"grid:{GridId}:density";
+
+    private async Task ToggleDensity()
+    {
+        density = density == "compact" ? "comfortable" : "compact";
+        if (userId is { } uid) await Prefs.SetAsync(uid, DensityKey, density);
+    }
+
+    private async Task ToggleColumn(string key)
+    {
+        if (!hidden.Remove(key)) hidden.Add(key);
+        if (userId is { } uid) await Prefs.SetAsync(uid, HiddenKey, hidden.ToList());
+    }
+
+    private async Task ResetColumns()
+    {
+        hidden.Clear();
+        if (userId is { } uid) await Prefs.RemoveAsync(uid, HiddenKey);
+    }
+
+    private async Task HeaderClick(AdminGridColumn<TItem> col)
+    {
+        if (col.Sortable && OnSort.HasDelegate) await OnSort.InvokeAsync(col.EffectiveSortKey);
+    }
+
+    private MarkupString SortArrow(AdminGridColumn<TItem> col) =>
+        (MarkupString)(SortBy == col.EffectiveSortKey ? (SortDesc ? " ▼" : " ▲") : "");
+
+    private async Task GoTo(int p)
+    {
+        if (p < 1 || p > Math.Max(1, TotalPages) || p == Page) return;
+        if (OnPageChange.HasDelegate) await OnPageChange.InvokeAsync(p);
+    }
+
+    private async Task OnPageSizeSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var n) && OnPageSizeChange.HasDelegate)
+            await OnPageSizeChange.InvokeAsync(n);
+    }
+
+    private async Task RowClicked(TItem item) { if (OnRowClick.HasDelegate) await OnRowClick.InvokeAsync(item); }
+
+    private string RowCss(TItem item)
+    {
+        var c = OnRowClick.HasDelegate ? "ag--clickable " : "";
+        if (EnableSelection && RowId != null && Selected != null && Selected.Contains(RowId(item))) c += "is-selected ";
+        var extra = RowClass?.Invoke(item);
+        if (!string.IsNullOrEmpty(extra)) c += extra;
+        return c;
+    }
+
+    private async Task ToggleRow(TItem item, ChangeEventArgs e)
+    {
+        if (RowId == null || Selected == null) return;
+        var id = RowId(item);
+        if (e.Value is true) Selected.Add(id); else Selected.Remove(id);
+        if (SelectionChanged.HasDelegate) await SelectionChanged.InvokeAsync();
+    }
+
+    private async Task ToggleAll(ChangeEventArgs e)
+    {
+        if (Items == null || RowId == null || Selected == null) return;
+        if (e.Value is true) foreach (var i in Items) Selected.Add(RowId(i));
+        else foreach (var i in Items) Selected.Remove(RowId(i));
+        if (SelectionChanged.HasDelegate) await SelectionChanged.InvokeAsync();
+    }
+}

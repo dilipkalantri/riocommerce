@@ -1,0 +1,58 @@
+@page "/account/courses"
+@attribute [Authorize]
+@inject IAccountService AccountSvc
+@inject AuthenticationStateProvider AuthProvider
+
+<SeoHead Seo="@(new SeoMetadata { Title = "My Courses — RioCommerce" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">My Account</h1>
+    <AccountNav />
+
+    @if (courses == null)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading your courses…</p>
+    }
+    else if (courses.Count == 0)
+    {
+        <div class="cart-empty">
+            <div style="font-size:42px">🎓</div>
+            <p>You haven't enrolled in any courses yet.</p>
+            <a href="/courses/ca-foundation" class="btn btn-primary" style="margin-top:12px">Browse Courses</a>
+        </div>
+    }
+    else
+    {
+        <div class="course-access-grid">
+            @foreach (var c in courses)
+            {
+                <div class="course-access-card">
+                    <div class="course-access-card__head">
+                        <span class="course-access-card__badge @(c.IsActive ? "is-active" : "is-inactive")">@(c.IsActive ? "Active" : "Inactive")</span>
+                        <span class="course-access-card__date">Enrolled @c.EnrolledAt.ToLocalTime().ToString("dd MMM yyyy")</span>
+                    </div>
+                    <a href="/@c.Slug" class="course-access-card__title">@c.Title</a>
+                    <div class="course-access-card__meta">@c.FacultyName @(c.ModeName != null ? $"· {c.ModeName}" : "")</div>
+
+                    <div class="progress-bar"><div class="progress-bar__fill" style="width:@(c.ProgressPct.ToString("0"))%"></div></div>
+                    <div class="progress-bar__label">@c.ProgressPct.ToString("0")% complete</div>
+
+                    <a href="/@c.Slug" class="btn @(c.IsActive ? "btn-primary" : "btn-outline") btn-sm" style="width:100%;margin-top:12px">
+                        @(c.ProgressPct > 0 ? "Continue Learning" : "Start Course")
+                    </a>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<MyCourseItem>? courses;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+            courses = await AccountSvc.GetMyCoursesAsync(userId);
+    }
+}

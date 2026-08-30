@@ -1,0 +1,2226 @@
+@page "/admin/orders/create"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@using RioCommerce.Core.DTOs.Orders
+@using RioCommerce.Core.DTOs.Installments
+@using RioCommerce.Core.DTOs.Admin
+@using RioCommerce.Core.DTOs.Referral
+@using RioCommerce.Core.Enums
+@inject IOrderAdminService Orders
+@inject IAdminUserService Users
+@inject IReferralService Referrals
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
+@inject IPaymentModeRegistry PaymentModes
+@inject IInstallmentService Installments
+<PageTitle>Create Order — RioCommerce Admin</PageTitle>
+
+<div class="oc-v2">
+    @* ─── Hero ─── *@
+    <header class="oc-hero">
+        <div>
+            <h1 class="oc-hero__title">Create New Order</h1>
+            <p class="oc-hero__sub">Create manual orders for students with products, attributes, billing and payment details.</p>
+        </div>
+        <div class="oc-hero__actions">
+            <a href="/admin/orders" class="oc-btn oc-btn--ghost">Cancel</a>
+            @if (step < 5)
+            {
+                <button class="oc-btn oc-btn--outline" disabled="@saving" @onclick="GoBack" hidden="@(step == 1)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Back
+                </button>
+                <button class="oc-btn oc-btn--primary" disabled="@(saving || !CanGoForward())" @onclick="GoForward">
+                    @if (step == 4)
+                    {
+                        @if (saving)
+                        {
+                            <span class="oc-spinner" aria-hidden="true"></span>
+                            <span>Creating…</span>
+                        }
+                        else
+                        {
+                            <span>Create Order</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                        }
+                    }
+                    else
+                    {
+                        <span>Continue</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    }
+                </button>
+            }
+        </div>
+    </header>
+
+    @* ─── Stepper ─── *@
+    <ol class="oc-steps">
+        @foreach (var (idx, label) in StepLabels)
+        {
+            var state = idx < step ? "done" : idx == step ? "active" : "future";
+            <li class="oc-step oc-step--@state">
+                <span class="oc-step__num">@(idx < step ? "✓" : idx.ToString())</span>
+                <span class="oc-step__lbl">@label</span>
+                @if (idx < 5)
+                {
+                    <span class="oc-step__bar @(idx < step ? "is-filled" : "")"></span>
+                }
+            </li>
+        }
+    </ol>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="oc-alert oc-alert--err"><strong>⚠ @error</strong></div>
+    }
+
+    <div class="oc-grid">
+        <main class="oc-main">
+
+            @* ════════ STEP 1 — CUSTOMER ════════ *@
+            @if (step == 1)
+            {
+                <section class="oc-card">
+                    @if (selectedProfile == null)
+                    {
+                        <h2 class="oc-card__title">Customer</h2>
+                        <p class="oc-card__sub">Search the customer database — name, mobile, email or customer ID.</p>
+
+                        <div class="oc-cs">
+                            <div class="oc-cs__search @(ddOpen ? "is-open" : "")">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                                <input type="text" placeholder="🔍 Search Customer by Name • Mobile • Email • Customer ID"
+                                       @ref="searchInputRef"
+                                       @bind="customerQuery" @bind:event="oninput" @bind:after="OnCustomerSearch"
+                                       @onkeydown="OnSearchKey" @onfocus="OpenDropdown" />
+                                @if (customerSearching) { <span class="oc-spinner oc-spinner--sm" aria-hidden="true"></span> }
+                            </div>
+
+                            @if (ddOpen)
+                            {
+                                <div class="oc-cs__panel">
+                                    @if (customerSearching && (customerSuggestions == null || customerSuggestions.Count == 0))
+                                    {
+                                        @* Skeleton while searching *@
+                                        @for (var i = 0; i < 4; i++)
+                                        {
+                                            <div class="oc-cs__skel">
+                                                <div class="oc-cs__skel-av"></div>
+                                                <div class="oc-cs__skel-lines"><div></div><div></div></div>
+                                            </div>
+                                        }
+                                    }
+                                    else if (customerSuggestions == null || customerSuggestions.Count == 0)
+                                    {
+                                        <div class="oc-cs__empty">
+                                            <div class="oc-cs__empty-ico">🔍</div>
+                                            <strong>No customer found</strong>
+                                            <p>We couldn't find anyone matching <em>"@customerQuery"</em>.</p>
+                                            <button class="oc-btn oc-btn--primary oc-btn--sm" @onclick="OpenAddCustomer">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                                Add New Customer
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @if (string.IsNullOrWhiteSpace(customerQuery))
+                                        {
+                                            <div class="oc-cs__group-lbl">Recent Customers</div>
+                                        }
+                                        <ul class="oc-cs__list" @ref="listRef">
+                                            @for (var i = 0; i < customerSuggestions.Count; i++)
+                                            {
+                                                var c = customerSuggestions[i];
+                                                var idx = i;
+                                                <li class="oc-cs__row @(idx == activeIndex ? "is-active" : "")"
+                                                    @onclick="() => SelectCustomer(c)"
+                                                    @onmouseover="() => activeIndex = idx">
+                                                    @if (!string.IsNullOrEmpty(c.AvatarUrl))
+                                                    { <img class="oc-cs__av" src="@c.AvatarUrl" alt="" /> }
+                                                    else
+                                                    { <div class="oc-cs__av oc-cs__av--initials">@c.Initials</div> }
+                                                    <div class="oc-cs__body">
+                                                        <div class="oc-cs__name">@((MarkupString)Highlight(c.FullName))</div>
+                                                        <div class="oc-cs__meta">
+                                                            <span class="oc-cs__cid">ID: @FriendlyId(c.Id)</span>
+                                                            @if (!string.IsNullOrEmpty(c.Phone))
+                                                            { <span>📞 @((MarkupString)Highlight(c.Phone))</span> }
+                                                            @if (!string.IsNullOrEmpty(c.Email))
+                                                            { <span>✉ @((MarkupString)Highlight(c.Email))</span> }
+                                                        </div>
+                                                    </div>
+                                                    <span class="oc-pill @(c.IsActive ? "oc-pill--ok" : "oc-pill--off")">@(c.IsActive ? "Active" : "Inactive")</span>
+                                                </li>
+                                            }
+                                        </ul>
+                                        <div class="oc-cs__foot">
+                                            <span>@customerSuggestions.Count result@(customerSuggestions.Count == 1 ? "" : "s") · use ↑↓ to navigate</span>
+                                            <button class="oc-cs__add" @onclick="OpenAddCustomer">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                                Add new
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <button class="oc-btn oc-btn--outline oc-btn--block" @onclick="OpenAddCustomer">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                            Add New Customer
+                        </button>
+                    }
+                    else
+                    {
+                        @* ── Premium customer summary card ── *@
+                        <div class="oc-prof">
+                            <div class="oc-prof__head">
+                                @if (!string.IsNullOrEmpty(selectedProfile.AvatarUrl))
+                                { <img class="oc-prof__av" src="@selectedProfile.AvatarUrl" alt="" /> }
+                                else
+                                { <div class="oc-prof__av oc-prof__av--initials">@selectedProfile.Initials</div> }
+
+                                <div class="oc-prof__title">
+                                    <h3>@selectedProfile.FullName</h3>
+                                    <div class="oc-prof__meta">
+                                        <span class="oc-prof__cid">ID: @selectedProfile.FriendlyId</span>
+                                        <span class="oc-pill @(selectedProfile.IsActive ? "oc-pill--ok" : "oc-pill--off")">@(selectedProfile.IsActive ? "Active" : "Inactive")</span>
+                                    </div>
+                                    <div class="oc-prof__contact">
+                                        @if (!string.IsNullOrEmpty(selectedProfile.Phone)) { <span>📞 @selectedProfile.Phone</span> }
+                                        @if (!string.IsNullOrEmpty(selectedProfile.Email)) { <span>✉ @selectedProfile.Email</span> }
+                                    </div>
+                                </div>
+
+                                <div class="oc-prof__actions">
+                                    <button class="oc-btn oc-btn--outline oc-btn--sm" @onclick="ClearCustomer">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 8h6M20 5v6"/><path d="M16 17v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h3"/><path d="M9 14h5"/></svg>
+                                        Change
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="oc-prof__stats">
+                                <div class="oc-prof__stat">
+                                    <span class="oc-prof__stat-lbl">Total Orders</span>
+                                    <strong>@selectedProfile.TotalOrders</strong>
+                                </div>
+                                <div class="oc-prof__stat">
+                                    <span class="oc-prof__stat-lbl">Lifetime Value</span>
+                                    <strong>₹@selectedProfile.LifetimeValue.ToString("N0")</strong>
+                                </div>
+                                <div class="oc-prof__stat">
+                                    <span class="oc-prof__stat-lbl">Last Order</span>
+                                    <strong>@(selectedProfile.LastOrderAt.HasValue ? selectedProfile.LastOrderAt.Value.ToLocalTime().ToString("dd MMM yyyy") : "—")</strong>
+                                </div>
+                                <div class="oc-prof__stat">
+                                    <span class="oc-prof__stat-lbl">Customer Since</span>
+                                    <strong>@selectedProfile.JoinedDate.ToLocalTime().ToString("dd MMM yyyy")</strong>
+                                </div>
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(selectedProfile.Address) || !string.IsNullOrEmpty(selectedProfile.City))
+                            {
+                                <div class="oc-prof__addr">
+                                    <span class="oc-prof__stat-lbl">Default Address</span>
+                                    <p>
+                                        @(string.Join(", ", new[] { selectedProfile.Address, selectedProfile.City, selectedProfile.State, selectedProfile.Pincode, selectedProfile.Country }.Where(x => !string.IsNullOrWhiteSpace(x))))
+                                    </p>
+                                    <small>Billing &amp; Shipping addresses will use this on Step 3 (you can override there).</small>
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+            }
+
+            @* ════════ STEP 2 — PRODUCTS ════════ *@
+            @if (step == 2)
+            {
+                <section class="oc-card">
+                    <div class="oc-card__title-row">
+                        <h2 class="oc-card__title">Products</h2>
+                        <button class="oc-btn oc-btn--outline oc-btn--sm" @onclick="OpenProductPicker">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                            Add Product
+                        </button>
+                    </div>
+
+                    @if (req.Items.Count == 0)
+                    {
+                        <div class="oc-empty" @onclick="OpenProductPicker">
+                            <div class="oc-empty__ico">📦</div>
+                            <h3>No products added yet</h3>
+                            <p>Click <b>Add Product</b> to search and add courses to this order.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="oc-line-list">
+                            @for (var i = 0; i < req.Items.Count; i++)
+                            {
+                                var line = req.Items[i];
+                                var detail = lineDetails.TryGetValue(line.ProductId, out var d) ? d : null;
+                                var idx = i;
+                                <article class="oc-line">
+                                    <header class="oc-line__head">
+                                        <div class="oc-line__media" aria-hidden="true">
+                                            @if (!string.IsNullOrEmpty(detail?.ImageUrl))
+                                            { <img src="@detail.ImageUrl" alt="" /> }
+                                            else
+                                            { <span>@(detail?.Title?.Trim().FirstOrDefault().ToString().ToUpperInvariant() ?? "?")</span> }
+                                        </div>
+                                        <div class="oc-line__title-block">
+                                            <h3 class="oc-line__title">@(detail?.Title ?? "Loading…")</h3>
+                                            <div class="oc-line__chips">
+                                                @if (!string.IsNullOrEmpty(detail?.FacultyName)) { <span class="oc-pill">👨‍🏫 @detail.FacultyName</span> }
+                                                @if (!string.IsNullOrEmpty(detail?.BatchStatusText)) { <span class="oc-pill oc-pill--blue">📅 @detail.BatchStatusText</span> }
+                                                @if (!string.IsNullOrEmpty(detail?.Sku)) { <span class="oc-pill oc-pill--mute">SKU: @detail.Sku</span> }
+                                            </div>
+                                        </div>
+                                        <div class="oc-line__head-actions">
+                                            <button class="oc-icon-btn" title="Duplicate" @onclick="() => DuplicateLine(idx)">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                            </button>
+                                            <button class="oc-icon-btn oc-icon-btn--danger" title="Remove" @onclick="() => RemoveLine(idx)">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                                            </button>
+                                        </div>
+                                    </header>
+
+                                    @if (detail != null)
+                                    {
+                                        @* Mode of Lecture — auto-rendered if the product has modes *@
+                                        @if (detail.Modes.Count > 0)
+                                        {
+                                            <div class="oc-attr">
+                                                <div class="oc-attr__label">Mode of Lecture</div>
+                                                <div class="oc-radio-cards">
+                                                    @foreach (var m in detail.Modes)
+                                                    {
+                                                        var selected = line.ProductModeId == m.Id;
+                                                        // Mode is an ADD-ON to base — show effective price (base + add-on).
+                                                        var __effective = detail.SellingPrice + m.Price;
+                                                        <label class="oc-radio-card @(selected ? "is-selected" : "")" @onclick="() => SetMode(idx, m.Id)">
+                                                            <div class="oc-radio-card__title">@m.Name</div>
+                                                            <div class="oc-radio-card__price">₹@__effective.ToString("N0")</div>
+                                                        </label>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+
+                                        @* Dynamic product attributes *@
+                                        @foreach (var attr in detail.Attributes)
+                                        {
+                                            var multi = IsMulti(attr.ControlType);
+                                            <div class="oc-attr">
+                                                <div class="oc-attr__label">
+                                                    @attr.Name
+                                                    @if (attr.IsRequired) { <span class="req">*</span> }
+                                                </div>
+                                                <div class="oc-radio-cards">
+                                                    @foreach (var v in attr.Values)
+                                                    {
+                                                        var selected = line.SelectedAttributeValueIds.Contains(v.Id);
+                                                        <label class="oc-radio-card @(selected ? "is-selected" : "") @(multi ? "oc-radio-card--multi" : "")"
+                                                               @onclick="() => ToggleAttribute(idx, attr.MappingId, v.Id, multi)">
+                                                            <div class="oc-radio-card__title">@v.Name</div>
+                                                            @if (v.PriceAdjustment != 0)
+                                                            {
+                                                                <div class="oc-radio-card__price">
+                                                                    @(v.PriceAdjustment > 0 ? "+" : "−")
+                                                                    @if (v.PriceAdjustmentUsePercentage)
+                                                                    {
+                                                                        <span>@Math.Abs(v.PriceAdjustment).ToString("0.##")%</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span>₹@Math.Abs(v.PriceAdjustment).ToString("N0")</span>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        </label>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+
+                                        @* Line economics *@
+                                        <div class="oc-line__bottom">
+                                            <div class="oc-stepper">
+                                                <button @onclick="() => SetQty(idx, line.Quantity - 1)">−</button>
+                                                <input type="number" min="1" value="@line.Quantity" @onchange="@(e => SetQty(idx, int.TryParse(e.Value?.ToString(), out var q) ? q : 1))" />
+                                                <button @onclick="() => SetQty(idx, line.Quantity + 1)">+</button>
+                                            </div>
+                                            <div class="oc-field oc-field--inline">
+                                                <label>Discount (₹)</label>
+                                                <input class="oc-input oc-input--sm" type="number" min="0" @bind="line.Discount" @bind:event="oninput" />
+                                            </div>
+                                            <div class="oc-line__total">
+                                                <span>Line Total</span>
+                                                <strong>₹@LineTotal(line, detail).ToString("N0")</strong>
+                                            </div>
+                                        </div>
+                                    }
+                                </article>
+                            }
+                        </div>
+                        <button class="oc-btn oc-btn--outline oc-btn--block" @onclick="OpenProductPicker">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                            Add Another Product
+                        </button>
+                    }
+                </section>
+            }
+
+            @* ════════ STEP 3 — BILLING + PAYMENT ════════ *@
+            @if (step == 3)
+            {
+                <section class="oc-card">
+                    <h2 class="oc-card__title">Billing Address</h2>
+                    @* A counter order almost always ships something; without these three the Dispatch
+                       screen has nothing to print on the label. *@
+                    @if (!HasDeliverableAddress)
+                    {
+                        <p class="oc-hint oc-hint--warn">
+                            Address, City and a 6-digit Pincode are required before this order can be created.
+                        </p>
+                    }
+                    <div class="oc-form-grid">
+                        <div class="oc-field oc-field--full">
+                            <label>Address <span class="req">*</span></label>
+                            <input class="oc-input" @bind="req.BillingAddress" placeholder="Flat / street / area" />
+                        </div>
+                        <div class="oc-field">
+                            <label>City <span class="req">*</span></label>
+                            <input class="oc-input" @bind="req.BillingCity" />
+                        </div>
+                        <div class="oc-field">
+                            <label>State <span class="req">*</span></label>
+                            <select class="oc-input" @bind="req.BillingState">
+                                @foreach (var s in States) { <option value="@s">@s</option> }
+                            </select>
+                        </div>
+                        <div class="oc-field">
+                            <label>Pincode <span class="req">*</span></label>
+                            <input class="oc-input" @bind="req.BillingPincode" inputmode="numeric" maxlength="6" />
+                        </div>
+                        <div class="oc-field">
+                            <label>GSTIN (optional)</label>
+                            <input class="oc-input" @bind="req.GstNumber" placeholder="For B2B GST invoice" />
+                        </div>
+                    </div>
+                </section>
+
+                <section class="oc-card">
+                    <div class="oc-card__title-row">
+                        <h2 class="oc-card__title">Referral Source <span class="req">*</span></h2>
+                    </div>
+                    <p class="oc-card__sub">How did the customer hear about RioCommerce?</p>
+                    <div class="oc-radio-cards oc-radio-cards--ref">
+                        @if (referralOptions != null)
+                        {
+                            @foreach (var opt in referralOptions)
+                            {
+                                var sel = req.ReferralSourceId == opt.Id;
+                                <label class="oc-radio-card @(sel ? "is-selected" : "")" @onclick="() => { req.ReferralSourceId = opt.Id; StateHasChanged(); }">
+                                    <div class="oc-radio-card__title">@opt.Name</div>
+                                    <div class="oc-radio-card__sub">@opt.Type</div>
+                                </label>
+                            }
+                        }
+                    </div>
+                    @if (req.ReferralSourceId.HasValue && referralOptions != null && referralOptions.First(o => o.Id == req.ReferralSourceId.Value).Type == ReferralSourceType.Other)
+                    {
+                        <div class="oc-field" style="margin-top:12px">
+                            <label>Please specify</label>
+                            <input class="oc-input" @bind="req.ReferralCustomText" maxlength="100" placeholder="Where did they hear about us?" />
+                        </div>
+                    }
+
+                    @* §3, §32 — the originating system's reference for this order. Optional, and its
+                       meaning follows the order source: a CaseHub case ID, a counter receipt number,
+                       or a franchisee's own reference. *@
+                    <div class="oc-field" style="margin-top:14px">
+                        <label>Source No. <span class="oc-optional">(optional)</span></label>
+                        <input class="oc-input" @bind="req.SourceNo" maxlength="80"
+                               placeholder="Reference from the system this order came from" />
+                        <div class="oc-hint">Searchable on the order list and shown on the sales reports.</div>
+                    </div>
+                </section>
+
+                <section class="oc-card">
+                    <div class="oc-card__title-row">
+                        <h2 class="oc-card__title">Payment</h2>
+                        <button class="oc-btn oc-btn--outline oc-btn--sm" @onclick="AddPaymentRow">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                            Split Payment
+                        </button>
+                    </div>
+                    <p class="oc-card__sub">Choose one method or split the total across multiple methods.</p>
+                    <div class="oc-pay">
+                        @for (var i = 0; i < req.Payments.Count; i++)
+                        {
+                            var p = req.Payments[i];
+                            var idx = i;
+                            <div class="oc-pay__row">
+                                <select class="oc-input" value="@p.Mode" @onchange="@(e => SetPaymentMode(idx, e))">
+                                    @foreach (var m in allowedPaymentModes) { <option value="@m">@m</option> }
+                                </select>
+                                <input class="oc-input" type="number" min="0" placeholder="Amount" value="@p.Amount" @onchange="@(e => SetPaymentAmount(idx, e))" />
+                                @if (req.Payments.Count > 1)
+                                {
+                                    <button class="oc-icon-btn oc-icon-btn--danger" @onclick="() => RemovePaymentRow(idx)" title="Remove">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/></svg>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="oc-pay__validate">
+                        <span>Payments total: <strong>₹@PaymentSum.ToString("N0")</strong></span>
+                        <span class="@(PaymentMismatchClass)">Grand Total: <strong>₹@GrandTotal.ToString("N0")</strong></span>
+                    </div>
+                </section>
+
+                @* ════════ Installment Payment (counter orders) ════════ *@
+                @if (installmentsAllowed)
+                {
+                    <section class="oc-card">
+                        <div class="oc-card__title-row">
+                            <h2 class="oc-card__title">Installment Payment</h2>
+                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600">
+                                <input type="checkbox" checked="@inst.Enabled" @onchange="OnInstallmentToggle" />
+                                <span>Enable installments</span>
+                            </label>
+                        </div>
+                        @if (inst.Enabled)
+                        {
+                            <p class="oc-card__sub">Collect a down payment now and schedule the balance. The split-payment box above is ignored while this is on — the final tax invoice is generated only after the last installment is paid.</p>
+                            <div class="oc-form-grid">
+                                <div class="oc-field">
+                                    <label>Down payment (₹) <span class="req">*</span></label>
+                                    <input class="oc-input" type="number" min="0" value="@inst.DownPayment" @onchange="@(e => OnDownPaymentChanged(e))" />
+                                    @if (minDownPayment > 0) { <small style="color:var(--c-mute)">Minimum ₹@minDownPayment.ToString("N0") (@settings!.MinDownPaymentPercent.ToString("0.##")%)</small> }
+                                </div>
+                                <div class="oc-field">
+                                    <label>Down payment mode</label>
+                                    <select class="oc-input" @bind="inst.DownPaymentMode">
+                                        @foreach (var m in CounterModes) { <option value="@m">@m</option> }
+                                    </select>
+                                </div>
+                                <div class="oc-field">
+                                    <label>Number of installments</label>
+                                    <input class="oc-input" type="number" min="1" max="36" value="@inst.Installments.Count" @onchange="@(e => OnInstallmentCountChanged(e))" />
+                                </div>
+                                <div class="oc-field" style="display:flex;align-items:flex-end">
+                                    <button class="oc-btn oc-btn--outline oc-btn--sm" @onclick="AutoDistribute" type="button">↻ Auto-distribute balance</button>
+                                </div>
+                            </div>
+
+                            <div class="oc-pay" style="margin-top:12px">
+                                @for (var i = 0; i < inst.Installments.Count; i++)
+                                {
+                                    var line = inst.Installments[i];
+                                    var idx = i;
+                                    <div class="oc-pay__row" style="grid-template-columns:32px 1fr 1fr auto">
+                                        <span style="font-weight:700;color:var(--c-mute)">#@(idx + 1)</span>
+                                        <input class="oc-input" type="date" value="@line.DueDate.ToString("yyyy-MM-dd")" @onchange="@(e => SetInstallmentDate(idx, e))" />
+                                        <input class="oc-input" type="number" min="0" placeholder="Amount" value="@line.Amount" @onchange="@(e => SetInstallmentAmount(idx, e))" />
+                                        @if (inst.Installments.Count > 1)
+                                        {
+                                            <button class="oc-icon-btn oc-icon-btn--danger" type="button" @onclick="() => RemoveInstallment(idx)" title="Remove">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/></svg>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                <button class="oc-btn oc-btn--outline oc-btn--sm" type="button" @onclick="AddInstallment" style="margin-top:8px;align-self:flex-start">+ Add installment</button>
+                            </div>
+
+                            <div class="oc-pay__validate" style="margin-top:10px">
+                                <span>Down + installments: <strong class="@(InstallmentMismatch ? "mismatch" : "")">₹@InstallmentScheduleSum.ToString("N0")</strong></span>
+                                <span>Grand Total: <strong>₹@GrandTotal.ToString("N0")</strong></span>
+                            </div>
+                            @if (InstallmentMismatch) { <small style="color:var(--c-danger,#DC2626)">Down payment + installments must equal the grand total.</small> }
+                        }
+                    </section>
+                }
+
+                <section class="oc-card">
+                    <h2 class="oc-card__title">Internal Notes (optional)</h2>
+                    <textarea class="oc-input oc-input--ta" rows="3" @bind="req.InternalNotes" placeholder="Anything the team should know about this order…"></textarea>
+                </section>
+            }
+
+            @* ════════ STEP 4 — REVIEW ════════ *@
+            @if (step == 4)
+            {
+                <section class="oc-card oc-review">
+                    <h2 class="oc-card__title">Review &amp; Confirm</h2>
+                    <p class="oc-card__sub">Double-check everything below — clicking <b>Create Order</b> will book it.</p>
+
+                    <div class="oc-review__block">
+                        <h3>Customer</h3>
+                        <p><strong>@req.StudentName</strong> · @req.StudentPhone @(string.IsNullOrEmpty(req.StudentEmail) ? "" : " · " + req.StudentEmail)</p>
+                    </div>
+
+                    <div class="oc-review__block">
+                        <h3>Billing</h3>
+                        <p>
+                            @(string.Join(", ", new[] { req.BillingAddress, req.BillingCity, req.BillingState, req.BillingPincode }.Where(x => !string.IsNullOrWhiteSpace(x))))
+                            @if (!string.IsNullOrWhiteSpace(req.GstNumber)) { <br /> <span>GSTIN: @req.GstNumber</span> }
+                        </p>
+                    </div>
+
+                    <div class="oc-review__block">
+                        <h3>Products</h3>
+                        <ul class="oc-review__items">
+                            @foreach (var line in req.Items)
+                            {
+                                var d = lineDetails.GetValueOrDefault(line.ProductId);
+                                <li>
+                                    <div>
+                                        <strong>@d?.Title</strong>
+                                        @if (line.ProductModeId.HasValue && d != null)
+                                        {
+                                            var mn = d.Modes.FirstOrDefault(m => m.Id == line.ProductModeId.Value)?.Name;
+                                            if (!string.IsNullOrEmpty(mn)) { <span class="oc-pill oc-pill--mute">@mn</span> }
+                                        }
+                                        @if (line.SelectedAttributeValueIds.Count > 0 && d != null)
+                                        {
+                                            <div class="oc-review__attrs">
+                                                @foreach (var attr in d.Attributes)
+                                                {
+                                                    var picked = attr.Values.Where(v => line.SelectedAttributeValueIds.Contains(v.Id)).Select(v => v.Name).ToList();
+                                                    @if (picked.Count > 0) { <span>@attr.Name: <b>@string.Join(", ", picked)</b></span> }
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="oc-review__line-total">
+                                        <span class="oc-pill oc-pill--mute">Qty × @line.Quantity</span>
+                                        <strong>₹@LineTotal(line, d).ToString("N0")</strong>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+
+                    <div class="oc-review__block">
+                        <h3>Payment</h3>
+                        <ul class="oc-review__pays">
+                            @foreach (var p in req.Payments) { <li><span>@p.Mode</span><strong>₹@p.Amount.ToString("N0")</strong></li> }
+                        </ul>
+                    </div>
+
+                    <div class="oc-review__block">
+                        <h3>Referral</h3>
+                        <p>
+                            @if (req.ReferralSourceId.HasValue && referralOptions != null)
+                            {
+                                var r = referralOptions.FirstOrDefault(o => o.Id == req.ReferralSourceId.Value);
+                                @if (r != null)
+                                {
+                                    @r.Name
+                                    @if (r.Type == ReferralSourceType.Other && !string.IsNullOrEmpty(req.ReferralCustomText))
+                                    { <span> · <em>@req.ReferralCustomText</em></span> }
+                                }
+                            }
+                        </p>
+                    </div>
+                </section>
+            }
+
+            @* ════════ STEP 5 — SUCCESS (briefly, before redirect) ════════ *@
+            @if (step == 5)
+            {
+                <section class="oc-card oc-success">
+                    <div class="oc-success__tick">✓</div>
+                    <h2>Order created successfully</h2>
+                    <p>Redirecting to the order details…</p>
+                </section>
+            }
+        </main>
+
+        @* ─── Sticky summary ─── *@
+        <aside class="oc-summary">
+            <div class="oc-summary__card">
+                <header class="oc-summary__head">
+                    <h3>Order Summary</h3>
+                    <span class="oc-pill oc-pill--blue">@req.Items.Count item@(req.Items.Count == 1 ? "" : "s")</span>
+                </header>
+                <div class="oc-summary__body">
+                    <div class="oc-row"><span>Subtotal</span><strong>₹@Subtotal.ToString("N0")</strong></div>
+                    @if (TotalDiscount > 0) { <div class="oc-row oc-row--save"><span>Discount</span><strong>− ₹@TotalDiscount.ToString("N0")</strong></div> }
+                    <div class="oc-row oc-row--gst"><span>GST (incl.)</span><strong>₹@GstAmount.ToString("N0")</strong></div>
+                    <div class="oc-row oc-row--total"><span>Grand Total</span><strong>₹@GrandTotal.ToString("N0")</strong></div>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+@* ─── Add New Customer modal — premium SaaS redesign ─── *@
+@if (showAddCustomer)
+{
+    <div class="ac-bg" @onclick="CloseAddCustomer" @onkeydown="OnModalKey" tabindex="-1"></div>
+    <div class="ac" role="dialog" aria-modal="true" aria-labelledby="ac-title" @onkeydown="OnModalKey">
+        @* ── Sticky header ── *@
+        <header class="ac__head">
+            <div class="ac__head-left">
+                <div class="ac__head-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                </div>
+                <div>
+                    <h2 id="ac-title">Add New Customer</h2>
+                    <p>Create a new website customer and continue order creation.</p>
+                </div>
+            </div>
+            <button class="ac__close" @onclick="CloseAddCustomer" aria-label="Close" type="button">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </header>
+
+        @* ── Body (scrollable, 2-col responsive grid) ── *@
+        <div class="ac__body">
+            @if (!string.IsNullOrEmpty(addCustomerError))
+            {
+                <div class="ac-banner ac-banner--err" role="alert">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                    <span>@addCustomerError</span>
+                </div>
+            }
+            <div class="ac__grid">
+                @* ─── LEFT COLUMN ─── *@
+                <div class="ac__col">
+                    @* Full Name *@
+                    <div class="ac-field @(NameError != null ? "is-error" : (newCustomer.FullName?.Trim().Length >= 2 ? "is-ok" : ""))">
+                        <label>Full Name <span class="req">*</span></label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+                            <input @ref="firstFieldRef" value="@newCustomer.FullName" @oninput="OnNameInput" placeholder="Lokesh Patil" autocapitalize="words" autocomplete="name" />
+                            <span class="ac-inp__status"></span>
+                        </div>
+                        @if (NameError != null) { <small class="ac-msg ac-msg--err">@NameError</small> }
+                    </div>
+
+                    @* Mobile *@
+                    <div class="ac-field @(PhoneError != null ? "is-error" : (newCustomer.Phone?.Length == 10 ? "is-ok" : ""))">
+                        <label>Mobile <span class="req">*</span></label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
+                            <span class="ac-inp__prefix">+91</span>
+                            <input value="@newCustomer.Phone" @oninput="OnPhoneInput" inputmode="numeric" maxlength="10" placeholder="10-digit mobile" autocomplete="tel-national" />
+                            <span class="ac-inp__status"></span>
+                        </div>
+                        @if (PhoneError != null) { <small class="ac-msg ac-msg--err">@PhoneError</small> }
+                    </div>
+
+                    @* Email *@
+                    <div class="ac-field @(EmailError != null ? "is-error" : (IsValidEmail(newCustomer.Email) ? "is-ok" : ""))">
+                        <label>Email <span class="req">*</span></label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg></span>
+                            <input value="@newCustomer.Email" @oninput="OnEmailInput" type="email" placeholder="lokesh@example.com" autocomplete="email" />
+                            <span class="ac-inp__status"></span>
+                        </div>
+                        @if (EmailError != null) { <small class="ac-msg ac-msg--err">@EmailError</small> }
+                    </div>
+
+                    @* Password — auto-generated, read-only, show/copy/regenerate *@
+                    <div class="ac-field">
+                        <label>Auto-generated Password</label>
+                        <div class="ac-inp ac-inp--pw">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                            <input type="@(showPassword ? "text" : "password")" value="@newCustomer.Password" readonly />
+                            <button class="ac-inp__btn" type="button" title="@(showPassword ? "Hide" : "Show") password" @onclick="() => showPassword = !showPassword">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                            <button class="ac-inp__btn" type="button" title="Copy" @onclick="CopyPassword">
+                                @if (passwordCopied)
+                                {
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                }
+                                else
+                                {
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                }
+                            </button>
+                            <button class="ac-inp__btn" type="button" title="Regenerate" @onclick="RegeneratePassword">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+                            </button>
+                        </div>
+                        <small class="ac-msg">Strong password — shared with the customer over email/SMS after creation.</small>
+                    </div>
+
+                    @* Address *@
+                    <div class="ac-field">
+                        <label>Address <span class="req">*</span></label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg></span>
+                            <input @bind="newCustomer.Address" placeholder="Flat / street / area / landmark" autocomplete="street-address" />
+                        </div>
+                    </div>
+                </div>
+
+                @* ─── RIGHT COLUMN ─── *@
+                <div class="ac__col">
+                    @* Live customer preview *@
+                    <div class="ac-preview">
+                        <div class="ac-preview__head">
+                            <div class="ac-preview__av">@(PreviewInitials ?? "?")</div>
+                            <span class="ac-preview__badge">NEW CUSTOMER</span>
+                        </div>
+                        <div class="ac-preview__name">@(string.IsNullOrWhiteSpace(newCustomer.FullName) ? "Customer Name" : newCustomer.FullName)</div>
+                        <div class="ac-preview__rows">
+                            <div><span>📞</span><strong>@(string.IsNullOrWhiteSpace(newCustomer.Phone) ? "—" : "+91 " + newCustomer.Phone)</strong></div>
+                            <div><span>✉</span><strong>@(string.IsNullOrWhiteSpace(newCustomer.Email) ? "—" : newCustomer.Email)</strong></div>
+                            @if (!string.IsNullOrEmpty(newCustomer.City) || !string.IsNullOrEmpty(newCustomer.State))
+                            {
+                                <div><span>📍</span><strong>@(string.Join(", ", new[] { newCustomer.City, newCustomer.State }.Where(x => !string.IsNullOrWhiteSpace(x))))</strong></div>
+                            }
+                        </div>
+                    </div>
+
+                    @* State *@
+                    <div class="ac-field">
+                        <label>State</label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+                            <select @bind="newCustomer.State">
+                                @foreach (var s in States) { <option value="@s">@s</option> }
+                            </select>
+                        </div>
+                    </div>
+
+                    @* City *@
+                    <div class="ac-field">
+                        <label>City <span class="req">*</span></label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/></svg></span>
+                            <input @bind="newCustomer.City" placeholder="Mumbai" autocomplete="address-level2" />
+                        </div>
+                    </div>
+
+                    @* Pincode *@
+                    <div class="ac-field">
+                        <label>Pincode <span class="req">*</span></label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg></span>
+                            <input @bind="newCustomer.Pincode" inputmode="numeric" maxlength="6" placeholder="6-digit" autocomplete="postal-code" />
+                        </div>
+                        @* Say which of the three is missing — a disabled button with no reason is the
+                           most common way an admin gets stuck on this dialog. *@
+                        @if (!string.IsNullOrWhiteSpace(newCustomer.Pincode) && !IsValidPincode(newCustomer.Pincode))
+                        {
+                            <small class="ac-msg ac-msg--warn">Pincode must be 6 digits.</small>
+                        }
+                    </div>
+
+                    @* Business invoice toggle + GST *@
+                    <div class="ac-field">
+                        <label class="ac-toggle">
+                            <input type="checkbox" @bind="newCustomer.IsBusinessInvoice" />
+                            <span class="ac-toggle__track"><span class="ac-toggle__dot"></span></span>
+                            <span class="ac-toggle__lbl">Business Invoice</span>
+                        </label>
+                        @if (newCustomer.IsBusinessInvoice)
+                        {
+                            <div class="ac-inp" style="margin-top:6px">
+                                <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v18l3-2 3 2 3-2 3 2V8z"/><path d="M14 2v6h6"/></svg></span>
+                                <input @bind="newCustomer.GstNumber" placeholder="GSTIN (15 chars)" maxlength="15" />
+                            </div>
+                            @if (newCustomer.IsBusinessInvoice && string.IsNullOrWhiteSpace(newCustomer.GstNumber))
+                            {
+                                <small class="ac-msg ac-msg--warn">GSTIN is required for a business invoice.</small>
+                            }
+                        }
+                    </div>
+
+                    @* Referral — searchable inline dropdown *@
+                    <div class="ac-field">
+                        <label>Referral Source</label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+                            <input type="text" value="@referralQuery" @oninput="OnReferralInput" @onfocus="() => referralDropdownOpen = true" placeholder="Search Instagram, YouTube, Friend…" autocomplete="off" />
+                            @if (newCustomer.ReferralSourceId.HasValue)
+                            {
+                                <button class="ac-inp__btn" type="button" title="Clear" @onclick="ClearReferral">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                                </button>
+                            }
+                        </div>
+                        @if (referralDropdownOpen && referralOptions != null)
+                        {
+                            <ul class="ac-refs">
+                                @foreach (var r in FilteredReferrals)
+                                {
+                                    <li class="ac-refs__row @(newCustomer.ReferralSourceId == r.Id ? "is-active" : "")" @onclick="() => PickReferral(r)">
+                                        <span class="ac-refs__name">@r.Name</span>
+                                        <span class="ac-refs__type">@r.Type</span>
+                                    </li>
+                                }
+                                @if (!FilteredReferrals.Any())
+                                {
+                                    <li class="ac-refs__empty">No referral source matches "@referralQuery"</li>
+                                }
+                            </ul>
+                        }
+                    </div>
+
+                    @* Date of Birth *@
+                    <div class="ac-field">
+                        <label>Date of Birth</label>
+                        <div class="ac-inp">
+                            <span class="ac-inp__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
+                            <input type="date" value="@(newCustomer.DateOfBirth?.ToString("yyyy-MM-dd"))" @onchange="OnDobChange" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ── Sticky footer ── *@
+        <footer class="ac__foot">
+            <div class="ac__foot-left">
+                <kbd>Esc</kbd> to cancel · <kbd>Ctrl+Enter</kbd> to save
+            </div>
+            <div class="ac__foot-right">
+                <button class="ac-btn ac-btn--ghost" type="button" @onclick="CloseAddCustomer">Cancel</button>
+                <button class="ac-btn ac-btn--primary" type="button" disabled="@(addingCustomer || !CanSubmit)" @onclick="SaveNewCustomer">
+                    @if (addingCustomer)
+                    {
+                        <span class="oc-spinner" aria-hidden="true"></span>
+                        <span>Creating…</span>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                        <span>Create Customer</span>
+                    }
+                </button>
+            </div>
+        </footer>
+    </div>
+}
+
+@* ─── Toast (used by success path) ─── *@
+@if (toastMsg != null)
+{
+    <div class="ac-toast" role="status">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        <span>@toastMsg</span>
+    </div>
+}
+
+@* ─── Product Picker modal ─── *@
+@if (showPicker)
+{
+    <div class="oc-modal-bg" @onclick="ClosePicker"></div>
+    <div class="oc-modal" role="dialog" aria-modal="true">
+        <header class="oc-modal__head">
+            <h3>Add Product</h3>
+            <button class="oc-modal__close" @onclick="ClosePicker">×</button>
+        </header>
+        <div class="oc-modal__body">
+            <div class="oc-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" autofocus placeholder="Search by name or SKU…" @bind="productQuery" @bind:event="oninput" @bind:after="OnProductSearch" />
+                @if (productSearching) { <span class="oc-spinner oc-spinner--sm" aria-hidden="true"></span> }
+            </div>
+            @if (productResults == null) { <p class="oc-muted">Loading…</p> }
+            else if (productResults.Count == 0) { <p class="oc-muted">No products found.</p> }
+            else
+            {
+                <ul class="oc-prod-list">
+                    @foreach (var p in productResults)
+                    {
+                        <li class="oc-prod" @onclick="() => SelectProduct(p)">
+                            <div class="oc-prod__media">
+                                @if (!string.IsNullOrEmpty(p.ImageUrl)) { <img src="@p.ImageUrl" alt="" /> }
+                                else { <span>@(p.Title?.Trim().FirstOrDefault().ToString().ToUpperInvariant() ?? "?")</span> }
+                            </div>
+                            <div class="oc-prod__body">
+                                <div class="oc-prod__name">@p.Title</div>
+                                <div class="oc-prod__meta">
+                                    @if (!string.IsNullOrEmpty(p.FacultyName)) { <span>👨‍🏫 @p.FacultyName</span> }
+                                    @if (!string.IsNullOrEmpty(p.Sku)) { <span>SKU: @p.Sku</span> }
+                                    @if (p.Modes.Count > 0) { <span class="oc-pill oc-pill--mute">@p.Modes.Count mode@(p.Modes.Count == 1 ? "" : "s")</span> }
+                                </div>
+                            </div>
+                            <div class="oc-prod__price">₹@p.SellingPrice.ToString("N0")</div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    /* ════════════════════════════════════════════════════════════════
+       Create Order V2 — wizard (scoped to .oc-v2)
+       ════════════════════════════════════════════════════════════════ */
+    .oc-v2{--c-ink:#0F1B33;--c-mute:#64748B;--c-line:#E5ECF4;--c-bg:#F8FAFC;--c-primary:#163A70;--c-accent:#F58220;--c-green:#22C55E;--c-blue:#3B82F6;--c-radius:16px;color:var(--c-ink);padding-bottom:60px}
+    .oc-v2 .req{color:var(--c-accent);margin-left:2px}
+
+    /* Hero */
+    .oc-v2 .oc-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin:20px 0 22px;flex-wrap:wrap}
+    .oc-v2 .oc-hero__title{margin:0;font-size:26px;font-weight:800;letter-spacing:-.4px}
+    .oc-v2 .oc-hero__sub{margin:6px 0 0;font-size:14px;color:var(--c-mute);max-width:700px;line-height:1.55}
+    .oc-v2 .oc-hero__actions{display:flex;gap:10px;flex-wrap:wrap}
+
+    /* Buttons */
+    .oc-v2 .oc-btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:12px;border:1.5px solid transparent;font-size:13.5px;font-weight:700;cursor:pointer;text-decoration:none;background:#fff;color:var(--c-ink);transition:transform .15s,box-shadow .2s,filter .15s,background .2s,border-color .2s}
+    .oc-v2 .oc-btn svg{width:15px;height:15px}
+    .oc-v2 .oc-btn:hover{transform:translateY(-1px)}
+    .oc-v2 .oc-btn[disabled]{opacity:.55;cursor:not-allowed;transform:none;filter:grayscale(.3)}
+    .oc-v2 .oc-btn--primary{background:linear-gradient(135deg,#F58220,#ffa05a);color:#fff;box-shadow:0 12px 24px -14px rgba(245,130,32,.55)}
+    .oc-v2 .oc-btn--primary:hover{filter:brightness(1.05)}
+    .oc-v2 .oc-btn--outline{background:#fff;border-color:#DBE5F2;color:var(--c-primary)}
+    .oc-v2 .oc-btn--outline:hover{background:#EFF4FB;border-color:var(--c-primary)}
+    .oc-v2 .oc-btn--ghost{background:transparent;border-color:var(--c-line);color:var(--c-mute)}
+    .oc-v2 .oc-btn--ghost:hover{color:var(--c-ink);background:#F8FAFC}
+    .oc-v2 .oc-btn--sm{height:34px;padding:0 14px;font-size:12.5px;border-radius:10px}
+    .oc-v2 .oc-btn--block{width:100%;justify-content:center;margin-top:12px}
+
+    .oc-v2 .oc-spinner{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:oc-spin .8s linear infinite}
+    .oc-v2 .oc-spinner--sm{width:12px;height:12px}
+    @@keyframes oc-spin{to{transform:rotate(360deg)}}
+
+    /* Stepper */
+    .oc-v2 .oc-steps{display:flex;list-style:none;margin:0 0 22px;padding:0;gap:0}
+    .oc-v2 .oc-step{display:flex;align-items:center;gap:8px;flex:1;font-size:13px;font-weight:600;color:var(--c-mute);position:relative}
+    .oc-v2 .oc-step__num{width:30px;height:30px;border-radius:50%;background:#F1F5F9;color:var(--c-mute);display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;border:2px solid #F1F5F9;flex:0 0 auto;transition:all .25s}
+    .oc-v2 .oc-step__lbl{white-space:nowrap}
+    .oc-v2 .oc-step__bar{flex:1;height:2px;background:#E5ECF4;margin:0 6px;border-radius:999px}
+    .oc-v2 .oc-step--active{color:var(--c-accent)}
+    .oc-v2 .oc-step--active .oc-step__num{background:linear-gradient(135deg,#F58220,#ffa05a);color:#fff;border-color:#FCD9C0;box-shadow:0 6px 14px -6px rgba(245,130,32,.55)}
+    .oc-v2 .oc-step--done{color:#15803D}
+    .oc-v2 .oc-step--done .oc-step__num{background:var(--c-green);color:#fff;border-color:#BBF7D0}
+    .oc-v2 .oc-step__bar.is-filled{background:linear-gradient(90deg,#16A34A,#22C55E)}
+
+    /* Grid: main + summary */
+    .oc-v2 .oc-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start}
+    .oc-v2 .oc-main{display:flex;flex-direction:column;gap:18px}
+
+    /* Cards */
+    .oc-v2 .oc-card{background:#fff;border:1px solid var(--c-line);border-radius:var(--c-radius);padding:24px;box-shadow:0 10px 28px -22px rgba(15,27,51,.22);animation:oc-fade .3s ease both}
+    .oc-v2 .oc-card__title{margin:0 0 4px;font-size:17px;font-weight:700}
+    .oc-v2 .oc-card__sub{margin:0 0 16px;font-size:13px;color:var(--c-mute)}
+    .oc-v2 .oc-card__title-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap}
+    @@keyframes oc-fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+    /* Search */
+    .oc-v2 .oc-search{display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid var(--c-line);border-radius:12px;padding:0 14px;height:44px;margin-bottom:10px}
+    .oc-v2 .oc-search svg{width:16px;height:16px;color:var(--c-mute);flex:0 0 auto}
+    .oc-v2 .oc-search input{flex:1;border:0;background:transparent;outline:none;font-size:14px;color:var(--c-ink)}
+
+    /* Customer suggestion dropdown */
+    .oc-v2 .oc-suggestions{list-style:none;margin:0 0 14px;padding:6px;background:#fff;border:1px solid var(--c-line);border-radius:14px;box-shadow:0 18px 36px -22px rgba(15,27,51,.3);max-height:340px;overflow:auto}
+    .oc-v2 .oc-suggestion{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer}
+    .oc-v2 .oc-suggestion:hover{background:#F8FAFC}
+    .oc-v2 .oc-suggestion__body{flex:1;min-width:0}
+    .oc-v2 .oc-suggestion__name{font-weight:700;font-size:14px;color:var(--c-ink)}
+    .oc-v2 .oc-suggestion__meta{display:flex;gap:14px;font-size:12px;color:var(--c-mute);margin-top:2px}
+
+    .oc-v2 .oc-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#163A70,#1f4d92);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:0 0 auto}
+    .oc-v2 .oc-avatar--lg{width:54px;height:54px;font-size:18px}
+
+    .oc-v2 .oc-cust-card{display:flex;align-items:center;gap:14px;padding:14px;background:linear-gradient(135deg,#EFF4FB,#fff);border:1px solid #DBE5F2;border-radius:14px;margin-top:6px}
+    .oc-v2 .oc-cust-card__body{flex:1;min-width:0}
+    .oc-v2 .oc-cust-card__name{font-size:15px;font-weight:700;color:var(--c-ink)}
+    .oc-v2 .oc-cust-card__meta{font-size:12.5px;color:var(--c-mute);margin-top:2px}
+
+    .oc-v2 .oc-divider{display:flex;align-items:center;text-align:center;color:var(--c-mute);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:18px 0 12px}
+    .oc-v2 .oc-divider::before,.oc-v2 .oc-divider::after{content:"";flex:1;border-top:1px dashed var(--c-line)}
+    .oc-v2 .oc-divider span{padding:0 12px}
+
+    /* Form */
+    .oc-v2 .oc-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .oc-v2 .oc-field{display:flex;flex-direction:column;gap:6px}
+    .oc-v2 .oc-field--full{grid-column:1 / -1}
+    .oc-v2 .oc-field--inline{flex-direction:row;align-items:center;gap:8px}
+    .oc-v2 .oc-field--inline label{margin:0;font-size:12px}
+    .oc-v2 .oc-field label{font-size:12px;font-weight:700;color:var(--c-ink);letter-spacing:.2px;text-transform:uppercase}
+    .oc-v2 .oc-input{height:44px;padding:0 14px;border:1.5px solid var(--c-line);border-radius:12px;font-size:14px;color:var(--c-ink);outline:none;background:#fff;transition:border-color .2s,box-shadow .2s;font-family:inherit}
+    .oc-v2 .oc-input:focus{border-color:var(--c-accent);box-shadow:0 0 0 3px rgba(245,130,32,.15)}
+    .oc-v2 .oc-input--sm{height:36px;font-size:13px;padding:0 10px;max-width:130px}
+    /* Optional-field marker and helper line — the label is uppercase and bold, so the marker is
+       toned down rather than styled to match it. */
+    .oc-v2 .oc-optional{font-weight:600;color:var(--c-mute);text-transform:none;letter-spacing:0}
+    .oc-v2 .oc-hint{font-size:12px;color:var(--c-mute);line-height:1.4}
+    /* A blocking requirement reads as amber, not as the usual grey help text. */
+    .oc-v2 .oc-hint--warn{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;padding:8px 11px;border-radius:8px;margin:0 0 12px}
+    .oc-v2 .oc-input--ta{height:auto;padding:12px 14px;resize:vertical}
+    .oc-v2 select.oc-input{appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%2364748B' d='M5 6L0 1l1.5-1.5L5 3l3.5-3.5L10 1z'/></svg>") right 12px center/10px 6px no-repeat;padding-right:36px;cursor:pointer}
+
+    /* Empty state */
+    .oc-v2 .oc-empty{text-align:center;padding:40px 24px;border:2px dashed var(--c-line);border-radius:14px;cursor:pointer;transition:border-color .2s,background .2s}
+    .oc-v2 .oc-empty:hover{border-color:var(--c-accent);background:#FFF7EF}
+    .oc-v2 .oc-empty__ico{font-size:42px;margin-bottom:6px}
+    .oc-v2 .oc-empty h3{margin:0 0 4px;font-size:16px;font-weight:700}
+    .oc-v2 .oc-empty p{margin:0;font-size:13px;color:var(--c-mute)}
+
+    /* Line card */
+    .oc-v2 .oc-line-list{display:flex;flex-direction:column;gap:14px}
+    .oc-v2 .oc-line{padding:18px;border:1px solid var(--c-line);border-radius:14px;background:#fff;transition:border-color .2s,box-shadow .2s}
+    .oc-v2 .oc-line:hover{border-color:#cad6e6;box-shadow:0 8px 22px -16px rgba(15,27,51,.25)}
+    .oc-v2 .oc-line__head{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:14px;align-items:center;margin-bottom:14px}
+    .oc-v2 .oc-line__media{width:64px;height:64px;border-radius:12px;background:#F1F5F9;border:1px solid var(--c-line);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:20px;font-weight:800;color:var(--c-mute)}
+    .oc-v2 .oc-line__media img{width:100%;height:100%;object-fit:cover}
+    .oc-v2 .oc-line__title{margin:0;font-size:15px;font-weight:700}
+    .oc-v2 .oc-line__chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+    .oc-v2 .oc-line__head-actions{display:flex;gap:4px}
+    .oc-v2 .oc-icon-btn{width:32px;height:32px;border-radius:8px;background:transparent;border:1px solid var(--c-line);color:var(--c-mute);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+    .oc-v2 .oc-icon-btn:hover{background:#F8FAFC;color:var(--c-ink)}
+    .oc-v2 .oc-icon-btn svg{width:14px;height:14px}
+    .oc-v2 .oc-icon-btn--danger:hover{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
+
+    /* Pills */
+    .oc-v2 .oc-pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px;background:#F1F5F9;color:#475569;border:1px solid var(--c-line)}
+    .oc-v2 .oc-pill--blue{background:#DBEAFE;color:#1D4ED8;border-color:#BFDBFE}
+    .oc-v2 .oc-pill--mute{background:#F1F5F9;color:var(--c-mute);border-color:var(--c-line)}
+
+    /* Attribute cards */
+    .oc-v2 .oc-attr{margin-bottom:14px}
+    .oc-v2 .oc-attr__label{font-size:12px;font-weight:800;color:var(--c-ink);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px}
+    .oc-v2 .oc-radio-cards{display:flex;flex-wrap:wrap;gap:8px}
+    .oc-v2 .oc-radio-cards--ref{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .oc-v2 .oc-radio-card{position:relative;padding:12px 14px;background:#fff;border:1.5px solid var(--c-line);border-radius:12px;cursor:pointer;transition:border-color .2s,box-shadow .2s,background .2s;flex:1 1 140px;min-width:140px;max-width:240px}
+    .oc-v2 .oc-radio-card:hover{border-color:#cad6e6}
+    .oc-v2 .oc-radio-card.is-selected{border-color:var(--c-accent);background:linear-gradient(135deg,#FFFBF5,#FFF7EF);box-shadow:0 0 0 3px rgba(245,130,32,.18)}
+    .oc-v2 .oc-radio-card__title{font-size:13px;font-weight:700;color:var(--c-ink)}
+    .oc-v2 .oc-radio-card__price{font-size:12px;color:var(--c-accent);font-weight:700;margin-top:3px}
+    .oc-v2 .oc-radio-card__sub{font-size:11px;color:var(--c-mute);margin-top:2px}
+    .oc-v2 .oc-radio-card--multi::before{content:"";position:absolute;top:8px;right:8px;width:14px;height:14px;border:2px solid var(--c-line);border-radius:4px;background:#fff}
+    .oc-v2 .oc-radio-card--multi.is-selected::before{background:var(--c-accent);border-color:var(--c-accent);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3'><path d='M5 12l5 5L20 7'/></svg>");background-size:80% 80%;background-position:center;background-repeat:no-repeat}
+
+    /* Line bottom row */
+    .oc-v2 .oc-line__bottom{display:flex;align-items:center;gap:14px;padding-top:14px;border-top:1px dashed var(--c-line);flex-wrap:wrap}
+    .oc-v2 .oc-stepper{display:inline-flex;align-items:center;background:#F8FAFC;border:1px solid var(--c-line);border-radius:10px;overflow:hidden}
+    .oc-v2 .oc-stepper button{width:34px;height:36px;border:0;background:transparent;color:var(--c-ink);font-size:18px;cursor:pointer}
+    .oc-v2 .oc-stepper button:hover{background:#E5ECF4}
+    .oc-v2 .oc-stepper input{width:50px;height:36px;border:0;background:transparent;text-align:center;font-size:14px;font-weight:700;color:var(--c-ink);outline:none;border-left:1px solid var(--c-line);border-right:1px solid var(--c-line);font-family:inherit}
+    .oc-v2 .oc-line__total{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;font-size:13px;color:var(--c-mute)}
+    .oc-v2 .oc-line__total strong{font-size:18px;color:var(--c-ink);font-weight:800;margin-top:2px}
+
+    /* Payment rows */
+    .oc-v2 .oc-pay{display:flex;flex-direction:column;gap:10px}
+    .oc-v2 .oc-pay__row{display:grid;grid-template-columns:1fr 180px auto;gap:10px;align-items:center}
+    .oc-v2 .oc-pay__validate{display:flex;justify-content:space-between;gap:10px;margin-top:12px;padding:10px 14px;background:#F8FAFC;border:1px solid var(--c-line);border-radius:10px;font-size:13px;color:var(--c-mute)}
+    .oc-v2 .oc-pay__validate strong{color:var(--c-ink)}
+    .oc-v2 .oc-pay__validate .mismatch{color:#B91C1C;animation:oc-shake .3s ease}
+    .oc-v2 .oc-pay__validate .mismatch strong{color:#B91C1C}
+    @@keyframes oc-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+
+    /* Review */
+    .oc-v2 .oc-review__block{padding:14px 0;border-bottom:1px dashed var(--c-line)}
+    .oc-v2 .oc-review__block:last-child{border-bottom:0}
+    .oc-v2 .oc-review__block h3{margin:0 0 6px;font-size:11.5px;font-weight:800;color:var(--c-mute);text-transform:uppercase;letter-spacing:.5px}
+    .oc-v2 .oc-review__block p{margin:0;font-size:14px;line-height:1.55;color:var(--c-ink)}
+    .oc-v2 .oc-review__items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+    .oc-v2 .oc-review__items li{display:flex;justify-content:space-between;gap:14px;padding:10px;background:#F8FAFC;border:1px solid var(--c-line);border-radius:10px}
+    .oc-v2 .oc-review__attrs{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;font-size:12px;color:var(--c-mute)}
+    .oc-v2 .oc-review__line-total{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:14px;color:var(--c-mute)}
+    .oc-v2 .oc-review__line-total strong{color:var(--c-ink);font-size:16px;font-weight:800}
+    .oc-v2 .oc-review__pays{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+    .oc-v2 .oc-review__pays li{display:flex;justify-content:space-between;padding:8px 12px;background:#F8FAFC;border:1px solid var(--c-line);border-radius:8px;font-size:13.5px}
+
+    .oc-v2 .oc-success{text-align:center;padding:60px 24px;background:linear-gradient(135deg,#F0FDF4,#fff);border-color:#BBF7D0}
+    .oc-v2 .oc-success__tick{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#16A34A,#22C55E);color:#fff;font-size:34px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:0 14px 28px -10px rgba(34,197,94,.55)}
+    .oc-v2 .oc-success h2{margin:0 0 6px;font-size:22px;font-weight:800}
+    .oc-v2 .oc-success p{margin:0;color:var(--c-mute)}
+
+    /* Alert */
+    .oc-v2 .oc-alert{padding:12px 16px;border-radius:12px;margin-bottom:14px;font-size:13.5px;font-weight:600}
+    .oc-v2 .oc-alert--err{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+
+    /* Sticky summary */
+    .oc-v2 .oc-summary{position:sticky;top:18px}
+    .oc-v2 .oc-summary__card{background:#fff;border:1px solid var(--c-line);border-radius:var(--c-radius);overflow:hidden;box-shadow:0 14px 32px -22px rgba(15,27,51,.25)}
+    .oc-v2 .oc-summary__head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 18px;background:linear-gradient(135deg,#0F1B33,#1E3A6B);color:#fff}
+    .oc-v2 .oc-summary__head h3{margin:0;font-size:14.5px;font-weight:800}
+    .oc-v2 .oc-summary__head .oc-pill--blue{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.2)}
+    .oc-v2 .oc-summary__body{padding:14px 18px}
+    .oc-v2 .oc-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13.5px;color:var(--c-mute);font-weight:500}
+    .oc-v2 .oc-row strong{color:var(--c-ink);font-weight:700}
+    .oc-v2 .oc-row--save,.oc-v2 .oc-row--save strong{color:#16A34A}
+    .oc-v2 .oc-row--gst{border-top:1px dashed var(--c-line);margin-top:4px;padding-top:10px}
+    .oc-v2 .oc-row--total{margin-top:10px;padding:12px 14px;background:linear-gradient(135deg,#FFF7EF,#FFEEDD);border-radius:12px;border:1px solid #F8D7B8}
+    .oc-v2 .oc-row--total span{font-size:13.5px;font-weight:700;color:var(--c-ink)}
+    .oc-v2 .oc-row--total strong{color:var(--c-accent);font-weight:800;font-size:20px;letter-spacing:-.3px}
+
+    /* Picker modal */
+    .oc-modal-bg{position:fixed;inset:0;background:rgba(15,27,51,.5);backdrop-filter:blur(3px);z-index:9998}
+    .oc-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:640px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;background:#fff;border-radius:18px;box-shadow:0 40px 80px -20px rgba(0,0,0,.4);z-index:9999;animation:oc-pop .2s ease}
+    .oc-modal__head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;background:linear-gradient(135deg,#0F1B33,#1E3A6B);color:#fff;border-radius:18px 18px 0 0}
+    .oc-modal__head h3{margin:0;font-size:16px;font-weight:800}
+    .oc-modal__close{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;cursor:pointer;font-size:18px}
+    .oc-modal__body{padding:18px 22px;overflow:auto;flex:1}
+    .oc-muted{color:#64748B;font-size:13px;text-align:center;padding:20px 0}
+    @@keyframes oc-pop{from{opacity:0;transform:translate(-50%,-46%) scale(.97)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
+    .oc-prod-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow:auto}
+    .oc-prod{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px;border:1px solid #E5ECF4;border-radius:12px;cursor:pointer;transition:border-color .2s,background .2s}
+    .oc-prod:hover{border-color:#F58220;background:#FFF7EF}
+    .oc-prod__media{width:56px;height:56px;border-radius:10px;background:#F1F5F9;border:1px solid #E5ECF4;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:18px;font-weight:800;color:#64748B}
+    .oc-prod__media img{width:100%;height:100%;object-fit:cover}
+    .oc-prod__name{font-size:14px;font-weight:700;color:#0F1B33;line-height:1.3}
+    .oc-prod__meta{display:flex;gap:12px;margin-top:3px;font-size:11.5px;color:#64748B;flex-wrap:wrap}
+    .oc-prod__price{font-size:15px;font-weight:800;color:#0F1B33}
+
+    /* ════════════════════════════════════════════════════════════════
+       Customer Search (Step 1) — premium ERP-style dropdown
+       ════════════════════════════════════════════════════════════════ */
+    .oc-v2 .oc-cs{position:relative;margin-bottom:14px}
+    .oc-v2 .oc-cs__search{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--c-line);border-radius:14px;padding:0 16px;height:52px;transition:border-color .2s,box-shadow .2s}
+    .oc-v2 .oc-cs__search:focus-within,.oc-v2 .oc-cs__search.is-open{border-color:var(--c-accent);box-shadow:0 0 0 4px rgba(245,130,32,.12)}
+    .oc-v2 .oc-cs__search svg{width:18px;height:18px;color:var(--c-mute);flex:0 0 auto}
+    .oc-v2 .oc-cs__search input{flex:1;border:0;background:transparent;outline:none;font-size:14.5px;color:var(--c-ink);font-family:inherit}
+    .oc-v2 .oc-cs__search input::placeholder{color:#94A3B8}
+
+    .oc-v2 .oc-cs__panel{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--c-line);border-radius:16px;box-shadow:0 24px 50px -22px rgba(15,27,51,.35);z-index:50;max-height:480px;display:flex;flex-direction:column;overflow:hidden;animation:oc-fade .2s ease}
+    .oc-v2 .oc-cs__group-lbl{padding:10px 16px 6px;font-size:11px;font-weight:800;color:var(--c-mute);text-transform:uppercase;letter-spacing:.6px;background:#F8FAFC;border-bottom:1px solid var(--c-line)}
+    .oc-v2 .oc-cs__list{list-style:none;margin:0;padding:6px;flex:1;overflow:auto;max-height:380px}
+    .oc-v2 .oc-cs__row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .15s}
+    .oc-v2 .oc-cs__row.is-active,.oc-v2 .oc-cs__row:hover{background:#FFF7EF}
+    .oc-v2 .oc-cs__row.is-active{box-shadow:inset 3px 0 0 var(--c-accent)}
+    .oc-v2 .oc-cs__av{width:44px;height:44px;border-radius:50%;object-fit:cover;background:#F1F5F9;flex:0 0 auto}
+    .oc-v2 .oc-cs__av--initials{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#163A70,#1f4d92);color:#fff;font-weight:800;font-size:14px}
+    .oc-v2 .oc-cs__body{min-width:0}
+    .oc-v2 .oc-cs__name{font-weight:700;font-size:14.5px;color:var(--c-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .oc-v2 .oc-cs__name mark,.oc-v2 .oc-cs__meta mark{background:#FEF3C7;color:#92400E;padding:0 2px;border-radius:3px;font-weight:700}
+    .oc-v2 .oc-cs__meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:3px;font-size:12px;color:var(--c-mute)}
+    .oc-v2 .oc-cs__cid{display:inline-flex;align-items:center;font-weight:700;color:var(--c-primary);background:#EFF4FB;border:1px solid #DBE5F2;padding:1px 8px;border-radius:6px;font-size:11px;letter-spacing:.3px}
+    .oc-v2 .oc-cs__foot{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-top:1px solid var(--c-line);background:#F8FAFC;font-size:12px;color:var(--c-mute);font-weight:600}
+    .oc-v2 .oc-cs__add{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0;color:var(--c-accent);font-weight:700;cursor:pointer;font-size:12.5px;font-family:inherit}
+    .oc-v2 .oc-cs__add svg{width:13px;height:13px}
+
+    /* Empty state inside the dropdown */
+    .oc-v2 .oc-cs__empty{padding:40px 24px;text-align:center;color:var(--c-mute)}
+    .oc-v2 .oc-cs__empty-ico{font-size:42px;opacity:.6;margin-bottom:8px}
+    .oc-v2 .oc-cs__empty strong{display:block;font-size:15px;color:var(--c-ink);margin-bottom:4px}
+    .oc-v2 .oc-cs__empty p{margin:0 0 16px;font-size:13px}
+    .oc-v2 .oc-cs__empty em{color:var(--c-ink);font-style:normal;font-weight:700}
+
+    /* Skeleton rows */
+    .oc-v2 .oc-cs__skel{display:flex;align-items:center;gap:12px;padding:12px;animation:oc-shimmer 1.4s linear infinite}
+    .oc-v2 .oc-cs__skel-av{width:40px;height:40px;border-radius:50%;background:#F1F5F9}
+    .oc-v2 .oc-cs__skel-lines{flex:1;display:flex;flex-direction:column;gap:6px}
+    .oc-v2 .oc-cs__skel-lines>div{height:10px;border-radius:6px;background:#F1F5F9}
+    .oc-v2 .oc-cs__skel-lines>div:first-child{width:60%}
+    .oc-v2 .oc-cs__skel-lines>div:last-child{width:40%}
+    @@keyframes oc-shimmer{0%,100%{opacity:.55}50%{opacity:1}}
+
+    .oc-v2 .oc-pill--ok{background:#DCFCE7;color:#15803D;border-color:#BBF7D0}
+    .oc-v2 .oc-pill--off{background:#F1F5F9;color:#94A3B8;border-color:var(--c-line)}
+
+    /* Customer profile card (after selection) */
+    .oc-v2 .oc-prof{background:#fff;border:1px solid var(--c-line);border-radius:14px;overflow:hidden}
+    .oc-v2 .oc-prof__head{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:16px;align-items:center;padding:20px;background:linear-gradient(135deg,#EFF4FB,#fff);border-bottom:1px solid var(--c-line)}
+    .oc-v2 .oc-prof__av{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#F1F5F9}
+    .oc-v2 .oc-prof__av--initials{display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#163A70,#1f4d92);color:#fff;font-weight:800;font-size:22px;letter-spacing:1px}
+    .oc-v2 .oc-prof__title h3{margin:0;font-size:18px;font-weight:800;color:var(--c-ink)}
+    .oc-v2 .oc-prof__meta{display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap}
+    .oc-v2 .oc-prof__cid{font-size:11.5px;font-weight:800;color:var(--c-primary);background:#fff;border:1px solid #DBE5F2;padding:2px 9px;border-radius:6px;letter-spacing:.3px}
+    .oc-v2 .oc-prof__contact{display:flex;gap:14px;margin-top:6px;font-size:12.5px;color:var(--c-mute);flex-wrap:wrap}
+    .oc-v2 .oc-prof__actions{display:flex;gap:8px;flex-wrap:wrap}
+
+    .oc-v2 .oc-prof__stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--c-line)}
+    .oc-v2 .oc-prof__stat{padding:14px 18px;border-right:1px solid var(--c-line)}
+    .oc-v2 .oc-prof__stat:last-child{border-right:0}
+    .oc-v2 .oc-prof__stat-lbl{display:block;font-size:10.5px;font-weight:800;color:var(--c-mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+    .oc-v2 .oc-prof__stat strong{font-size:18px;font-weight:800;color:var(--c-ink);letter-spacing:-.3px}
+
+    .oc-v2 .oc-prof__addr{padding:14px 18px;background:#F8FAFC}
+    .oc-v2 .oc-prof__addr p{margin:4px 0 6px;font-size:14px;color:var(--c-ink);line-height:1.5}
+    .oc-v2 .oc-prof__addr small{font-size:11.5px;color:var(--c-mute)}
+
+    .oc-modal--wide{width:720px}
+
+    /* Responsive */
+    @@media(max-width:980px){
+        .oc-v2 .oc-grid{grid-template-columns:1fr}
+        .oc-v2 .oc-summary{position:static}
+        .oc-v2 .oc-prof__stats{grid-template-columns:1fr 1fr}
+        .oc-v2 .oc-prof__stat{border-bottom:1px solid var(--c-line)}
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       ADD NEW CUSTOMER — Premium SaaS modal (NOT scoped to .oc-v2 so the
+       fixed positioning works outside the page container).
+       ════════════════════════════════════════════════════════════════ */
+    .ac-bg{position:fixed;inset:0;background:rgba(15,27,51,.55);backdrop-filter:blur(8px);z-index:9998;animation:ac-fade .25s ease}
+    .ac{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:860px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;background:#fff;border-radius:20px;box-shadow:0 60px 120px -30px rgba(0,0,0,.45),0 0 0 1px rgba(15,27,51,.06);z-index:9999;overflow:hidden;animation:ac-pop .35s cubic-bezier(.16,1,.3,1)}
+    @@keyframes ac-fade{from{opacity:0}to{opacity:1}}
+    @@keyframes ac-pop{from{opacity:0;transform:translate(-50%,-46%) scale(.96)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
+    /* Header */
+    .ac__head{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:22px 26px;background:linear-gradient(135deg,#0F1B33 0%,#1E3A6B 60%,#2a5fb0 100%);color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
+    .ac__head-left{display:flex;align-items:center;gap:14px;min-width:0}
+    .ac__head-ico{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+    .ac__head-ico svg{width:22px;height:22px;color:#FFB76E}
+    .ac__head h2{margin:0;font-size:19px;font-weight:800;letter-spacing:-.2px}
+    .ac__head p{margin:3px 0 0;font-size:12.5px;color:rgba(255,255,255,.75);font-weight:500}
+    .ac__close{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .2s}
+    .ac__close:hover{background:rgba(255,255,255,.22)}
+    .ac__close svg{width:16px;height:16px}
+
+    /* Body */
+    .ac__body{padding:24px 26px;overflow:auto;flex:1;background:#F8FAFC}
+    .ac__grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+    .ac__col{display:flex;flex-direction:column;gap:16px}
+
+    /* Field + input */
+    .ac-field{display:flex;flex-direction:column;gap:6px}
+    .ac-field label{font-size:11.5px;font-weight:800;color:#0F1B33;letter-spacing:.4px;text-transform:uppercase}
+    .ac-field label .req{color:#F58220;font-weight:800}
+    .ac-field small.ac-msg{font-size:11.5px;color:#64748B;font-weight:500}
+    .ac-field small.ac-msg--err{color:#B91C1C}
+    .ac-field small.ac-msg--warn{color:#B45309}
+
+    .ac-inp{position:relative;display:flex;align-items:center;height:48px;background:#fff;border:1.5px solid #E5ECF4;border-radius:12px;padding:0 8px 0 14px;transition:border-color .2s,box-shadow .2s,background .2s}
+    .ac-inp:focus-within{border-color:#F58220;box-shadow:0 0 0 4px rgba(245,130,32,.14);background:#FFFEFB}
+    .ac-field.is-error .ac-inp{border-color:#EF4444;box-shadow:0 0 0 3px rgba(239,68,68,.12)}
+    .ac-field.is-ok .ac-inp{border-color:#86EFAC}
+    .ac-inp__ico{width:18px;height:18px;color:#64748B;flex:0 0 auto;margin-right:10px;display:inline-flex;align-items:center;justify-content:center}
+    .ac-inp__ico svg{width:18px;height:18px}
+    .ac-inp:focus-within .ac-inp__ico{color:#F58220}
+    .ac-field.is-error .ac-inp__ico{color:#EF4444}
+    .ac-field.is-ok .ac-inp__ico{color:#16A34A}
+    .ac-inp__prefix{font-size:14px;color:#64748B;font-weight:600;margin-right:4px;border-right:1px solid #E5ECF4;padding-right:8px}
+    .ac-inp input,.ac-inp select{flex:1;border:0;background:transparent;outline:none;font-size:14px;color:#0F1B33;font-family:inherit;min-width:0}
+    .ac-inp input::placeholder{color:#94A3B8}
+    .ac-inp select{appearance:none;cursor:pointer;background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%2364748B' d='M5 6L0 1l1.5-1.5L5 3l3.5-3.5L10 1z'/></svg>") right 4px center/10px 6px no-repeat;padding-right:24px}
+    .ac-inp__status{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%}
+    .ac-field.is-ok .ac-inp__status{background:#16A34A;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+    .ac-field.is-error .ac-inp__status{background:#EF4444;box-shadow:0 0 0 3px rgba(239,68,68,.18)}
+
+    /* Inline icon buttons (password show/copy/regen, clear referral) */
+    .ac-inp__btn{width:32px;height:32px;border-radius:8px;background:transparent;border:0;color:#64748B;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,color .15s}
+    .ac-inp__btn:hover{background:#F1F5F9;color:#0F1B33}
+    .ac-inp__btn svg{width:14px;height:14px}
+    .ac-inp--pw input{font-family:'SF Mono','Menlo',monospace;letter-spacing:1.5px}
+
+    /* Customer preview card (top of right col) */
+    .ac-preview{background:linear-gradient(135deg,#0F1B33,#1E3A6B);color:#fff;border-radius:14px;padding:16px;position:relative;overflow:hidden;box-shadow:0 14px 30px -18px rgba(15,27,51,.55)}
+    .ac-preview::before{content:"";position:absolute;inset:0;background:radial-gradient(180px 80px at 100% 0,rgba(245,130,32,.35),transparent 60%);pointer-events:none}
+    .ac-preview__head{display:flex;align-items:center;justify-content:space-between;gap:12px;position:relative}
+    .ac-preview__av{width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#F58220,#ffa05a);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;letter-spacing:1px;box-shadow:0 8px 18px -8px rgba(245,130,32,.65)}
+    .ac-preview__badge{font-size:10px;font-weight:800;letter-spacing:1px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);color:#fff;padding:4px 10px;border-radius:999px}
+    .ac-preview__name{margin-top:12px;font-size:17px;font-weight:800;letter-spacing:-.2px;position:relative}
+    .ac-preview__rows{display:flex;flex-direction:column;gap:6px;margin-top:10px;position:relative}
+    .ac-preview__rows>div{display:flex;align-items:center;gap:8px;font-size:12.5px;color:rgba(255,255,255,.78)}
+    .ac-preview__rows>div strong{color:#fff;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+    /* Toggle switch */
+    .ac-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13.5px;font-weight:700;color:#0F1B33;letter-spacing:.2px;text-transform:none}
+    .ac-toggle input{position:absolute;opacity:0;pointer-events:none}
+    .ac-toggle__track{position:relative;width:38px;height:22px;background:#CBD5E1;border-radius:999px;transition:background .2s;flex:0 0 auto}
+    .ac-toggle__dot{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.15);transition:transform .2s}
+    .ac-toggle input:checked + .ac-toggle__track{background:linear-gradient(135deg,#F58220,#ffa05a)}
+    .ac-toggle input:checked + .ac-toggle__track .ac-toggle__dot{transform:translateX(16px)}
+    .ac-toggle__lbl{user-select:none}
+
+    /* Referral search dropdown */
+    .ac-refs{list-style:none;margin:6px 0 0;padding:6px;background:#fff;border:1px solid #E5ECF4;border-radius:12px;box-shadow:0 14px 28px -16px rgba(15,27,51,.25);max-height:200px;overflow:auto}
+    .ac-refs__row{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-radius:8px;cursor:pointer;transition:background .15s}
+    .ac-refs__row:hover,.ac-refs__row.is-active{background:#FFF7EF;color:#9A3412}
+    .ac-refs__name{font-size:13.5px;font-weight:700;color:#0F1B33}
+    .ac-refs__type{font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+    .ac-refs__empty{padding:18px 12px;text-align:center;font-size:12.5px;color:#64748B}
+
+    /* Inline error banner */
+    .ac-banner{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:12px;margin-bottom:14px;font-size:13px;font-weight:600;animation:ac-pop .25s ease}
+    .ac-banner--err{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+    .ac-banner svg{width:18px;height:18px;flex:0 0 auto;margin-top:1px}
+
+    /* Footer */
+    .ac__foot{position:sticky;bottom:0;z-index:2;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 26px;background:#fff;border-top:1px solid #E5ECF4;box-shadow:0 -10px 24px -20px rgba(15,27,51,.18)}
+    .ac__foot-left{font-size:11.5px;color:#64748B;font-weight:500}
+    .ac__foot-left kbd{font-family:inherit;background:#F1F5F9;border:1px solid #E5ECF4;border-bottom-width:2px;border-radius:6px;padding:2px 7px;font-size:11px;font-weight:700;color:#0F1B33}
+    .ac__foot-right{display:flex;gap:10px}
+    .ac-btn{display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 18px;border-radius:12px;border:1.5px solid transparent;font-size:13.5px;font-weight:700;cursor:pointer;transition:transform .15s,box-shadow .2s,filter .15s,background .2s,border-color .2s}
+    .ac-btn svg{width:16px;height:16px}
+    .ac-btn:hover{transform:translateY(-1px)}
+    .ac-btn[disabled]{opacity:.55;cursor:not-allowed;transform:none;filter:grayscale(.3)}
+    .ac-btn--ghost{background:transparent;color:#64748B;border-color:#E5ECF4}
+    .ac-btn--ghost:hover{background:#F8FAFC;color:#0F1B33}
+    .ac-btn--primary{background:linear-gradient(135deg,#F58220,#ffa05a);color:#fff;box-shadow:0 14px 28px -12px rgba(245,130,32,.6)}
+    .ac-btn--primary:hover{filter:brightness(1.06)}
+
+    /* Success toast */
+    .ac-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99999;display:inline-flex;align-items:center;gap:10px;padding:13px 20px;border-radius:14px;background:linear-gradient(135deg,#16A34A,#22C55E);color:#fff;font-size:14px;font-weight:700;box-shadow:0 24px 50px -16px rgba(22,163,74,.55);animation:ac-toast .3s ease both}
+    .ac-toast svg{width:18px;height:18px;color:#fff;flex:0 0 auto}
+    @@keyframes ac-toast{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+
+    /* Responsive (single column on mobile, full-screen on tiny screens) */
+    @@media(max-width:760px){
+        .ac{width:100vw;height:100vh;max-height:100vh;border-radius:0;top:0;left:0;transform:none;animation:none}
+        .ac__head{border-radius:0;padding:18px 18px}
+        .ac__body{padding:18px}
+        .ac__grid{grid-template-columns:1fr;gap:18px}
+        .ac__foot{padding:12px 18px}
+        .ac__foot-left{display:none}
+    }
+    @@media(max-width:640px){
+        .oc-v2 .oc-form-grid,.oc-v2 .oc-radio-cards--ref{grid-template-columns:1fr 1fr}
+        .oc-v2 .oc-pay__row{grid-template-columns:1fr 120px auto}
+        .oc-v2 .oc-step__lbl{display:none}
+        .oc-v2 .oc-step--active .oc-step__lbl{display:inline}
+    }
+</style>
+
+@code {
+    // ── Wizard state ────────────────────────────────────────────────
+    private CreateOrderRequestV2 req = new()
+    {
+        Payments = new() { new() { Mode = PaymentMode.BankTransfer, Amount = 0 } }
+    };
+    private int step = 1;
+    private bool saving;
+    private string? error;
+
+    // Customer search
+    private string customerQuery = "";
+    private List<CustomerSuggestion>? customerSuggestions;
+    private bool customerSearching;
+    private CancellationTokenSource? customerCts;
+    private bool ddOpen;
+    private int activeIndex;
+    private ElementReference searchInputRef;
+    private ElementReference listRef;
+    private CustomerOrderProfile? selectedProfile;
+
+    // Add-customer modal
+    private bool showAddCustomer;
+    private bool addingCustomer;
+    private string? addCustomerError;
+    private CreateOrderCustomerRequest newCustomer = new();
+    private ElementReference firstFieldRef;
+    private bool showPassword;
+    private bool passwordCopied;
+    private string referralQuery = "";
+    private bool referralDropdownOpen;
+    private string? toastMsg;
+    private int toastTick;
+    private const string AcLastStateKey = "hjc-admin-orders-last-state";
+
+    // Product picker
+    private bool showPicker;
+    private string productQuery = "";
+    private List<ProductPickItem>? productResults;
+    private bool productSearching;
+    private CancellationTokenSource? productCts;
+
+    // Per-line product detail cache (key = ProductId)
+    private readonly Dictionary<Guid, ProductPickDetail> lineDetails = new();
+
+    // Referrals
+    private List<ReferralSourceOption>? referralOptions;
+
+    private static readonly string[] States =
+    {
+        "Maharashtra","Andhra Pradesh","Assam","Bihar","Chhattisgarh","Delhi","Goa","Gujarat",
+        "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Manipur",
+        "Meghalaya","Odisha","Punjab","Rajasthan","Tamil Nadu","Telangana","Uttar Pradesh",
+        "Uttarakhand","West Bengal","Other"
+    };
+
+    private (int, string)[] StepLabels =>
+        new[] { (1, "Customer"), (2, "Products"), (3, "Billing"), (4, "Review"), (5, "Create Order") };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { referralOptions = await Referrals.ListActiveAsync(); }
+        catch { referralOptions = new(); }
+        // Recent customers seed — appears when the dropdown opens with no query.
+        try { customerSuggestions = await Users.RecentCustomersAsync(10); }
+        catch { customerSuggestions = new(); }
+        // Payment modes for a COUNTER order: the configured gateways (Razorpay/Easebuzz per
+        // /admin/payment-settings) plus BankTransfer, Cash and UPI — staff are taking the money in
+        // person here, so cash in hand and a UPI transfer are both real options. The franchise order
+        // form and the Orders filter keep the narrower GetAvailableAsync list.
+        try { allowedPaymentModes = await PaymentModes.GetCounterAsync(); }
+        catch { allowedPaymentModes = new() { PaymentMode.Cash, PaymentMode.Upi, PaymentMode.BankTransfer }; }
+        // Installment configuration — drives whether the section appears + default counts/minimums.
+        try { settings = await Installments.GetSettingsAsync(); }
+        catch { settings = new InstallmentSettingsModel { AllowInstallments = false }; }
+    }
+
+    // ── Installment state ──────────────────────────────────────────────
+    private InstallmentSettingsModel? settings;
+    private InstallmentPlanInput inst = new();
+    private static readonly PaymentMode[] CounterModes =
+        { PaymentMode.Cash, PaymentMode.Upi, PaymentMode.Cheque, PaymentMode.BankTransfer, PaymentMode.RazorpayLink };
+
+    private bool installmentsAllowed => settings?.AllowInstallments == true;
+    private decimal minDownPayment => settings is { MinDownPaymentPercent: > 0 }
+        ? Math.Round(GrandTotal * settings.MinDownPaymentPercent / 100m, 2) : 0m;
+    private decimal InstallmentScheduleSum => inst.DownPayment + inst.Installments.Sum(i => i.Amount);
+    private bool InstallmentMismatch => Math.Abs(InstallmentScheduleSum - GrandTotal) > 1m;
+
+    private void OnInstallmentToggle(ChangeEventArgs e)
+    {
+        inst.Enabled = e.Value is true;
+        if (inst.Enabled && inst.Installments.Count == 0)
+        {
+            // Seed with the configured default count + an auto-distribution from a sensible down payment.
+            var count = Math.Max(1, settings?.DefaultInstallmentCount ?? 3);
+            inst.DownPayment = minDownPayment;
+            SeedInstallments(count);
+            AutoDistribute();
+        }
+    }
+
+    private void OnDownPaymentChanged(ChangeEventArgs e)
+    {
+        inst.DownPayment = decimal.TryParse(e.Value?.ToString(), out var v) ? Math.Max(0, v) : 0;
+    }
+
+    private void OnInstallmentCountChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var n)) return;
+        n = Math.Clamp(n, 1, 36);
+        SeedInstallments(n);
+        AutoDistribute();
+    }
+
+    private void SeedInstallments(int count)
+    {
+        var existing = inst.Installments.ToList();
+        inst.Installments = new();
+        // UTC-kinded midnight today. (DateTime.UtcNow.Date returns Kind=Unspecified, which Npgsql
+        // rejects for a 'timestamp with time zone' column.)
+        var start = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
+        var interval = Math.Max(1, settings?.DefaultIntervalDays ?? 30);
+        for (var i = 0; i < count; i++)
+        {
+            var due = settings?.AutoGenerateDueDates == true
+                ? start.AddDays(interval * (i + 1))
+                : (existing.ElementAtOrDefault(i)?.DueDate ?? start.AddDays(interval * (i + 1)));
+            inst.Installments.Add(new InstallmentLineInput
+            {
+                DueDate = DateTime.SpecifyKind(due, DateTimeKind.Utc),
+                Amount = existing.ElementAtOrDefault(i)?.Amount ?? 0
+            });
+        }
+    }
+
+    private void AddInstallment()
+    {
+        var last = inst.Installments.LastOrDefault()?.DueDate ?? DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc);
+        var interval = Math.Max(1, settings?.DefaultIntervalDays ?? 30);
+        inst.Installments.Add(new InstallmentLineInput { DueDate = DateTime.SpecifyKind(last.AddDays(interval), DateTimeKind.Utc), Amount = 0 });
+    }
+
+    private void RemoveInstallment(int idx)
+    {
+        if (idx >= 0 && idx < inst.Installments.Count && inst.Installments.Count > 1)
+            inst.Installments.RemoveAt(idx);
+    }
+
+    private void SetInstallmentDate(int idx, ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d))
+            inst.Installments[idx].DueDate = DateTime.SpecifyKind(d, DateTimeKind.Utc);
+    }
+
+    private void SetInstallmentAmount(int idx, ChangeEventArgs e)
+    {
+        inst.Installments[idx].Amount = decimal.TryParse(e.Value?.ToString(), out var v) ? Math.Max(0, v) : 0;
+    }
+
+    // Split the (grand total − down payment) evenly across installments; last one absorbs rounding.
+    private void AutoDistribute()
+    {
+        if (inst.Installments.Count == 0) return;
+        var balance = Math.Max(0, GrandTotal - inst.DownPayment);
+        var n = inst.Installments.Count;
+        var per = Math.Round(balance / n, 2);
+        decimal running = 0;
+        for (var i = 0; i < n; i++)
+        {
+            if (i == n - 1) inst.Installments[i].Amount = Math.Round(balance - running, 2);
+            else { inst.Installments[i].Amount = per; running += per; }
+        }
+    }
+
+    private List<PaymentMode> allowedPaymentModes = new();
+
+    // ── Customer search ────────────────────────────────────────────
+    private void OpenDropdown() { ddOpen = true; activeIndex = 0; }
+
+    private async Task OnCustomerSearch()
+    {
+        ddOpen = true;
+        activeIndex = 0;
+        customerCts?.Cancel();
+        customerCts = new CancellationTokenSource();
+        var ct = customerCts.Token;
+        var q = (customerQuery ?? "").Trim();
+
+        if (q.Length == 0)
+        {
+            // Empty → reload recents (don't clear the dropdown).
+            try { customerSuggestions = await Users.RecentCustomersAsync(10); } catch { }
+            return;
+        }
+        if (q.Length < 2) return; // 1 char → wait for second
+        customerSearching = true;
+        try
+        {
+            await Task.Delay(300, ct);
+            if (ct.IsCancellationRequested) return;
+            customerSuggestions = await Users.SearchCustomersAsync(q, 15);
+        }
+        catch (OperationCanceledException) { }
+        finally { if (!ct.IsCancellationRequested) customerSearching = false; }
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (!ddOpen || customerSuggestions == null) return;
+        var max = customerSuggestions.Count - 1;
+        if (max < 0) return;
+        switch (e.Key)
+        {
+            case "ArrowDown": activeIndex = Math.Min(max, activeIndex + 1); break;
+            case "ArrowUp":   activeIndex = Math.Max(0, activeIndex - 1); break;
+            case "Enter":     await SelectCustomer(customerSuggestions[activeIndex]); break;
+            case "Escape":    ddOpen = false; break;
+        }
+    }
+
+    private async Task SelectCustomer(CustomerSuggestion c)
+    {
+        ddOpen = false;
+        customerQuery = "";
+        // Pull the rich profile (orders/lifetime/last + default address).
+        try { selectedProfile = await Users.GetCustomerOrderProfileAsync(c.Id); }
+        catch { selectedProfile = null; }
+        if (selectedProfile == null) return;
+
+        req.UserId = selectedProfile.Id;
+        req.StudentName = selectedProfile.FullName;
+        req.StudentEmail = selectedProfile.Email;
+        req.StudentPhone = selectedProfile.Phone ?? "";
+
+        // Auto-populate the Billing step's fields from the customer's default address.
+        if (!string.IsNullOrEmpty(selectedProfile.Address)) req.BillingAddress = selectedProfile.Address;
+        if (!string.IsNullOrEmpty(selectedProfile.City))    req.BillingCity    = selectedProfile.City;
+        if (!string.IsNullOrEmpty(selectedProfile.State))   req.BillingState   = selectedProfile.State!;
+        if (!string.IsNullOrEmpty(selectedProfile.Pincode)) req.BillingPincode = selectedProfile.Pincode;
+        if (!string.IsNullOrEmpty(selectedProfile.GstNumber)) req.GstNumber    = selectedProfile.GstNumber;
+        SyncPaymentAmount();
+    }
+
+    private void ClearCustomer()
+    {
+        req.UserId = null;
+        req.StudentName = "";
+        req.StudentEmail = null;
+        req.StudentPhone = "";
+        req.BillingAddress = null; req.BillingCity = null;
+        req.BillingPincode = null; req.GstNumber = null;
+        selectedProfile = null;
+        ddOpen = true;
+        activeIndex = 0;
+    }
+
+    // Wrap the matching substring in <mark> so the user sees what matched.
+    private string Highlight(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        var q = (customerQuery ?? "").Trim();
+        if (q.Length < 2) return System.Net.WebUtility.HtmlEncode(text);
+        var encoded = System.Net.WebUtility.HtmlEncode(text);
+        var encodedQ = System.Net.WebUtility.HtmlEncode(q);
+        var idx = encoded.IndexOf(encodedQ, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0) return encoded;
+        return encoded[..idx] + "<mark>" + encoded.Substring(idx, encodedQ.Length) + "</mark>" + encoded[(idx + encodedQ.Length)..];
+    }
+
+    private static string FriendlyId(Guid id) => $"RIO-{id.ToString("N")[..6].ToUpperInvariant()}";
+
+    // ── Add Customer modal ────────────────────────────────────────
+    private async Task OpenAddCustomer()
+    {
+        addCustomerError = null;
+        var lastState = "Maharashtra";
+        try { lastState = await JS.InvokeAsync<string>("localStorage.getItem", AcLastStateKey) ?? "Maharashtra"; } catch { }
+        if (string.IsNullOrWhiteSpace(lastState)) lastState = "Maharashtra";
+
+        var typedDigits = new string((customerQuery ?? "").Where(char.IsDigit).ToArray());
+        newCustomer = new CreateOrderCustomerRequest
+        {
+            // Pre-fill mobile with whatever digits the admin already typed in the search box.
+            FullName = "",
+            Phone = typedDigits.Length > 0 && typedDigits.Length <= 10 ? typedDigits : "",
+            State = lastState,
+            Password = GeneratePassword(),
+        };
+        referralQuery = "";
+        referralDropdownOpen = false;
+        showPassword = false;
+        passwordCopied = false;
+        showAddCustomer = true;
+        ddOpen = false;
+        await Task.Yield();
+        try { await firstFieldRef.FocusAsync(); } catch { }
+    }
+
+    private void CloseAddCustomer()
+    {
+        showAddCustomer = false;
+        addingCustomer = false;
+        referralDropdownOpen = false;
+    }
+
+    // ── Auto-format input handlers ───────────────────────────────
+    private void OnNameInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? string.Empty;
+        // Title-case each word, preserve multiple spaces while typing
+        var parts = raw.Split(' ');
+        for (var i = 0; i < parts.Length; i++)
+            if (parts[i].Length > 0)
+                parts[i] = char.ToUpper(parts[i][0]) + (parts[i].Length > 1 ? parts[i][1..] : string.Empty);
+        newCustomer.FullName = string.Join(' ', parts);
+    }
+
+    private void OnPhoneInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? string.Empty;
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length > 10) digits = digits[..10];
+        newCustomer.Phone = digits;
+    }
+
+    private void OnEmailInput(ChangeEventArgs e)
+    {
+        var raw = (e.Value?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
+        newCustomer.Email = raw;
+    }
+
+    private void OnDobChange(ChangeEventArgs e)
+    {
+        var s = e.Value?.ToString();
+        newCustomer.DateOfBirth = DateOnly.TryParse(s, out var d) ? d : null;
+    }
+
+    // ── Password generator: 8-char strong password, avoids ambiguous chars ──
+    private static string GeneratePassword()
+    {
+        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string lower = "abcdefghijkmnpqrstuvwxyz";
+        const string digits = "23456789";
+        const string symbols = "@#$%&";
+        var rnd = Random.Shared;
+        var chars = new char[]
+        {
+            upper[rnd.Next(upper.Length)],
+            upper[rnd.Next(upper.Length)],
+            lower[rnd.Next(lower.Length)],
+            lower[rnd.Next(lower.Length)],
+            digits[rnd.Next(digits.Length)],
+            digits[rnd.Next(digits.Length)],
+            digits[rnd.Next(digits.Length)],
+            symbols[rnd.Next(symbols.Length)],
+        };
+        // Fisher–Yates shuffle
+        for (var i = chars.Length - 1; i > 0; i--)
+        {
+            var j = rnd.Next(i + 1);
+            (chars[i], chars[j]) = (chars[j], chars[i]);
+        }
+        return new string(chars);
+    }
+
+    private void RegeneratePassword()
+    {
+        newCustomer.Password = GeneratePassword();
+        passwordCopied = false;
+    }
+
+    private async Task CopyPassword()
+    {
+        if (string.IsNullOrEmpty(newCustomer.Password)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", newCustomer.Password); } catch { }
+        passwordCopied = true;
+        StateHasChanged();
+        await Task.Delay(1400);
+        passwordCopied = false;
+        StateHasChanged();
+    }
+
+    // ── Referral search dropdown ─────────────────────────────────
+    private void OnReferralInput(ChangeEventArgs e)
+    {
+        referralQuery = e.Value?.ToString() ?? string.Empty;
+        referralDropdownOpen = true;
+    }
+
+    private void PickReferral(ReferralSourceOption r)
+    {
+        newCustomer.ReferralSourceId = r.Id;
+        referralQuery = r.Name;
+        referralDropdownOpen = false;
+    }
+
+    private void ClearReferral()
+    {
+        newCustomer.ReferralSourceId = null;
+        referralQuery = "";
+    }
+
+    private IEnumerable<ReferralSourceOption> FilteredReferrals
+    {
+        get
+        {
+            if (referralOptions == null) return Enumerable.Empty<ReferralSourceOption>();
+            if (string.IsNullOrWhiteSpace(referralQuery)) return referralOptions;
+            var q = referralQuery.Trim();
+            return referralOptions.Where(r =>
+                (r.Name?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || r.Type.ToString().Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    // ── Inline validation ────────────────────────────────────────
+    private string? NameError =>
+        string.IsNullOrEmpty(newCustomer.FullName) ? null
+        : newCustomer.FullName.Trim().Length < 2 ? "Enter the customer's full name."
+        : null;
+
+    private string? PhoneError =>
+        string.IsNullOrEmpty(newCustomer.Phone) ? null
+        : newCustomer.Phone.Length != 10 ? "Mobile must be exactly 10 digits."
+        : null;
+
+    private string? EmailError =>
+        string.IsNullOrEmpty(newCustomer.Email) ? null
+        : !IsValidEmail(newCustomer.Email) ? "Enter a valid email address."
+        : null;
+
+    private static bool IsValidEmail(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        var at = s.IndexOf('@');
+        return at > 0 && at < s.Length - 3 && s.IndexOf('.', at) > 0 && !s.Contains(' ');
+    }
+
+    private bool CanSubmit =>
+        !string.IsNullOrWhiteSpace(newCustomer.FullName) && newCustomer.FullName.Trim().Length >= 2
+        && newCustomer.Phone?.Length == 10
+        && IsValidEmail(newCustomer.Email)
+        // Address, city and PIN are mandatory here too: this customer is being created mid-order, and
+        // the order copies these straight into its billing address. Letting them through blank just
+        // moves the missing-address problem to Dispatch.
+        && !string.IsNullOrWhiteSpace(newCustomer.Address)
+        && !string.IsNullOrWhiteSpace(newCustomer.City)
+        && IsValidPincode(newCustomer.Pincode)
+        && (!newCustomer.IsBusinessInvoice || !string.IsNullOrWhiteSpace(newCustomer.GstNumber));
+
+    private string? PreviewInitials
+    {
+        get
+        {
+            var name = newCustomer.FullName ?? "";
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2) return $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+            return parts[0].Length >= 2 ? parts[0][..2].ToUpperInvariant() : parts[0].ToUpperInvariant();
+        }
+    }
+
+    // ── Keyboard shortcuts (Esc / Ctrl+Enter) ────────────────────
+    private async Task OnModalKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { CloseAddCustomer(); return; }
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey) && CanSubmit && !addingCustomer)
+        {
+            await SaveNewCustomer();
+        }
+    }
+
+    // ── Toast helper ─────────────────────────────────────────────
+    private async Task ShowToastAsync(string message)
+    {
+        toastMsg = message;
+        var tick = ++toastTick;
+        StateHasChanged();
+        await Task.Delay(1800);
+        if (toastTick == tick) { toastMsg = null; StateHasChanged(); }
+    }
+
+    private async Task SaveNewCustomer()
+    {
+        addCustomerError = null;
+        if (!CanSubmit) return;
+
+        addingCustomer = true;
+        try
+        {
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            Guid actorId = Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var aid) ? aid : Guid.Empty;
+            var actorName = auth.User.Identity?.Name ?? "admin";
+            var (ok, err, newId, dup) = await Users.CreateCustomerForOrderAsync(newCustomer, actorId, actorName);
+            if (!ok)
+            {
+                addCustomerError = err ?? "Could not create customer.";
+                // Duplicate? — auto-select the existing customer instead of dead-ending the admin.
+                if (dup?.Existing?.Id != null && dup.Existing.Id != Guid.Empty)
+                {
+                    showAddCustomer = false;
+                    var existing = await Users.GetCustomerOrderProfileAsync(dup.Existing.Id);
+                    if (existing != null)
+                    {
+                        await SelectCustomer(new CustomerSuggestion(
+                            existing.Id, existing.FullName, existing.Initials, existing.AvatarUrl,
+                            existing.Email, existing.Phone, null, null, existing.TotalOrders,
+                            existing.IsActive, existing.JoinedDate));
+                        await ShowToastAsync($"Customer already exists — {existing.FullName} selected");
+                    }
+                }
+                return;
+            }
+
+            // Persist the chosen state so it pre-selects on the next "Add" click.
+            try { await JS.InvokeVoidAsync("localStorage.setItem", AcLastStateKey, newCustomer.State); } catch { }
+
+            // Push the modal-picked referral onto the order's referral pick (Step 3).
+            if (newCustomer.ReferralSourceId.HasValue)
+                req.ReferralSourceId = newCustomer.ReferralSourceId;
+
+            // Success → toast first, then close + auto-select after a beat.
+            await ShowToastAsync("✓ Customer created successfully");
+            await Task.Delay(900);
+            showAddCustomer = false;
+
+            var profile = await Users.GetCustomerOrderProfileAsync(newId);
+            if (profile != null)
+            {
+                await SelectCustomer(new CustomerSuggestion(
+                    profile.Id, profile.FullName, profile.Initials, profile.AvatarUrl,
+                    profile.Email, profile.Phone, null, null, profile.TotalOrders,
+                    profile.IsActive, profile.JoinedDate));
+            }
+        }
+        catch (Exception ex) { addCustomerError = ex.Message; }
+        finally { addingCustomer = false; }
+    }
+
+    // ── Product picker ─────────────────────────────────────────────
+    private async Task OpenProductPicker()
+    {
+        showPicker = true;
+        productQuery = "";
+        await OnProductSearch();
+    }
+
+    private void ClosePicker() => showPicker = false;
+
+    private async Task OnProductSearch()
+    {
+        productCts?.Cancel();
+        productCts = new CancellationTokenSource();
+        var ct = productCts.Token;
+        productSearching = true;
+        try
+        {
+            await Task.Delay(200, ct);
+            if (ct.IsCancellationRequested) return;
+            productResults = await Orders.SearchProductsAsync(productQuery, 20);
+        }
+        catch (OperationCanceledException) { }
+        finally { if (!ct.IsCancellationRequested) productSearching = false; }
+    }
+
+    private async Task SelectProduct(ProductPickItem p)
+    {
+        ClosePicker();
+        // Load detail (modes + attributes)
+        if (!lineDetails.ContainsKey(p.Id))
+        {
+            var d = await Orders.GetProductPickDetailAsync(p.Id);
+            if (d != null) lineDetails[p.Id] = d;
+        }
+        var detail = lineDetails.GetValueOrDefault(p.Id);
+        var firstMode = detail?.Modes.FirstOrDefault();
+        var preselected = detail?.Attributes
+            .SelectMany(a => a.Values.Where(v => v.IsPreSelected).Select(v => v.Id))
+            .ToList() ?? new();
+        req.Items.Add(new CreateOrderLineV2
+        {
+            ProductId = p.Id,
+            ProductModeId = firstMode?.Id,
+            Quantity = 1,
+            SelectedAttributeValueIds = preselected,
+        });
+        SyncPaymentAmount();
+        StateHasChanged();
+    }
+
+    private void SetMode(int idx, Guid modeId)
+    {
+        req.Items[idx].ProductModeId = modeId;
+        SyncPaymentAmount();
+    }
+
+    private static bool IsMulti(string controlType) =>
+        controlType?.Equals("Checkboxes", StringComparison.OrdinalIgnoreCase) == true;
+
+    private void ToggleAttribute(int lineIdx, Guid mappingId, Guid valueId, bool multi)
+    {
+        var line = req.Items[lineIdx];
+        var detail = lineDetails.GetValueOrDefault(line.ProductId);
+        var group = detail?.Attributes.FirstOrDefault(a => a.MappingId == mappingId);
+        if (group == null) return;
+        var siblingIds = group.Values.Select(v => v.Id).ToHashSet();
+
+        if (multi)
+        {
+            if (line.SelectedAttributeValueIds.Contains(valueId)) line.SelectedAttributeValueIds.Remove(valueId);
+            else line.SelectedAttributeValueIds.Add(valueId);
+        }
+        else
+        {
+            // Drop any other selection from this group, then add the chosen one
+            line.SelectedAttributeValueIds = line.SelectedAttributeValueIds.Where(id => !siblingIds.Contains(id)).ToList();
+            line.SelectedAttributeValueIds.Add(valueId);
+        }
+        SyncPaymentAmount();
+    }
+
+    private void SetQty(int idx, int q)
+    {
+        req.Items[idx].Quantity = Math.Max(1, q);
+        SyncPaymentAmount();
+    }
+
+    private void DuplicateLine(int idx)
+    {
+        var src = req.Items[idx];
+        req.Items.Insert(idx + 1, new CreateOrderLineV2
+        {
+            ProductId = src.ProductId,
+            ProductModeId = src.ProductModeId,
+            Quantity = src.Quantity,
+            Discount = src.Discount,
+            SelectedAttributeValueIds = new List<Guid>(src.SelectedAttributeValueIds),
+        });
+        SyncPaymentAmount();
+    }
+
+    private void RemoveLine(int idx)
+    {
+        req.Items.RemoveAt(idx);
+        SyncPaymentAmount();
+    }
+
+    // ── Pricing engine (mirrors what the server will compute) ─────────────
+    private decimal LineBaseUnitPrice(CreateOrderLineV2 line, ProductPickDetail? d)
+    {
+        if (d == null) return 0;
+        // Mode is ADDITIVE — base + selected-mode add-on (0 when no mode selected).
+        var modeAddOn = line.ProductModeId.HasValue
+            ? (d.Modes.FirstOrDefault(m => m.Id == line.ProductModeId.Value)?.Price ?? 0m)
+            : 0m;
+        var basePrice = d.SellingPrice + modeAddOn;
+        decimal adjust = 0;
+        foreach (var attr in d.Attributes)
+        foreach (var v in attr.Values)
+            if (line.SelectedAttributeValueIds.Contains(v.Id))
+                adjust += v.PriceAdjustmentUsePercentage
+                    ? Math.Round(basePrice * v.PriceAdjustment / 100m, 2)
+                    : v.PriceAdjustment;
+        return Math.Max(0m, basePrice + adjust);
+    }
+
+    private decimal LineTotal(CreateOrderLineV2 line, ProductPickDetail? d)
+    {
+        var unit = LineBaseUnitPrice(line, d);
+        var lineGross = unit * line.Quantity;
+        var discount = Math.Clamp(line.Discount, 0m, lineGross);
+        return lineGross - discount;
+    }
+
+    private decimal Subtotal => req.Items.Sum(l => LineBaseUnitPrice(l, lineDetails.GetValueOrDefault(l.ProductId)) * l.Quantity);
+    private decimal TotalDiscount => req.Items.Sum(l => Math.Clamp(l.Discount, 0m, LineBaseUnitPrice(l, lineDetails.GetValueOrDefault(l.ProductId)) * l.Quantity));
+    private decimal GrandTotal => req.Items.Sum(l => LineTotal(l, lineDetails.GetValueOrDefault(l.ProductId)));
+    private decimal GstAmount => Math.Round(GrandTotal * 18m / 118m, 2);
+    private decimal PaymentSum => req.Payments.Sum(p => p.Amount);
+    private string PaymentMismatchClass => Math.Abs(PaymentSum - GrandTotal) > 1m ? "mismatch" : "";
+
+    // ── Payment splits ─────────────────────────────────────────────
+    private void AddPaymentRow()
+    {
+        req.Payments.Add(new CreateOrderPaymentV2 { Mode = PaymentMode.BankTransfer, Amount = Math.Max(0, GrandTotal - PaymentSum) });
+    }
+
+    private void RemovePaymentRow(int idx)
+    {
+        if (req.Payments.Count <= 1) return;
+        req.Payments.RemoveAt(idx);
+    }
+
+    private void SetPaymentMode(int idx, ChangeEventArgs e)
+    {
+        if (Enum.TryParse<PaymentMode>(e.Value?.ToString(), out var m))
+            req.Payments[idx].Mode = m;
+    }
+
+    private void SetPaymentAmount(int idx, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var a))
+            req.Payments[idx].Amount = a;
+    }
+
+    // Keep first-row payment auto-matched to total while user is still mid-wizard,
+    // unless they've added a split (then they own the amounts).
+    private void SyncPaymentAmount()
+    {
+        if (req.Payments.Count == 1) req.Payments[0].Amount = GrandTotal;
+    }
+
+    // ── Navigation ─────────────────────────────────────────────────
+    /// <summary>Six digits, not starting with zero — the same rule the order-address editor applies.</summary>
+    private static bool IsValidPincode(string? pin) =>
+        !string.IsNullOrWhiteSpace(pin)
+        && System.Text.RegularExpressions.Regex.IsMatch(pin.Trim(), @"^[1-9][0-9]{5}$");
+
+    /// <summary>Street, city and PIN all present — enough to actually put on a courier label.</summary>
+    private bool HasDeliverableAddress =>
+        !string.IsNullOrWhiteSpace(req.BillingAddress)
+        && !string.IsNullOrWhiteSpace(req.BillingCity)
+        && IsValidPincode(req.BillingPincode);
+
+    private bool CanGoForward()
+    {
+        return step switch
+        {
+            1 => selectedProfile != null,
+            2 => req.Items.Count > 0 && req.Items.All(l =>
+                {
+                    var d = lineDetails.GetValueOrDefault(l.ProductId);
+                    if (d == null) return false;
+                    // Every required attribute group must have a selection
+                    return d.Attributes.Where(a => a.IsRequired).All(a => a.Values.Any(v => l.SelectedAttributeValueIds.Contains(v.Id)));
+                }),
+            // Step 3 also demands a deliverable address. A counter order almost always ships
+            // something, and an order captured without street/city/PIN reaches Dispatch with nothing
+            // to put on the courier label — which is only discovered days later, at packing time.
+            3 => req.ReferralSourceId.HasValue
+                 && HasDeliverableAddress
+                 && (
+                    (inst.Enabled && !InstallmentMismatch && inst.Installments.Count > 0 && inst.DownPayment >= minDownPayment)
+                    || (!inst.Enabled && req.Payments.Count > 0 && Math.Abs(PaymentSum - GrandTotal) <= 1m)
+                 ),
+            4 => true,
+            _ => false,
+        };
+    }
+
+    private void GoBack()
+    {
+        if (step > 1) step--;
+        error = null;
+    }
+
+    private async Task GoForward()
+    {
+        error = null;
+        if (step < 4)
+        {
+            if (!CanGoForward())
+            {
+                error = step switch
+                {
+                    1 => "Please select a customer (or add a new one) before continuing.",
+                    2 => "Please add at least one product and make sure required attributes are selected.",
+                    3 => inst.Enabled
+                        ? "Please select a referral source and ensure the down payment + installments equal the grand total (and meet the minimum down payment)."
+                        : "Please select a referral source and ensure the payment split equals the grand total.",
+                    _ => "Please complete this step before continuing.",
+                };
+                return;
+            }
+            step++;
+            return;
+        }
+
+        // step == 4 → submit
+        saving = true;
+        try
+        {
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            Guid? actorId = Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var aid) ? aid : null;
+            var actorName = auth.User.Identity?.Name ?? "admin";
+
+            // Online gateway? Create the order as Pending so it isn't marked Paid until the gateway
+            // callback confirms payment. (Default Status is Confirmed → PaymentStatus.Success.)
+            // Installment orders are counter-collected (down payment now), so they never take the
+            // gateway path and stay Confirmed (access granted on the down payment).
+            if (inst.Enabled)
+            {
+                req.Installment = inst;
+                req.Status = OrderStatus.Confirmed;
+            }
+            else if (req.Payments.Any(p => p.Mode is PaymentMode.Razorpay or PaymentMode.Easebuzz))
+            {
+                req.Status = OrderStatus.Pending;
+            }
+
+            var orderId = await Orders.CreateOrderV2Async(req, actorId, actorName);
+
+            // If an online gateway mode was chosen, open the gateway-launch page in a new tab to
+            // collect payment (order is Pending; the gateway callback marks it Paid). Other modes
+            // (BankTransfer/Cash/Cheque) just record the order as before. Installment orders never
+            // use the gateway path.
+            var onlineMode = req.Payments.Select(p => p.Mode)
+                .FirstOrDefault(m => m is PaymentMode.Razorpay or PaymentMode.Easebuzz);
+            var hasOnline = !inst.Enabled && req.Payments.Any(p => p.Mode is PaymentMode.Razorpay or PaymentMode.Easebuzz);
+
+            step = 5;
+            StateHasChanged();
+            await Task.Delay(700);
+
+            if (hasOnline)
+            {
+                var detail = await Orders.GetDetailAsync(orderId);
+                var orderNo = detail?.OrderNumber;
+                if (!string.IsNullOrWhiteSpace(orderNo))
+                {
+                    var gw = onlineMode == PaymentMode.Easebuzz ? "easebuzz" : "razorpay";
+                    var url = $"/admin/orders/pay?order={Uri.EscapeDataString(orderNo)}&gateway={gw}"
+                            + $"&name={Uri.EscapeDataString(req.StudentName ?? "")}"
+                            + $"&email={Uri.EscapeDataString(req.StudentEmail ?? "")}"
+                            + $"&phone={Uri.EscapeDataString(req.StudentPhone ?? "")}";
+                    try { await JS.InvokeVoidAsync("window.open", url, "_blank"); } catch { }
+                }
+                // Admin stays on the order details to watch the payment land.
+                Nav.NavigateTo($"/admin/orders/{orderId}");
+                return;
+            }
+
+            Nav.NavigateTo($"/admin/orders/{orderId}");
+        }
+        catch (Exception ex)
+        {
+            // EF wraps DB failures in a generic DbUpdateException whose Message is
+            // "An error occurred while saving the entity changes. See the inner exception…".
+            // Walk to the innermost exception so the actual cause is shown.
+            var root = ex;
+            while (root.InnerException != null) root = root.InnerException;
+            error = root.Message;
+            saving = false;
+        }
+    }
+}

@@ -1,0 +1,153 @@
+@using RioCommerce.Core.DTOs.Installments
+@using RioCommerce.Core.Entities
+@inject IInstallmentService Installments
+@inject ToastService Toast
+@inject AuthenticationStateProvider AuthProvider
+
+@if (plan != null)
+{
+    <div class="data-card" style="margin-top:18px;padding:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+            <h3 style="margin:0">Installment Plan</h3>
+            <span class="status @(plan.IsCompleted ? "status--success" : "status--warning")">
+                <span class="dot"></span>@plan.StatusLabel
+            </span>
+        </div>
+
+        <div class="kpi-grid" style="margin-top:14px">
+            <div class="kpi-card"><div class="kpi-card__label">Total</div><div class="kpi-card__value">₹@plan.TotalAmount.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Down payment</div><div class="kpi-card__value">₹@plan.DownPayment.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Paid so far</div><div class="kpi-card__value" style="color:var(--green)">₹@plan.PaidAmount.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Outstanding</div><div class="kpi-card__value" style="color:@(plan.OutstandingAmount > 0 ? "var(--warning)" : "var(--green)")">₹@plan.OutstandingAmount.ToString("N0")</div></div>
+        </div>
+
+        <div class="table-wrap" style="margin-top:14px"><table>
+            <thead><tr><th>#</th><th>Due date</th><th>Amount</th><th>Paid</th><th>Pending</th><th>Status</th><th>Collected</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var i in plan.Installments)
+                {
+                    <tr class="@(i.IsOverdue ? "row--overdue" : "")">
+                        <td>@i.Number</td>
+                        <td style="font-size:13px">@i.DueDate.ToLocalTime().ToString("dd MMM yyyy")@if (i.IsOverdue) { <span style="color:var(--danger,#DC2626);font-weight:600"> · overdue</span> }</td>
+                        <td>₹@i.Amount.ToString("N0")</td>
+                        <td>₹@i.PaidAmount.ToString("N0")</td>
+                        <td>₹@i.PendingAmount.ToString("N0")</td>
+                        <td>@{ var sb = StatusBadgeInfo(i.Status); }<span class="status @sb.cls">@sb.txt</span></td>
+                        <td style="font-size:12px;color:var(--gray-500)">@(i.PaidAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")@(i.PaidVia.HasValue ? $" · {i.PaidVia}" : "")</td>
+                        <td>
+                            @if (i.Status != InstallmentStatus.Paid && plan.NextDue?.Id == i.Id)
+                            {
+                                <button class="btn btn-primary btn-sm" @onclick="() => OpenCollect(i)">💰 Pay this</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+
+        @if (!plan.IsCompleted && plan.NextDue != null)
+        {
+            <div style="margin-top:14px">
+                <button class="btn btn-primary" @onclick="() => OpenCollect(plan.NextDue!)">💰 Pay Next Installment (#@plan.NextDue.Number · ₹@plan.NextDue.PendingAmount.ToString("N0"))</button>
+            </div>
+        }
+        else if (plan.IsCompleted)
+        {
+            <div class="inline-alert inline-alert--ok" style="margin-top:14px">
+                Plan completed on @plan.CompletedAt?.ToLocalTime().ToString("dd MMM yyyy"). Final tax invoice has been generated.
+            </div>
+        }
+    </div>
+
+    <Modal @bind-Visible="showCollect" Title="@($"Collect installment #{collectTarget?.Number}")" Size="sm">
+        <ChildContent>
+            @if (collectTarget != null)
+            {
+                <div class="form-grid" style="display:grid;gap:12px">
+                    <div class="form-group" style="margin:0">
+                        <label class="form-label">Amount (₹)</label>
+                        <input type="number" step="0.01" min="0" class="form-input" @bind="collectReq.Amount" />
+                        <small style="color:var(--gray-400)">Pending on this installment: ₹@collectTarget.PendingAmount.ToString("N0")</small>
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label class="form-label">Mode</label>
+                        <select class="form-input" @bind="collectReq.Mode">
+                            @foreach (var m in CounterModes) { <option value="@m">@m</option> }
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin:0">
+                        <label class="form-label">Reference (UTR / cheque / receipt no)</label>
+                        <input class="form-input" @bind="collectReq.Reference" />
+                    </div>
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-ghost" @onclick="() => showCollect = false">Cancel</button>
+            <button class="btn btn-primary" @onclick="Collect" disabled="@collecting">@(collecting ? "Saving…" : "Collect payment")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid OrderId { get; set; }
+    /// <summary>Raised after a successful collection so the parent OrderView can refresh its own data.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private InstallmentPlanView? plan;
+    private bool showCollect, collecting;
+    private InstallmentRow? collectTarget;
+    private CollectInstallmentRequest collectReq = new();
+    private Guid actorId;
+    private string actorName = "admin";
+
+    private static readonly PaymentMode[] CounterModes =
+        { PaymentMode.Cash, PaymentMode.Upi, PaymentMode.Cheque, PaymentMode.BankTransfer, PaymentMode.RazorpayLink };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        var u = auth.User;
+        actorId = Guid.TryParse(u.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : Guid.Empty;
+        actorName = u.Identity?.Name ?? "admin";
+        await Load();
+    }
+
+    private async Task Load() => plan = await Installments.GetPlanAsync(OrderId);
+
+    private void OpenCollect(InstallmentRow row)
+    {
+        collectTarget = row;
+        collectReq = new CollectInstallmentRequest { InstallmentId = row.Id, Amount = row.PendingAmount, Mode = PaymentMode.Cash };
+        showCollect = true;
+    }
+
+    private async Task Collect()
+    {
+        if (collectTarget == null) return;
+        collecting = true;
+        try
+        {
+            var res = await Installments.CollectAsync(collectReq, actorId, actorName);
+            if (!res.Ok) { Toast.Error(res.Error ?? "Collection failed."); return; }
+            showCollect = false;
+            Toast.Success(res.PlanCompleted
+                ? "Final installment collected — plan complete, invoice generated."
+                : $"Payment collected. ₹{res.Outstanding:N0} remaining.");
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+        finally { collecting = false; }
+    }
+
+    private (string cls, string txt) StatusBadgeInfo(InstallmentStatus s) => s switch
+    {
+        InstallmentStatus.Paid => ("status--success", "Paid"),
+        InstallmentStatus.PartiallyPaid => ("status--warning", "Partially Paid"),
+        _ => ("status--neutral", "Pending")
+    };
+}
+
+<style>
+    .row--overdue td { background: #FEF2F2; }
+</style>

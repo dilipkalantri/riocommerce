@@ -1,0 +1,102 @@
+@page "/admin/installments/reports"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@using RioCommerce.Core.DTOs.Installments
+@inject IInstallmentService Svc
+<PageTitle>Installment Reports — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Installment Reports</h1>
+    <a href="/admin/installments/settings" class="btn btn-ghost btn-sm">⚙️ Settings</a>
+</div>
+
+<div class="data-card" style="margin-top:12px;padding:0">
+    <div style="display:flex;gap:4px;padding:10px 12px;border-bottom:1px solid var(--gray-200);flex-wrap:wrap">
+        @foreach (var (k, label) in Tabs)
+        {
+            <button class="btn btn-sm @(kind == k ? "btn-primary" : "btn-ghost")" @onclick="() => Switch(k)">@label</button>
+        }
+    </div>
+
+    <div class="table-wrap" style="padding:0">
+        <table>
+            <thead>
+                <tr>
+                    <th>Order</th><th>Student</th>
+                    @if (kind != InstallmentReportKind.Completed) { <th>#</th><th>Due</th> }
+                    <th>Amount</th><th>Paid</th>
+                    @if (kind == InstallmentReportKind.CollectionHistory) { <th>Collected on</th><th>Mode</th> }
+                    else { <th>Pending</th><th>Status</th> }
+                    <th>Plan total</th><th>Plan outstanding</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (rows == null) { <tr><td colspan="11" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+                else if (rows.Count == 0) { <tr><td colspan="11" style="text-align:center;color:var(--gray-400)">Nothing to show.</td></tr> }
+                else
+                {
+                    @foreach (var r in rows)
+                    {
+                        <tr>
+                            <td><a href="/admin/orders/@r.OrderId">@r.OrderNumber</a></td>
+                            <td>@r.StudentName<div style="font-size:12px;color:var(--gray-500)">@r.StudentPhone</div></td>
+                            @if (kind != InstallmentReportKind.Completed)
+                            {
+                                <td>@(r.InstallmentNumber?.ToString() ?? "—")</td>
+                                <td style="font-size:13px">@(r.DueDate?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
+                            }
+                            <td>₹@r.Amount.ToString("N0")</td>
+                            <td>₹@r.PaidAmount.ToString("N0")</td>
+                            @if (kind == InstallmentReportKind.CollectionHistory)
+                            {
+                                <td style="font-size:13px">@(r.PaidAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
+                                <td>@(r.PaidVia?.ToString() ?? "—")</td>
+                            }
+                            else
+                            {
+                                <td>₹@r.PendingAmount.ToString("N0")</td>
+                                <td>@StatusText(r)</td>
+                            }
+                            <td>₹@r.PlanTotal.ToString("N0")</td>
+                            <td>₹@r.PlanOutstanding.ToString("N0")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private static readonly (InstallmentReportKind, string)[] Tabs =
+    {
+        (InstallmentReportKind.Pending, "Pending"),
+        (InstallmentReportKind.Overdue, "Overdue"),
+        (InstallmentReportKind.Completed, "Completed Orders"),
+        (InstallmentReportKind.CollectionHistory, "Collection History"),
+    };
+
+    private InstallmentReportKind kind = InstallmentReportKind.Pending;
+    private List<InstallmentReportRow>? rows;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Switch(InstallmentReportKind k) { kind = k; rows = null; await Load(); }
+
+    private async Task Load() => rows = await Svc.ReportAsync(new InstallmentReportFilter { Kind = kind });
+
+    private string StatusText(InstallmentReportRow r)
+    {
+        if (IsOverdue(r)) return "Overdue";
+        return r.Status switch
+        {
+            RioCommerce.Core.Entities.InstallmentStatus.Paid => "Paid",
+            RioCommerce.Core.Entities.InstallmentStatus.PartiallyPaid => "Partially Paid",
+            _ => "Pending"
+        };
+    }
+
+    private static bool IsOverdue(InstallmentReportRow r) =>
+        r.Status != RioCommerce.Core.Entities.InstallmentStatus.Paid
+        && r.DueDate is { } d && d.Date < DateTime.UtcNow.Date;
+}

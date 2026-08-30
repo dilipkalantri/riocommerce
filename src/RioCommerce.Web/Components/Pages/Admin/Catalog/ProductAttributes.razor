@@ -1,0 +1,118 @@
+@page "/admin/catalog/product-attributes"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IAttributeAdminService Svc
+<PageTitle>Product Attributes — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Product Attributes</h1>
+    <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ Add Attribute</button>
+</div>
+<p style="color:var(--gray-400);margin-top:-8px">Reusable attributes (e.g. <em>Validity</em>, <em>Language</em>) with predefined values that can be attached to courses.</p>
+
+@if (editing != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editing.Id == null ? "New Product Attribute" : "Edit Product Attribute")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="editing.Name" /></div>
+            <div class="form-group form-group--full"><label class="form-label">Description</label><input class="form-input" @bind="editing.Description" placeholder="optional admin note" /></div>
+        </div>
+
+        <div class="form-label" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+            <span>Predefined Values</span>
+            <button class="btn btn-ghost btn-sm" @onclick="AddValue">➕ Add Value</button>
+        </div>
+        <div class="table-wrap"><table>
+            <thead><tr><th>Name</th><th>Price adj.</th><th>%?</th><th>Pre-selected</th><th>Order</th><th></th></tr></thead>
+            <tbody>
+                @if (editing.PredefinedValues.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No predefined values. They're optional — values can also be added per-course.</td></tr> }
+                @foreach (var v in editing.PredefinedValues)
+                {
+                    <tr>
+                        <td><input class="form-input" @bind="v.Name" style="min-width:160px" /></td>
+                        <td><input type="number" step="0.01" class="form-input" @bind="v.PriceAdjustment" style="width:100px" /></td>
+                        <td style="text-align:center"><input type="checkbox" @bind="v.PriceAdjustmentUsePercentage" /></td>
+                        <td style="text-align:center"><input type="checkbox" @bind="v.IsPreSelected" /></td>
+                        <td><input type="number" class="form-input" @bind="v.DisplayOrder" style="width:70px" /></td>
+                        <td><button class="btn btn-danger btn-sm" @onclick="() => editing.PredefinedValues.Remove(v)">✕</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Description</th><th>Values</th><th>Used by</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No product attributes yet.</td></tr> }
+            else
+            {
+                @foreach (var a in items)
+                {
+                    <tr>
+                        <td><strong>@a.Name</strong></td>
+                        <td style="color:var(--gray-400)">@a.Description</td>
+                        <td>@a.PredefinedValueCount</td>
+                        <td>@a.UsedByProductCount course(s)</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(a.Id)">Edit</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(a.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<ProductAttributeAdminItem>? items;
+    private ProductAttributeEditModel? editing;
+    private bool saving, msgOk;
+    private string? err, msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => items = await Svc.ListProductAttributesAsync();
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null ? new ProductAttributeEditModel() : await Svc.GetProductAttributeAsync(id.Value);
+    }
+
+    private void AddValue()
+        => editing?.PredefinedValues.Add(new PredefinedValueEditModel { DisplayOrder = (editing.PredefinedValues.Count + 1) });
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveProductAttributeAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); Flash(true, "Attribute saved."); }
+        else err = error;
+    }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteProductAttributeAsync(id);
+        if (ok) { await Reload(); Flash(true, "Attribute deleted."); }
+        else Flash(false, error!);
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

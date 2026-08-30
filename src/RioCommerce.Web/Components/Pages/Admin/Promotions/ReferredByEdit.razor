@@ -1,0 +1,134 @@
+@page "/admin/promotions/referredby/new"
+@page "/admin/promotions/referredby/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IReferralAdminService Svc
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject ToastService Toast
+<PageTitle>@(IsNew ? "New Referred By Option" : "Edit Referred By Option") — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>@(IsNew ? "New Referred By Option" : "Edit Referred By Option")</h1>
+    <a href="/admin/promotions/referredby" class="btn btn-ghost btn-sm">← Back to list</a>
+</div>
+
+@if (err != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:12px">@err</div> }
+
+@if (model == null)
+{
+    <div class="form-card"><p style="color:var(--gray-400)">Loading…</p></div>
+}
+else
+{
+    <div class="form-card">
+        <div class="form-card__title">Option details</div>
+        <div class="form-grid">
+            <div class="form-group form-group--full">
+                <label class="form-label">Option Name <span class="required">*</span></label>
+                <input class="form-input" @bind="model.Name" placeholder="e.g. Rahul Counsellor, Self, Mumbai Franchise, Instagram Campaign" />
+                <div class="form-hint">Shown to customers on the checkout dropdown.</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Type <span class="required">*</span></label>
+                <select class="form-input" @bind="model.Type">
+                    @foreach (var t in (ReferralSourceType[])System.Enum.GetValues(typeof(ReferralSourceType)))
+                    {
+                        <option value="@t">@TypeLabel(t)</option>
+                    }
+                </select>
+                <div class="form-hint">Drives reporting + conditional UI on checkout (Self hides extra inputs; Other shows a "Please specify" field).</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Display Order</label>
+                <input type="number" class="form-input" @bind="model.DisplayOrder" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Colour Badge <span style="color:var(--gray-400);font-weight:400">(optional)</span></label>
+                <input class="form-input" @bind="model.ColorBadge" placeholder="#16A34A or 'orange'" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Icon <span style="color:var(--gray-400);font-weight:400">(optional)</span></label>
+                <input class="form-input" @bind="model.Icon" placeholder="user-round / users / megaphone" />
+            </div>
+            <div class="form-group form-group--full">
+                <label class="form-label">Description <span style="color:var(--gray-400);font-weight:400">(optional, internal)</span></label>
+                <textarea class="form-input" rows="2" @bind="model.Description" placeholder="Notes for the team — never shown to customers."></textarea>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
+                    <input type="checkbox" @bind="model.IsActive" /> Active
+                </label>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
+                    <input type="checkbox" @bind="model.IsDefault" /> Mark as default (only one option can be default)
+                </label>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save")</button>
+            <a class="btn btn-ghost" href="/admin/promotions/referredby">Cancel</a>
+            @if (!IsNew)
+            {
+                <button class="btn btn-danger" style="margin-left:auto" @onclick="DeleteCurrent">🗑 Delete</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+    private bool IsNew => Id == null || Id == Guid.Empty;
+
+    private ReferralSourceEditModel? model;
+    private bool saving;
+    private string? err;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        err = null;
+        if (IsNew)
+        {
+            model = new ReferralSourceEditModel { IsActive = true, Type = ReferralSourceType.Counsellor };
+        }
+        else
+        {
+            model = await Svc.GetAsync(Id!.Value);
+            if (model == null) { err = "Referred-by option not found."; }
+        }
+    }
+
+    private async Task Save()
+    {
+        if (model == null) return;
+        saving = true; err = null;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        Guid? actor = System.Guid.TryParse(state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        var (ok, error, _) = await Svc.SaveAsync(model, actor);
+        saving = false;
+        if (ok) { Toast.Success("Saved."); Nav.NavigateTo("/admin/promotions/referredby"); }
+        else err = error;
+    }
+
+    private async Task DeleteCurrent()
+    {
+        if (Id == null) return;
+        var (ok, error) = await Svc.DeleteAsync(Id.Value);
+        if (ok) { Toast.Info("Option deleted."); Nav.NavigateTo("/admin/promotions/referredby"); }
+        else { err = error; }
+    }
+
+    private static string TypeLabel(ReferralSourceType t) => t switch
+    {
+        ReferralSourceType.Counsellor => "Counsellor",
+        ReferralSourceType.Faculty => "Faculty",
+        ReferralSourceType.Franchise => "Franchise",
+        ReferralSourceType.Affiliate => "Affiliate",
+        ReferralSourceType.MarketingCampaign => "Marketing Campaign",
+        ReferralSourceType.Friend => "Friend",
+        ReferralSourceType.Self => "Self",
+        ReferralSourceType.Other => "Other",
+        _ => t.ToString()
+    };
+}

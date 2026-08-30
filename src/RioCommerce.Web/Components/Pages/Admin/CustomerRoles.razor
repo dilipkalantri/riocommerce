@@ -1,0 +1,45 @@
+@page "/admin/customer-roles"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IAdminUserService Svc
+<PageTitle>Customer roles — RioCommerce Admin</PageTitle>
+
+<style>
+    .yn{font-weight:700} .yn--y{color:var(--green)} .yn--n{color:var(--error)}
+</style>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Customer roles</h1>
+    <a href="/admin/customer-roles/new" class="btn btn-primary btn-sm">➕ Add new</a>
+</div>
+
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>System name</th><th class="ag-center">Customers</th><th class="ag-center">Active</th><th class="ag-center">Is system role</th><th>Edit</th></tr></thead>
+        <tbody>
+            @if (roles == null) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (roles.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No customer roles yet.</td></tr> }
+            else
+            {
+                @foreach (var r in roles)
+                {
+                    <tr>
+                        <td><strong>@r.DisplayName</strong></td>
+                        <td><code>@r.Name</code></td>
+                        <td class="ag-center">@r.UserCount</td>
+                        <td class="ag-center"><span class="yn @(r.IsActive ? "yn--y" : "yn--n")">@(r.IsActive ? "✔" : "✘")</span></td>
+                        <td class="ag-center"><span class="yn @(r.IsSystem ? "yn--y" : "yn--n")">@(r.IsSystem ? "✔" : "✘")</span></td>
+                        <td><a href="/admin/customer-roles/@r.Id" class="btn btn-ghost btn-sm">✏️ Edit</a></td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<RoleAdminItem>? roles;
+
+    protected override async Task OnInitializedAsync() => roles = await Svc.ListRoleDetailsAsync();
+}

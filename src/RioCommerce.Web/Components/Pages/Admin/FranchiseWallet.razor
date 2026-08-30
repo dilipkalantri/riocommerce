@@ -1,0 +1,264 @@
+@page "/admin/franchises/{Id:guid}/wallet"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@using RioCommerce.Core.DTOs.Franchise
+@inject IFranchiseService Svc
+@inject NavigationManager Nav
+<PageTitle>@(s?.Name ?? "Franchise") wallet — RioCommerce Admin</PageTitle>
+
+<style>
+    .fw-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+    .fw-head__crumb{font-size:12px;color:var(--gray-500);margin-bottom:2px}
+    .fw-head__crumb a{color:var(--orange);font-weight:600}
+    .fw-head h1{font-size:clamp(17px,2vw,22px);font-weight:800;color:var(--navy);line-height:1.2;margin:0}
+    .fw-head__sub{font-size:12.5px;color:var(--gray-500);margin:3px 0 0}
+    .fw-actions{display:flex;gap:7px;flex-wrap:wrap}
+    .fw-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:14px 16px;border-bottom:1px solid var(--gray-100)}
+    .fw-filters .form-group{margin:0}
+    .fw-filters label{display:block;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--gray-400);margin-bottom:4px}
+    .fw-note{font-size:12px;color:var(--gray-500);padding:10px 16px;border-top:1px dashed var(--gray-200)}
+    .fw-adjust{background:var(--orange-light);border-radius:var(--radius-sm);padding:12px 14px;margin:0 16px 14px}
+</style>
+
+<div class="fw-head">
+    <div>
+        <div class="fw-head__crumb"><a href="/admin/franchises">← Franchises</a></div>
+        <h1>👛 Wallet — @(s?.Name ?? "…")@(string.IsNullOrWhiteSpace(s?.Code) ? "" : $" ({s!.Code})")</h1>
+        <p class="fw-head__sub">
+            @if (!string.IsNullOrWhiteSpace(s?.BusinessName)) { <text>@s!.BusinessName · </text> }
+            Every credit and debit, newest first, with the balance after each movement.
+        </p>
+    </div>
+    <div class="fw-actions">
+        <a class="btn btn-outline btn-sm" href="@CsvUrl" target="_blank">⬇ Download statement (CSV)</a>
+        <button class="btn btn-primary btn-sm" @onclick="() => showAdjust = !showAdjust">💵 @(showAdjust ? "Close" : "Add / deduct money")</button>
+    </div>
+</div>
+
+@if (notFound)
+{
+    <div class="data-card"><div style="padding:20px">Franchise not found. <a href="/admin/franchises">Back to the list</a></div></div>
+}
+else
+{
+    @if (s != null)
+    {
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-card__label">Wallet Balance</div>
+                <div class="kpi-card__value" style="@(s.WalletBalance < 0 ? "color:var(--error)" : "")">₹@s.WalletBalance.ToString("N2")</div>
+            </div>
+            <div class="kpi-card"><div class="kpi-card__label">Credit Limit</div><div class="kpi-card__value">₹@s.CreditLimit.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Available to Spend</div><div class="kpi-card__value" style="color:var(--green)">₹@s.Available.ToString("N2")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Credited @PeriodLabel</div><div class="kpi-card__value" style="color:var(--green)">+₹@s.TotalCredited.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Debited @PeriodLabel</div><div class="kpi-card__value" style="color:var(--error)">−₹@s.TotalDebited.ToString("N0")</div></div>
+        </div>
+    }
+
+    @if (msg != null) { <div class="inline-alert inline-alert--ok" style="margin-top:14px">@msg</div> }
+    @if (err != null) { <div class="inline-alert inline-alert--err" style="margin-top:14px">@err</div> }
+
+    <div class="data-card" style="margin-top:18px">
+        @if (showAdjust)
+        {
+            @* Same AdjustWalletAsync the franchise list uses — kept here so an admin can top up and
+               watch the row land in the ledger below without changing pages. *@
+            <div class="fw-adjust" style="margin-top:14px">
+                <div class="form-grid form-grid--3col">
+                    <div class="form-group">
+                        <label class="form-label">Type</label>
+                        <select class="form-input" @bind="adjustIsCredit">
+                            <option value="true">Credit — add money (top-up / refund)</option>
+                            <option value="false">Debit — deduct money (correction)</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="form-label">Amount (₹) <span class="required">*</span></label><input type="number" step="1" class="form-input" @bind="adjustAmount" /></div>
+                    @if (adjustIsCredit)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Received by</label>
+                            <select class="form-input" @bind="adjustMode" disabled="@(!moneyReceived)">
+                                @foreach (var m in ReceiptModes) { <option value="@m">@ModeLabel(m)</option> }
+                            </select>
+                        </div>
+                    }
+                    <div class="form-group form-group--full">
+                        <label class="form-label">Reason <span class="required">*</span></label>
+                        <input class="form-input" @bind="adjustReason" placeholder="e.g. Cash deposit ref 88213 / Refund: order FRN-1005" />
+                        <div class="form-hint">This becomes the ledger description the franchisee sees — put the cheque / UPI reference here.</div>
+                    </div>
+                    @if (adjustIsCredit)
+                    {
+                        @* Money in gets invoiced. A refund or correction is a credit too, but no money
+                           arrived — invoicing it would inflate revenue and charge GST on nothing. *@
+                        <div class="form-group form-group--full">
+                            <label class="pe-chk" style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+                                <input type="checkbox" @bind="moneyReceived" style="margin-top:3px" />
+                                <span>
+                                    <strong>Money received — raise a tax invoice</strong>
+                                    <div class="form-hint" style="margin:2px 0 0">
+                                        Leave ticked for a genuine top-up. <strong>Untick</strong> for a refund or a
+                                        correction, where no money actually came in.
+                                    </div>
+                                </span>
+                            </label>
+                        </div>
+                    }
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" disabled="@busy" @onclick="DoAdjust">@(busy ? "Saving…" : "Apply")</button>
+                    <button class="btn btn-ghost" @onclick="() => showAdjust = false">Cancel</button>
+                </div>
+            </div>
+        }
+
+        <div class="fw-filters">
+            <div class="form-group"><label>From</label><input type="date" class="form-input" @bind="from" /></div>
+            <div class="form-group"><label>To</label><input type="date" class="form-input" @bind="to" /></div>
+            <button class="btn btn-outline btn-sm" @onclick="Load">Apply</button>
+            @if (from != null || to != null) { <button class="btn btn-ghost btn-sm" @onclick="ClearDates">Clear</button> }
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th><th>Description</th><th>Order</th><th>Type</th>
+                        <th style="text-align:right">Amount</th><th style="text-align:right">Balance After</th><th>Invoice</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (s == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:18px">Loading…</td></tr> }
+                    else if (s.Entries.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:18px">No wallet movements@(from != null || to != null ? " in this date range" : " yet").</td></tr> }
+                    else
+                    {
+                        @foreach (var e in s.Entries)
+                        {
+                            <tr>
+                                <td style="white-space:nowrap">@e.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
+                                <td>@e.Description</td>
+                                <td>
+                                    @if (e.OrderId is { } oid) { <a href="@($"/admin/orders/{oid}")">@(e.OrderNumber ?? "View order")</a> }
+                                    else if (e.OrderNumber != null) { <text>@e.OrderNumber</text> }
+                                    else { <span style="color:var(--gray-300)">—</span> }
+                                </td>
+                                <td><span class="status @(e.IsCredit ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(e.IsCredit ? "Credit" : "Debit")</span></td>
+                                <td style="text-align:right;white-space:nowrap;color:@(e.IsCredit ? "var(--green)" : "var(--error)")">
+                                    @(e.IsCredit ? "+" : "−")₹@e.Amount.ToString("N2")
+                                </td>
+                                <td style="text-align:right;white-space:nowrap"><strong>₹@e.BalanceAfter.ToString("N2")</strong></td>
+                                @* Credits that were real money in carry an invoice; refunds and order
+                                   deductions don't. *@
+                                <td>
+                                    @if (e.IsCredit && e.OrderId is { } tid)
+                                    {
+                                        <a class="btn btn-ghost btn-sm" href="@($"/admin/orders/{tid}/invoice")">🧾 View</a>
+                                    }
+                                    else { <span style="color:var(--gray-300)">—</span> }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (s is { IsTruncated: true })
+        {
+            <div class="fw-note">
+                Showing the latest <strong>@s.Entries.Count</strong> of <strong>@s.EntryCount</strong> movements.
+                Narrow the date range, or download the CSV statement for the complete history.
+            </div>
+        }
+        else if (s != null && s.Entries.Count > 0)
+        {
+            <div class="fw-note">@s.EntryCount movement@(s.EntryCount == 1 ? "" : "s")@PeriodLabel.</div>
+        }
+    </div>
+
+    <div class="fw-note" style="border:0;padding-left:0">
+        A ₹0 debit row is normal — an order paid online at the gateway is recorded for the audit trail
+        without moving the wallet balance.
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private FranchiseWalletStatement? s;
+    private bool notFound, busy, showAdjust;
+    private string? msg, err;
+
+    private DateTime? from, to;
+    private decimal adjustAmount;
+    private bool adjustIsCredit = true;
+    private string adjustReason = "";
+    // A credit is money in by default, so it raises an invoice. Refunds/corrections untick it.
+    private bool moneyReceived = true;
+    private PaymentMode adjustMode = PaymentMode.BankTransfer;
+
+    // Ways money physically arrives for a wallet top-up. Printed on the invoice.
+    private static readonly PaymentMode[] ReceiptModes =
+        { PaymentMode.BankTransfer, PaymentMode.Upi, PaymentMode.Cash, PaymentMode.Cheque, PaymentMode.Razorpay };
+
+    private static string ModeLabel(PaymentMode m) => m switch
+    {
+        PaymentMode.BankTransfer => "Bank transfer / NEFT",
+        PaymentMode.Upi => "UPI",
+        PaymentMode.Cash => "Cash",
+        PaymentMode.Cheque => "Cheque",
+        PaymentMode.Razorpay => "Online (Razorpay)",
+        _ => m.ToString()
+    };
+
+    // Rows are capped so one very active franchise can't render thousands of <tr>. The CSV is uncapped.
+    private const int MaxRows = 500;
+
+    private string PeriodLabel => from == null && to == null ? " (all time)" : " (selected period)";
+
+    private string CsvUrl
+    {
+        get
+        {
+            var qs = new List<string>();
+            if (from is { } f) qs.Add("from=" + f.ToString("yyyy-MM-dd"));
+            // Include the whole end day — a bare date would cut everything after midnight.
+            if (to is { } t) qs.Add("to=" + t.ToString("yyyy-MM-dd") + "T23:59:59");
+            return $"/api/admin/franchise/{Id}/statement.csv" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+        }
+    }
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        err = null;
+        // The picker gives a local date; the ledger stores UTC. Treat "to" as the end of that day.
+        var fromUtc = from.HasValue ? DateTime.SpecifyKind(from.Value.Date, DateTimeKind.Utc) : (DateTime?)null;
+        var toUtc = to.HasValue ? DateTime.SpecifyKind(to.Value.Date.AddDays(1).AddSeconds(-1), DateTimeKind.Utc) : (DateTime?)null;
+
+        s = await Svc.WalletStatementAsync(Id, fromUtc, toUtc, MaxRows);
+        notFound = s == null;
+    }
+
+    private async Task ClearDates() { from = null; to = null; await Load(); }
+
+    private async Task DoAdjust()
+    {
+        busy = true; err = null; msg = null;
+        var invoiced = adjustIsCredit && moneyReceived;
+        var (ok, error) = await Svc.AdjustWalletAsync(new AdjustWalletRequest
+        {
+            FranchiseId = Id, IsCredit = adjustIsCredit, Amount = adjustAmount, Reason = adjustReason,
+            MoneyReceived = invoiced, PaymentMode = adjustMode
+        }, Guid.Empty);
+        busy = false;
+        if (!ok) { err = error; return; }
+
+        msg = adjustIsCredit
+            ? $"₹{adjustAmount:N0} credited" + (invoiced ? " — invoice raised, download it from the ledger below." : " (no invoice — recorded as a refund / correction).")
+            : $"₹{adjustAmount:N0} debited — the entry is at the top of the ledger below.";
+        adjustAmount = 0; adjustReason = ""; moneyReceived = true; showAdjust = false;
+        await Load();
+    }
+}

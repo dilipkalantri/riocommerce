@@ -1,0 +1,563 @@
+@page "/admin/customers"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@using RioCommerce.Core.DTOs.Customers
+@inject IAdminUserService Svc
+@inject ICustomerDuplicateService Dupes
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>Customers — RioCommerce Admin</PageTitle>
+
+<style>
+    /* ── Smart Customer Search shell ──
+       The page keeps the existing nopCommerce-style search card but reduces the inputs to
+       ONE smart box + Role + Status. Live-suggestions float beneath the input. */
+    .psearch{background:#fff;border:1px solid var(--gray-200);border-radius:14px;margin-top:8px;overflow:visible;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .psearch__head{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;cursor:pointer;font-weight:700;color:var(--navy);font-size:15px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,var(--gray-50))}
+    .psearch__head .chev{color:var(--gray-400);font-size:12px;transition:transform .18s}
+    .psearch.is-collapsed .psearch__head{border-bottom:0}
+    .psearch.is-collapsed .psearch__head .chev{transform:rotate(-90deg)}
+    .psearch.is-collapsed .psearch__body{display:none}
+    .psearch__body{padding:18px}
+    .psearch__grid{display:grid;grid-template-columns:minmax(280px,2fr) repeat(2,minmax(180px,1fr));gap:14px 22px;align-items:end}
+    .psearch__fg{display:flex;flex-direction:column;gap:5px;min-width:0;position:relative}
+    .psearch__fg label{font-size:12.5px;font-weight:600;color:var(--gray-600)}
+    .psearch__actions{display:flex;justify-content:center;gap:10px;margin-top:20px;flex-wrap:wrap}
+    .role-chip{display:inline-block;background:var(--gray-100);color:var(--gray-600);font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;margin:1px 2px}
+    .cust-foot{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;flex-wrap:wrap;gap:10px}
+    .cust-foot button{min-width:32px}
+
+    /* ── 🔍 Smart search input ── */
+    .smart-input-wrap{position:relative}
+    .smart-input{width:100%;padding:13px 44px 13px 44px;border-radius:14px;border:1.5px solid var(--gray-200);background:#fff;font-weight:600;color:var(--navy);font-size:14.5px;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:border-color .18s,box-shadow .18s,transform .18s}
+    .smart-input:hover{transform:translateY(-1px)}
+    .smart-input:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 4px rgba(232,114,42,.18)}
+    .smart-input__ico{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--gray-400);font-size:16px;pointer-events:none}
+    .smart-input__spin{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:16px;height:16px;border:2px solid var(--gray-200);border-top-color:var(--orange);border-radius:50%;animation:smart-spin .85s linear infinite}
+    .smart-input__clear{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:var(--gray-100);color:var(--gray-500);border:0;width:22px;height:22px;border-radius:50%;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+    .smart-input__clear:hover{background:var(--gray-200);color:var(--navy)}
+    @@keyframes smart-spin{to{transform:translateY(-50%) rotate(360deg)}}
+
+    /* ── Auto-suggestion dropdown — glass panel ── */
+    .smart-dd{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:30;background:rgba(255,255,255,.98);backdrop-filter:saturate(180%) blur(12px);border:1px solid rgba(15,23,42,.08);border-radius:18px;box-shadow:0 24px 60px -28px rgba(15,23,42,.55),0 4px 14px rgba(15,23,42,.06);overflow:hidden;animation:smart-dd-in .22s ease-out both;max-height:520px;display:flex;flex-direction:column}
+    @@keyframes smart-dd-in{from{opacity:0;transform:translateY(-6px) scale(.99)}to{opacity:1;transform:none}}
+    .smart-dd__hint{padding:10px 16px;font-size:12px;color:var(--gray-500);background:linear-gradient(180deg,#fff,var(--gray-50));border-bottom:1px solid var(--gray-100);font-weight:600;letter-spacing:.2px}
+    .smart-dd__list{overflow-y:auto;max-height:420px;scroll-behavior:smooth}
+    .smart-dd__list::-webkit-scrollbar{width:8px}
+    .smart-dd__list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:4px}
+    .smart-row{display:grid;grid-template-columns:48px 1fr auto auto;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--gray-100);cursor:pointer;transition:background .15s,transform .15s;animation:smart-row-in .25s ease both}
+    @@keyframes smart-row-in{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:none}}
+    .smart-row:last-child{border-bottom:0}
+    .smart-row:hover,.smart-row.is-active{background:linear-gradient(180deg,#FFF7EE,#FEF2E7);transform:translateX(2px)}
+    .smart-row.is-active{box-shadow:inset 3px 0 0 var(--orange)}
+    .smart-row__body{display:flex;flex-direction:column;gap:2px;min-width:0}
+    .smart-row__name{font-weight:800;color:var(--navy);font-size:14.5px;display:flex;align-items:center;gap:6px}
+    .smart-row__meta{font-size:12.5px;color:var(--gray-500);display:flex;flex-wrap:wrap;gap:10px;line-height:1.5}
+    .smart-row__meta span{display:inline-flex;align-items:center;gap:4px}
+    .smart-row__tags{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:11.5px;font-weight:700;text-align:right}
+    .smart-row__role{display:inline-block;background:#EFF6FF;color:#2563EB;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;border:1px solid rgba(37,99,235,.15)}
+    .smart-row__joined{color:var(--gray-400);font-weight:600;font-size:11px}
+    .smart-row__arrow{color:var(--gray-300);font-size:18px;font-weight:600;transition:transform .15s,color .15s}
+    .smart-row:hover .smart-row__arrow,.smart-row.is-active .smart-row__arrow{color:var(--orange);transform:translateX(3px)}
+
+    /* Avatar — image when present, initials circle otherwise. */
+    .smart-av{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#1E40AF);color:#fff;font-weight:800;font-size:15px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;flex:none;box-shadow:0 4px 10px -6px rgba(37,99,235,.5)}
+    .smart-av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+    .smart-av--alt{background:linear-gradient(135deg,#F97316,#EA580C);box-shadow:0 4px 10px -6px rgba(249,115,22,.5)}
+
+    .smart-status{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px}
+    .smart-status--on{background:#ECFDF5;color:#16A34A;border:1px solid rgba(22,163,74,.2)}
+    .smart-status--off{background:#FEF2F2;color:#DC2626;border:1px solid rgba(220,38,38,.2)}
+    .smart-status__dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+    /* Empty + create CTA */
+    .smart-empty{padding:30px 22px;text-align:center;color:var(--gray-500);font-size:13.5px;display:flex;flex-direction:column;align-items:center;gap:8px}
+    .smart-empty__ico{font-size:34px;opacity:.6}
+    .smart-cta{padding:12px 16px;border-top:1px solid var(--gray-100);background:linear-gradient(180deg,var(--gray-50),#fff);display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13.5px;color:var(--gray-600);font-weight:600}
+    .smart-cta__btn{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(180deg,#F2873A,var(--orange));color:#fff;padding:9px 16px;border-radius:11px;border:0;font-weight:800;font-size:13px;cursor:pointer;box-shadow:0 8px 18px -8px rgba(232,114,42,.6);transition:transform .15s,box-shadow .15s,filter .15s}
+    .smart-cta__btn:hover{transform:translateY(-1px);filter:brightness(1.04);box-shadow:0 12px 22px -10px rgba(232,114,42,.7)}
+
+    /* ── Mobile / Tablet — turn the dropdown into a bottom-sheet ── */
+    @@media(max-width:639px){
+        .smart-dd{position:fixed;left:8px;right:8px;top:auto;bottom:8px;max-height:78vh;border-radius:22px 22px 14px 14px}
+        .smart-dd__list{max-height:60vh}
+    }
+
+    /* ── Create Customer modal (reuses the page modal pattern) ── */
+    .cust-modal{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.5);backdrop-filter:blur(6px);animation:smart-dd-in .2s ease-out both}
+    .cust-modal__card{width:min(560px,94vw);background:#fff;border-radius:18px;box-shadow:0 30px 80px -20px rgba(15,23,42,.55);overflow:hidden;animation:cust-modal-in .25s var(--p-ease,cubic-bezier(.22,1,.36,1)) both}
+    @@keyframes cust-modal-in{from{opacity:0;transform:translateY(12px) scale(.98)}to{opacity:1;transform:none}}
+    .cust-modal__head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--gray-100);font-weight:800;font-size:16px;color:var(--navy)}
+    .cust-modal__body{padding:18px 22px;display:flex;flex-direction:column;gap:13px;max-height:70vh;overflow-y:auto}
+    .cust-modal__body .form-group{display:flex;flex-direction:column;gap:4px}
+    .cust-modal__body label{font-size:12.5px;font-weight:700;color:var(--gray-700)}
+    .cust-modal__body .form-input{border-radius:12px;padding:11px 14px;border:1.5px solid var(--gray-200);font-weight:600;color:var(--navy)}
+    .cust-modal__body .form-input:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.16)}
+    .cust-modal__hint{font-size:11.5px;color:var(--gray-500)}
+    .cust-modal__foot{padding:14px 22px;border-top:1px solid var(--gray-100);display:flex;justify-content:flex-end;gap:10px;background:var(--gray-50)}
+    .cust-modal__err{background:#FEF2F2;color:#B91C1C;border:1px solid rgba(220,38,38,.22);padding:9px 12px;border-radius:10px;font-size:13px}
+
+    /* ── 🛑 "Customer Already Exists" panel inside the Create modal ── */
+    .dup-panel{background:linear-gradient(180deg,#FEF2F2,#FEE7E7);border:1px solid rgba(220,38,38,.25);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;animation:smart-dd-in .25s ease-out both}
+    .dup-panel__head{display:flex;align-items:center;gap:10px;font-weight:800;color:#B91C1C;font-size:15px}
+    .dup-panel__ico{width:32px;height:32px;border-radius:50%;background:#FEE2E2;color:#DC2626;display:inline-flex;align-items:center;justify-content:center;font-size:18px;flex:none}
+    .dup-panel__rows{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;background:#fff;border-radius:10px;padding:12px 14px;border:1px solid rgba(220,38,38,.12);font-size:13px}
+    .dup-panel__rows dt{font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;font-size:11px;align-self:center}
+    .dup-panel__rows dd{margin:0;font-weight:700;color:var(--navy);font-size:13.5px;word-break:break-word}
+    .dup-panel__actions{display:flex;gap:8px;flex-wrap:wrap}
+    .dup-panel__actions .btn{padding:9px 14px;font-weight:800;font-size:13px;border-radius:11px}
+
+    /* Inline blur-validation icon on email + phone inside the modal. */
+    .dup-input{position:relative}
+    .dup-input__check{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:13px;font-weight:800}
+    .dup-input__check--ok{color:#16A34A}
+    .dup-input__check--bad{color:#DC2626}
+    .dup-input__msg{font-size:12px;font-weight:600;margin-top:4px}
+    .dup-input__msg--ok{color:#16A34A}
+    .dup-input__msg--bad{color:#DC2626}
+
+    /* Page header — title + top-right "New Customer" CTA. */
+    .cust-page-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+    .cust-page-head__btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(180deg,#F2873A,var(--orange));color:#fff;padding:11px 18px;border-radius:12px;border:0;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 10px 22px -10px rgba(232,114,42,.55);transition:transform .15s,box-shadow .15s,filter .15s;text-decoration:none}
+    .cust-page-head__btn:hover{transform:translateY(-1px);filter:brightness(1.05);box-shadow:0 14px 26px -12px rgba(232,114,42,.7)}
+    .cust-page-head__btn .ico{font-size:16px;line-height:1}
+</style>
+
+<div class="page__header cust-page-head">
+    <h1>Customers</h1>
+    <button type="button" class="cust-page-head__btn" @onclick="OpenCreateModal" title="Add a new customer">
+        <span class="ico">➕</span> New Customer
+    </button>
+</div>
+
+@* ── Smart Search panel ── *@
+<div class="psearch @(searchOpen ? "" : "is-collapsed")">
+    <div class="psearch__head" @onclick="() => searchOpen = !searchOpen"><span>🔍 Smart Search</span><span class="chev">▾</span></div>
+    <div class="psearch__body">
+        <div class="psearch__grid">
+            <div class="psearch__fg">
+                <label>👤 Customer Name / Mobile / Email</label>
+                <div class="smart-input-wrap">
+                    <span class="smart-input__ico">🔍</span>
+                    <input class="smart-input" placeholder="Start typing customer name, mobile or email..."
+                           @bind="smartQuery" @bind:event="oninput" @bind:after="OnSmartQueryChanged"
+                           @onfocus="OnSmartFocus" @onkeydown="OnSmartKey" autocomplete="off" />
+                    @if (searching) { <span class="smart-input__spin" aria-label="Searching..."></span> }
+                    else if (!string.IsNullOrEmpty(smartQuery)) { <button type="button" class="smart-input__clear" @onclick="ClearSmart" title="Clear">✕</button> }
+
+                    @if (ddOpen)
+                    {
+                        <div class="smart-dd" @onmousedown:stopPropagation @onclick:stopPropagation>
+                            @if (suggestions == null || (suggestions.Count == 0 && smartQuery.Trim().Length >= 2 && !searching))
+                            {
+                                <div class="smart-empty">
+                                    <span class="smart-empty__ico">🔍</span>
+                                    <span>No customer found for <strong>"@smartQuery"</strong></span>
+                                    <button type="button" class="smart-cta__btn" @onclick="OpenCreateModal">➕ Create New Customer</button>
+                                </div>
+                            }
+                            else if (suggestions.Count == 0)
+                            {
+                                <div class="smart-empty"><span class="smart-empty__ico">⌨️</span><span>Type at least 2 characters…</span></div>
+                            }
+                            else
+                            {
+                                <div class="smart-dd__hint">Showing top @suggestions.Count of @suggestions.Count match@(suggestions.Count == 1 ? "" : "es") · ↑↓ navigate · Enter to open · Esc to close</div>
+                                <div class="smart-dd__list" @ref="ddListEl">
+                                    @for (var i = 0; i < suggestions.Count; i++)
+                                    {
+                                        var idx = i; var s = suggestions[i];
+                                        <div class="smart-row @(activeIndex == idx ? "is-active" : "")"
+                                             @onmousedown="() => SelectSuggestion(idx)"
+                                             @onmouseover="() => activeIndex = idx">
+                                            <div class="smart-av @(string.IsNullOrEmpty(s.AvatarUrl) ? "" : "smart-av--has-img")">
+                                                @if (!string.IsNullOrEmpty(s.AvatarUrl))
+                                                {
+                                                    <img src="@s.AvatarUrl" alt="@s.FullName" />
+                                                }
+                                                else
+                                                {
+                                                    @s.Initials
+                                                }
+                                            </div>
+                                            <div class="smart-row__body">
+                                                <span class="smart-row__name">
+                                                    👤 @s.FullName
+                                                    @if (s.CourseCount > 0) { <span class="smart-status smart-status--on" title="Active student"><span class="smart-status__dot"></span>Active Student</span> }
+                                                </span>
+                                                <span class="smart-row__meta">
+                                                    @if (!string.IsNullOrEmpty(s.Phone)) { <span>📱 @s.Phone</span> }
+                                                    @if (!string.IsNullOrEmpty(s.Email)) { <span>✉ @s.Email</span> }
+                                                    @if (!string.IsNullOrEmpty(s.CourseInterest)) { <span>📘 @s.CourseInterest</span> }
+                                                </span>
+                                            </div>
+                                            <div class="smart-row__tags">
+                                                @if (!string.IsNullOrEmpty(s.PrimaryRole)) { <span class="smart-row__role">@s.PrimaryRole</span> }
+                                                <span class="smart-row__joined">Joined: @s.JoinedDate.ToLocalTime().ToString("dd MMM yyyy")</span>
+                                                @if (!s.IsActive) { <span class="smart-status smart-status--off"><span class="smart-status__dot"></span>Inactive</span> }
+                                            </div>
+                                            <span class="smart-row__arrow">›</span>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="smart-cta">
+                                    <span>➜ Customer Not Found?</span>
+                                    <button type="button" class="smart-cta__btn" @onclick="OpenCreateModal">➕ Create New</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="psearch__fg"><label>Customer role</label>
+                <select class="form-input" @bind="roleStr">
+                    <option value="">All</option>
+                    @if (roles != null) { @foreach (var r in roles) { <option value="@r.Name">@r.DisplayName</option> } }
+                </select>
+            </div>
+            <div class="psearch__fg"><label>Status</label>
+                <select class="form-input" @bind="activeStr">
+                    <option value="">All</option><option value="true">Active</option><option value="false">Inactive</option>
+                </select>
+            </div>
+        </div>
+        <div class="psearch__actions">
+            <button class="btn btn-primary" @onclick="DoSearch">🔍 Search</button>
+            <button class="btn btn-ghost" @onclick="ClearFilters">Clear filters</button>
+        </div>
+    </div>
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:12px 0">@msg</div> }
+
+<div class="data-card" style="margin-top:16px">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Email</th><th>Name</th><th>Roles</th><th>Phone</th><th>Joined</th><th>Active</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (rows == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:24px">Loading…</td></tr> }
+            else if (rows.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:24px">No customers match your filters.</td></tr> }
+            else
+            {
+                @foreach (var c in rows)
+                {
+                    <tr>
+                        <td><strong>@(c.Email ?? "—")</strong></td>
+                        <td>@(string.IsNullOrWhiteSpace(c.FullName) ? "—" : c.FullName)</td>
+                        <td>@if (c.Roles.Count == 0) { <span style="color:var(--gray-400)">—</span> } else { @foreach (var r in c.Roles) { <span class="role-chip">@r</span> } }</td>
+                        <td>@(c.Phone ?? "—")</td>
+                        <td style="font-size:12.5px;white-space:nowrap">@c.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                        <td><span class="status @(c.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(c.IsActive ? "Active" : "Inactive")</span></td>
+                        <td style="white-space:nowrap"><a href="/admin/customers/@c.Id" class="btn btn-ghost btn-sm">✏️ Edit</a> <button class="btn btn-ghost btn-sm" @onclick="() => ToggleActive(c.Id)">@(c.IsActive ? "Deactivate" : "Activate")</button></td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+    @if (rows != null && total > 0)
+    {
+        <div class="cust-foot">
+            <span style="font-size:13px;color:var(--gray-500)">@(((page - 1) * pageSize) + 1)–@(Math.Min(page * pageSize, total)) of @total customers</span>
+            <div style="display:flex;align-items:center;gap:6px">
+                <button class="btn btn-ghost btn-sm" disabled="@(page <= 1)" @onclick="() => Go(page - 1)">‹ Prev</button>
+                <span style="font-size:13px;padding:0 6px">@(page) / @Math.Max(1, TotalPages)</span>
+                <button class="btn btn-ghost btn-sm" disabled="@(page >= TotalPages)" @onclick="() => Go(page + 1)">Next ›</button>
+            </div>
+        </div>
+    }
+</div>
+
+@if (createOpen)
+{
+    <div class="cust-modal" @onclick="CloseCreateModal">
+        <div class="cust-modal__card" @onclick:stopPropagation>
+            <div class="cust-modal__head">
+                <span>@(duplicate?.HasDuplicate == true ? "🛑 Customer Already Exists" : "➕ Create New Customer")</span>
+                <button class="btn btn-ghost btn-sm" @onclick="CloseCreateModal">✕</button>
+            </div>
+            <div class="cust-modal__body">
+                @* ── 🛑 Duplicate panel — when CheckAsync or Create returned a hit. Shows the existing
+                     customer's identity and lets the admin View, Use, or Cancel. NEVER allows duplicate save. ── *@
+                @if (duplicate is { HasDuplicate: true, Existing: not null })
+                {
+                    <div class="dup-panel">
+                        <div class="dup-panel__head">
+                            <span class="dup-panel__ico">⚠</span>
+                            <span>
+                                @(duplicate.Field switch
+                                {
+                                    DuplicateField.Email => "This email is already registered.",
+                                    DuplicateField.Phone => "This mobile number is already registered.",
+                                    DuplicateField.Both  => "Email and mobile both already exist.",
+                                    _ => "Customer already exists."
+                                })
+                            </span>
+                        </div>
+                        <dl class="dup-panel__rows">
+                            <dt>Name</dt>     <dd>@duplicate.Existing.FullName</dd>
+                            @if (!string.IsNullOrEmpty(duplicate.Existing.Phone)) { <dt>Mobile</dt> <dd>@duplicate.Existing.Phone</dd> }
+                            @if (!string.IsNullOrEmpty(duplicate.Existing.Email)) { <dt>Email</dt>  <dd>@duplicate.Existing.Email</dd> }
+                            <dt>Created</dt>  <dd>@duplicate.Existing.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</dd>
+                        </dl>
+                        <div class="dup-panel__actions">
+                            <button class="btn btn-primary" @onclick="() => OpenExistingCustomer(duplicate.Existing.Id)">👁 View Customer</button>
+                            <button class="btn btn-outline" @onclick="() => OpenExistingCustomer(duplicate.Existing.Id)">✓ Use Existing Customer</button>
+                            <button class="btn btn-ghost" @onclick="CloseCreateModal">Cancel</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @if (createErr != null) { <div class="cust-modal__err">@createErr</div> }
+                    <div class="form-group">
+                        <label>Customer Name <span style="color:var(--error)">*</span></label>
+                        <input class="form-input" @bind="newCust.FullName" placeholder="Full name" autofocus />
+                    </div>
+                    <div class="form-group">
+                        <label>Mobile <span style="color:var(--error)">*</span></label>
+                        <div class="dup-input">
+                            <input class="form-input" @bind="newCust.Phone" @bind:event="oninput" @onblur="OnPhoneBlur"
+                                   placeholder="10-digit mobile number" autocomplete="off" />
+                            @if (phoneAvail?.Available == true && !string.IsNullOrWhiteSpace(newCust.Phone))
+                            { <span class="dup-input__check dup-input__check--ok">✓</span> }
+                            else if (phoneAvail?.Available == false)
+                            { <span class="dup-input__check dup-input__check--bad">✗</span> }
+                        </div>
+                        @if (phoneAvail?.Available == false) { <div class="dup-input__msg dup-input__msg--bad">❌ @phoneAvail.Message</div> }
+                        else if (phoneAvail?.Available == true && !string.IsNullOrWhiteSpace(newCust.Phone)) { <div class="dup-input__msg dup-input__msg--ok">✓ Available</div> }
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <div class="dup-input">
+                            <input class="form-input" @bind="newCust.Email" @bind:event="oninput" @onblur="OnEmailBlur"
+                                   placeholder="optional" autocomplete="off" />
+                            @if (emailAvail?.Available == true && !string.IsNullOrWhiteSpace(newCust.Email))
+                            { <span class="dup-input__check dup-input__check--ok">✓</span> }
+                            else if (emailAvail?.Available == false)
+                            { <span class="dup-input__check dup-input__check--bad">✗</span> }
+                        </div>
+                        @if (emailAvail?.Available == false) { <div class="dup-input__msg dup-input__msg--bad">❌ @emailAvail.Message</div> }
+                        else if (emailAvail?.Available == true && !string.IsNullOrWhiteSpace(newCust.Email)) { <div class="dup-input__msg dup-input__msg--ok">✓ Available</div> }
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input class="form-input" type="password" @bind="newCust.Password" placeholder="Optional — admin can set later" />
+                        <span class="cust-modal__hint">If left blank the user will need to use Forgot Password before logging in.</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select class="form-input" @bind="newCust.Role">
+                            @if (roles != null) { @foreach (var r in roles) { <option value="@r.Name">@r.DisplayName</option> } }
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Notes</label><textarea class="form-input" rows="2" @bind="newCust.Notes" placeholder="Internal admin notes (optional)"></textarea></div>
+                }
+            </div>
+            @if (duplicate is not { HasDuplicate: true })
+            {
+                <div class="cust-modal__foot">
+                    <button class="btn btn-ghost" @onclick="CloseCreateModal" disabled="@creating">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SubmitCreate" disabled="@creating">@(creating ? "Saving…" : "Save")</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<AdminUserItem>? rows;
+    private List<RoleOption>? roles;
+    private int page = 1, total, pageSize = 20;
+    private bool searchOpen = true, msgOk;
+    private string? msg;
+    private Guid actorId; private string actorName = "admin";
+
+    // ── Server-side table filters ──
+    private string roleStr = "", activeStr = "";
+
+    // ── 👤 Smart search state ──
+    private string smartQuery = "";
+    private List<CustomerSuggestion>? suggestions;
+    private bool ddOpen, searching;
+    private int activeIndex = -1;
+    private CancellationTokenSource? searchCts;
+    private long searchToken;          // monotonically increasing — guards against stale responses
+    private ElementReference ddListEl;
+
+    // ── Create-customer modal ──
+    private bool createOpen, creating;
+    private string? createErr;
+    private CustomerCreateRequest newCust = new() { Role = "student" };
+    // Live inline validation + duplicate panel state.
+    private FieldAvailability? emailAvail, phoneAvail;
+    private DuplicateCheckResult? duplicate;
+
+    private int TotalPages => (int)Math.Ceiling(total / (double)pageSize);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out actorId);
+        actorName = state.User.Identity?.Name ?? "admin";
+        roles = await Svc.RolesAsync();
+        await Load();
+    }
+
+    // The list table still respects role + active filters; smart search drives navigation, not the table.
+    private CustomerFilter BuildFilter() => new()
+    {
+        Role = string.IsNullOrEmpty(roleStr) ? null : roleStr,
+        Active = activeStr switch { "true" => true, "false" => false, _ => (bool?)null },
+        Page = page, PageSize = pageSize
+    };
+
+    private async Task Load()
+    {
+        var (r, t) = await Svc.ListCustomersAsync(BuildFilter());
+        rows = r; total = t;
+    }
+
+    private async Task DoSearch() { page = 1; await Load(); }
+    private async Task ClearFilters() { roleStr = activeStr = ""; smartQuery = ""; suggestions = null; ddOpen = false; page = 1; await Load(); }
+    private async Task Go(int p) { if (p < 1 || p > Math.Max(1, TotalPages) || p == page) return; page = p; await Load(); }
+
+    private async Task ToggleActive(Guid id)
+    {
+        var (ok, error) = await Svc.ToggleActiveAsync(id, actorId, actorName);
+        await Load();
+        msgOk = ok; msg = ok ? "Customer updated." : error;
+    }
+
+    // ── 👤 Smart search — 300ms debounce, cancel-previous, stale-response guard ──
+    private async Task OnSmartQueryChanged()
+    {
+        var q = smartQuery?.Trim() ?? "";
+        // Cancel any in-flight request — we only ever care about the latest keystroke.
+        searchCts?.Cancel();
+        searchCts = new CancellationTokenSource();
+        var token = ++searchToken;
+        var ct = searchCts.Token;
+        if (q.Length < 2) { suggestions = null; ddOpen = !string.IsNullOrEmpty(q); searching = false; return; }
+        ddOpen = true; searching = true;
+        try
+        {
+            await Task.Delay(300, ct);
+            if (ct.IsCancellationRequested) return;
+            var results = await Svc.SearchCustomersAsync(q, 10);
+            // Stale-response guard — only commit if no newer query started.
+            if (token != searchToken) return;
+            suggestions = results;
+            activeIndex = results.Count > 0 ? 0 : -1;
+        }
+        catch (TaskCanceledException) { /* superseded */ }
+        finally { if (token == searchToken) { searching = false; StateHasChanged(); } }
+    }
+
+    private void OnSmartFocus()
+    {
+        if (!string.IsNullOrEmpty(smartQuery)) ddOpen = true;
+    }
+
+    private async Task OnSmartKey(KeyboardEventArgs e)
+    {
+        if (!ddOpen) return;
+        var n = suggestions?.Count ?? 0;
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                if (n > 0) { activeIndex = (activeIndex + 1) % n; await JS.InvokeVoidAsync("hjcAdmin.scrollIntoCenter", ddListEl, activeIndex); }
+                break;
+            case "ArrowUp":
+                if (n > 0) { activeIndex = (activeIndex - 1 + n) % n; await JS.InvokeVoidAsync("hjcAdmin.scrollIntoCenter", ddListEl, activeIndex); }
+                break;
+            case "Enter":
+            case "Tab":
+                if (activeIndex >= 0 && activeIndex < n) SelectSuggestion(activeIndex);
+                break;
+            case "Escape":
+                ddOpen = false; activeIndex = -1; break;
+        }
+    }
+
+    private void ClearSmart()
+    {
+        smartQuery = ""; suggestions = null; ddOpen = false; searching = false;
+        searchCts?.Cancel();
+    }
+
+    // Selecting a suggestion routes straight to the customer's edit page — the existing CustomerEdit
+    // razor reads the id from the URL and auto-fills name, mobile, email, address, roles, orders.
+    private void SelectSuggestion(int idx)
+    {
+        if (suggestions == null || idx < 0 || idx >= suggestions.Count) return;
+        var s = suggestions[idx];
+        ddOpen = false;
+        Nav.NavigateTo($"/admin/customers/{s.Id}");
+    }
+
+    // ── Create modal ──
+    private void OpenCreateModal()
+    {
+        ddOpen = false;
+        createErr = null;
+        emailAvail = null; phoneAvail = null; duplicate = null;
+        // Pre-fill: if the smart input looks like a phone or email, drop it into the right modal field.
+        var q = (smartQuery ?? "").Trim();
+        newCust = new CustomerCreateRequest { Role = "student" };
+        if (q.Length > 0)
+        {
+            if (q.All(ch => char.IsDigit(ch) || ch == '+' || ch == '-' || ch == ' ')) newCust.Phone = q;
+            else if (q.Contains('@')) newCust.Email = q;
+            else newCust.FullName = q;
+        }
+        createOpen = true;
+    }
+    private void CloseCreateModal()
+    {
+        if (creating) return;
+        createOpen = false; createErr = null;
+        emailAvail = null; phoneAvail = null; duplicate = null;
+    }
+
+    // Inline blur AJAX — calls the centralised duplicate service. Same source of truth as the
+    // server-side guard at Save, so the user gets identical feedback before they hit Save.
+    private async Task OnEmailBlur()
+    {
+        emailAvail = string.IsNullOrWhiteSpace(newCust.Email)
+            ? null
+            : await Dupes.CheckEmailAvailableAsync(newCust.Email);
+    }
+    private async Task OnPhoneBlur()
+    {
+        phoneAvail = string.IsNullOrWhiteSpace(newCust.Phone)
+            ? null
+            : await Dupes.CheckPhoneAvailableAsync(newCust.Phone);
+    }
+
+    // Both "View Customer" and "Use Existing Customer" route to the existing edit page — that page
+    // auto-fills name, mobile, email, address, roles, orders. Single customer identity preserved.
+    private void OpenExistingCustomer(Guid id)
+    {
+        createOpen = false; duplicate = null;
+        Nav.NavigateTo($"/admin/customers/{id}");
+    }
+
+    private async Task SubmitCreate()
+    {
+        creating = true; createErr = null; duplicate = null;
+        try
+        {
+            var (ok, error, id, dup) = await Svc.CreateCustomerAsync(newCust, actorId, actorName, null);
+            if (!ok)
+            {
+                // If the service returned a duplicate, flip the modal into the existing-customer panel.
+                if (dup is { HasDuplicate: true }) duplicate = dup;
+                else createErr = error;
+                return;
+            }
+            createOpen = false;
+            Nav.NavigateTo($"/admin/customers/{id}");
+        }
+        finally { creating = false; }
+    }
+}

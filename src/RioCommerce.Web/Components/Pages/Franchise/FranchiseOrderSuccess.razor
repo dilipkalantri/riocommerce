@@ -1,0 +1,62 @@
+@page "/franchise/order-success/{OrderId:guid}"
+@attribute [Authorize(Roles = "franchise_admin")]
+@using RioCommerce.Core.DTOs.Orders
+@inject IReceiptService Receipts
+@inject NavigationManager Nav
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Order Placed — Franchise Portal" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">Franchise Portal</h1>
+    <FranchiseNav />
+
+    <div class="data-card" style="max-width:600px;margin:24px auto;text-align:center;padding:36px">
+        <div style="font-size:56px;line-height:1">✅</div>
+        <h2 style="margin:14px 0 4px">Order Placed Successfully</h2>
+        <p style="color:var(--gray-500);margin:0 0 6px">Payment received and the order is confirmed.</p>
+
+        @if (r == null)
+        {
+            <p style="color:var(--gray-400);padding:18px 0">Loading order…</p>
+        }
+        else
+        {
+            <div style="font-size:24px;font-weight:700;margin:14px 0 2px">@r.OrderNumber</div>
+            @* Discount and share are separate reductions — a coupon comes off the total, the share
+               comes off what the franchisee pays. Call both out so the maths is obvious. *@
+            <p style="color:var(--gray-500);margin:0">
+                Paid <strong>₹@r.TotalAmount.ToString("N0")</strong>@(r.DiscountAmount > 0 ? $" after a ₹{r.DiscountAmount:N0} discount" : "")@if (r.Franchise is { IsFranchiseOrder: true } && r.Franchise.TotalFranchiseShare > 0)
+                {
+                    <text> — your ₹@r.Franchise.TotalFranchiseShare.ToString("N0") share was kept.</text>
+                }
+            </p>
+
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:24px">
+                <a class="btn btn-outline" href="@($"/api/franchise/orders/{OrderId}/receipt.pdf?download=1")" target="_blank" rel="noopener">📄 Customer Receipt</a>
+                @* Paid from wallet → no invoice for this order; the top-up that funded it carries one. *@
+                @if (r.PaidFromWallet)
+                {
+                    <a class="btn btn-outline" href="/franchise/ledger" rel="noopener">👛 Wallet &amp; invoices</a>
+                }
+                else
+                {
+                    <a class="btn btn-outline" href="@($"/api/franchise/orders/{OrderId}/invoice.pdf?download=1")" target="_blank" rel="noopener">🧾 Your Tax Invoice</a>
+                }
+            </div>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px">
+                <a class="btn btn-primary" href="/franchise/order">＋ Place Another Order</a>
+                <a class="btn btn-ghost" href="/franchise/orders">View All Orders</a>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public Guid OrderId { get; set; }
+    private ReceiptDetail? r;
+
+    protected override async Task OnInitializedAsync()
+    {
+        r = await Receipts.GetAsync(OrderId);
+    }
+}

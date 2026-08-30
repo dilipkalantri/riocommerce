@@ -1,0 +1,403 @@
+@page "/admin/settings/email-api"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IIntegrationSettingsService Svc
+@inject IEmailRouter Router
+@inject IEmailLogService LogSvc
+<PageTitle>Email API — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Email Provider</h1>
+    <div style="display:flex;gap:8px">
+        <a href="/admin/email-logs" class="btn btn-outline btn-sm">📧 Email Logs</a>
+        <a href="/admin/settings/email" class="btn btn-outline btn-sm">Open SMTP Settings →</a>
+    </div>
+</div>
+
+@* ── Provider health + stats card. Numbers refresh every time the page loads. ── *@
+@if (stats != null)
+{
+    <div class="kpi-grid" style="margin-bottom:18px">
+        <div class="kpi-card"><div class="kpi-card__label">Total Sent</div><div class="kpi-card__value">@stats.Total</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Delivered</div><div class="kpi-card__value" style="color:#15803D">@stats.Delivered</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Failed</div><div class="kpi-card__value" style="color:#B91C1C">@stats.Failed</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Pending</div><div class="kpi-card__value" style="color:#B45309">@stats.Pending</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Success Rate</div><div class="kpi-card__value" style="color:var(--orange)">@stats.SuccessRatePct.ToString("0.0")%</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Today</div><div class="kpi-card__value">@stats.Today</div></div>
+    </div>
+
+    <div class="form-card" style="margin-bottom:18px">
+        <div class="form-card__title">
+            🩺 Provider Health
+            <span style="margin-left:10px;font-size:11.5px;font-weight:700;color:#fff;background:linear-gradient(135deg,#F58220,#ff9d4d);padding:3px 10px;border-radius:999px;letter-spacing:.5px">@activeProviderKey.ToUpper()</span>
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <div class="ep-lbl">Last successful email</div>
+                <div>@(stats.LastSuccessAt?.ToLocalTime().ToString("dd-MMM-yyyy HH:mm:ss") ?? "—")</div>
+                @if (!string.IsNullOrWhiteSpace(stats.LastSuccessResponse))
+                {
+                    <details><summary style="cursor:pointer;font-size:12px;color:var(--gray-500)">Provider response</summary><pre class="ep-pre">@stats.LastSuccessResponse</pre></details>
+                }
+            </div>
+            <div class="form-group">
+                <div class="ep-lbl">Last failure</div>
+                <div>@(stats.LastFailureAt?.ToLocalTime().ToString("dd-MMM-yyyy HH:mm:ss") ?? "—")</div>
+                @if (!string.IsNullOrWhiteSpace(stats.LastFailureError))
+                {
+                    <div style="color:#B91C1C;font-weight:600;font-size:13px;margin-top:4px">@stats.LastFailureError</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(stats.LastFailureResponse))
+                {
+                    <details><summary style="cursor:pointer;font-size:12px;color:var(--gray-500)">Provider response</summary><pre class="ep-pre">@stats.LastFailureResponse</pre></details>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .ep-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-500);margin-bottom:3px}
+    .ep-pre{background:#0F172A;color:#E2E8F0;padding:10px 12px;border-radius:8px;font-size:11.5px;line-height:1.45;max-height:160px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin-top:6px}
+</style>
+
+@if (provider == null || zepto == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+}
+else
+{
+    @if (savedMsg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:14px">@savedMsg</div> }
+    @if (errorMsg != null) { <div class="inline-alert inline-alert--error" style="margin-bottom:14px">@errorMsg</div> }
+
+    @* ── Provider selector — switching here flips which transport carries every outbound
+          email immediately. No restart required. The active provider is highlighted with
+          a green badge. ── *@
+    <div class="ep-grid">
+        <label class="ep-card @(provider.Transport == EmailTransport.Smtp ? "ep-card--active" : "")">
+            <input type="radio" name="transport" value="@EmailTransport.Smtp" checked="@(provider.Transport == EmailTransport.Smtp)" @onchange="() => SetTransport(EmailTransport.Smtp)" />
+            <div class="ep-card__head">
+                <div class="ep-card__ico">📨</div>
+                <div class="ep-card__meta">
+                    <div class="ep-card__title">SMTP</div>
+                    <div class="ep-card__sub">Classic Mail-Server (Gmail App Password, Zoho SMTP, in-house Postfix, …)</div>
+                </div>
+                @if (provider.Transport == EmailTransport.Smtp)
+                {
+                    <span class="ep-badge ep-badge--ok">● Active</span>
+                }
+            </div>
+            <div class="ep-card__body">
+                <small>Edit credentials at <a href="/admin/settings/email">Email (SMTP)</a>.</small>
+            </div>
+        </label>
+
+        <label class="ep-card @(provider.Transport == EmailTransport.Api ? "ep-card--active" : "")">
+            <input type="radio" name="transport" value="@EmailTransport.Api" checked="@(provider.Transport == EmailTransport.Api)" @onchange="() => SetTransport(EmailTransport.Api)" />
+            <div class="ep-card__head">
+                <div class="ep-card__ico">🚀</div>
+                <div class="ep-card__meta">
+                    <div class="ep-card__title">Email API</div>
+                    <div class="ep-card__sub">High-deliverability HTTP API providers — ZeptoMail, SendGrid, Mailgun, Brevo, AWS SES.</div>
+                </div>
+                @if (provider.Transport == EmailTransport.Api)
+                {
+                    <span class="ep-badge ep-badge--ok">● Active</span>
+                }
+            </div>
+            <div class="ep-card__body">
+                <label class="form-label" style="margin-top:2px">Provider</label>
+                <select class="form-input" @bind="provider.ApiProvider" @bind:after="SaveProviderQuiet">
+                    <option value="@EmailApiProvider.ZeptoMail">ZeptoMail</option>
+                    <option value="@EmailApiProvider.SendGrid"  disabled>SendGrid (coming soon)</option>
+                    <option value="@EmailApiProvider.Mailgun"   disabled>Mailgun (coming soon)</option>
+                    <option value="@EmailApiProvider.Brevo"     disabled>Brevo (coming soon)</option>
+                    <option value="@EmailApiProvider.AwsSes"    disabled>AWS SES (coming soon)</option>
+                    <option value="@EmailApiProvider.Custom"    disabled>Custom (coming soon)</option>
+                </select>
+            </div>
+        </label>
+    </div>
+
+    @* ── ZeptoMail configuration card — shown when API + ZeptoMail are selected. ── *@
+    @if (provider.Transport == EmailTransport.Api && provider.ApiProvider == EmailApiProvider.ZeptoMail)
+    {
+        <div class="form-card" style="margin-top:18px">
+            <div class="form-card__title">
+                <span>ZeptoMail Configuration</span>
+                @if (zepto.Enabled) { <span class="ep-badge ep-badge--ok" style="margin-left:10px">Enabled</span> }
+            </div>
+
+            <div class="account-grid">
+                <div>
+                    <div class="form-group">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:14px">
+                            <input type="checkbox" @bind="zepto.Enabled" /> Enable ZeptoMail sending
+                        </label>
+                        <div class="form-hint">When off, emails are logged instead of sent.</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Domain</label>
+                        <input class="form-input" @bind="zepto.Domain" placeholder="@ZeptoMailSettings.DefaultDomain" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Host</label>
+                        <input class="form-input" @bind="zepto.Host" placeholder="@ZeptoMailSettings.DefaultHost" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">API Endpoint</label>
+                        <input class="form-input" @bind="zepto.ApiEndpoint" placeholder="@ZeptoMailSettings.DefaultApiEndpoint" />
+                        <div class="form-hint">Full POST URL. Default: <code>@ZeptoMailSettings.DefaultApiEndpoint</code></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Agent Alias <span class="form-hint" style="font-weight:400">(optional)</span></label>
+                        <input class="form-input" @bind="zepto.AgentAlias" placeholder="info-alias" />
+                    </div>
+                </div>
+                <div>
+                    <div class="form-group">
+                        <label class="form-label">Send-Mail Token</label>
+                        @if (tokenHasValue && !changingToken)
+                        {
+                            <div class="ep-token-row">
+                                <span class="ep-token-mask">••••••••••••••••••••</span>
+                                <button type="button" class="btn btn-outline btn-sm" @onclick="StartChangingToken">Change</button>
+                            </div>
+                            <div class="form-hint">Token is stored encrypted. Click <strong>Change</strong> to replace it.</div>
+                        }
+                        else
+                        {
+                            <input type="password" class="form-input" @bind="newToken" autocomplete="new-password" placeholder="Paste new Send-Mail Token" />
+                            @if (tokenHasValue)
+                            {
+                                <button type="button" class="btn btn-ghost btn-sm" style="margin-top:6px" @onclick="CancelChangingToken">Cancel — keep existing token</button>
+                            }
+                        }
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sender Name</label>
+                        <input class="form-input" @bind="zepto.FromName" placeholder="RioCommerce" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sender Email</label>
+                        <input class="form-input" @bind="zepto.FromEmail" placeholder="noreply@@antargyan.com" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Reply-To <span class="form-hint" style="font-weight:400">(optional)</span></label>
+                        <input class="form-input" @bind="zepto.ReplyTo" placeholder="support@@riocommerce.com" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions" style="margin-top:8px;justify-content:space-between">
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="btn btn-primary" disabled="@saving" @onclick="SaveZepto">@(saving ? "Saving…" : "Save ZeptoMail Settings")</button>
+                </div>
+                <button class="btn btn-outline" @onclick='() => OpenTest("zeptomail")'>📧 Send Test Email</button>
+            </div>
+        </div>
+    }
+
+    @* ── SMTP-side test button — visible regardless so admins can probe either provider
+          without flipping the live transport. ── *@
+    <div class="ep-test-bar">
+        <div class="ep-test-bar__txt">Currently active provider: <strong>@activeProviderKey.ToUpper()</strong></div>
+        <button class="btn btn-outline btn-sm" @onclick='() => OpenTest("smtp")'>Send Test via SMTP</button>
+        <button class="btn btn-outline btn-sm" @onclick='() => OpenTest("zeptomail")'>Send Test via ZeptoMail</button>
+    </div>
+
+    @* ── Test Email modal — recipient, send, displays full response. ── *@
+    @if (testOpen)
+    {
+        <div class="ep-modal-bg" @onclick="CloseTest"></div>
+        <div class="ep-modal" role="dialog" aria-label="Send test email">
+            <div class="ep-modal__head">
+                <div>
+                    <div class="ep-modal__title">Send Test Email</div>
+                    <div class="ep-modal__sub">via <strong>@testProviderKey.ToUpper()</strong></div>
+                </div>
+                <button class="ep-modal__close" @onclick="CloseTest" aria-label="Close">×</button>
+            </div>
+            <div class="ep-modal__body">
+                <div class="form-group">
+                    <label class="form-label">Recipient Email</label>
+                    <input class="form-input" @bind="testRecipient" placeholder="you@@example.com" autocomplete="off" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Subject</label>
+                    <input class="form-input" @bind="testSubject" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Body</label>
+                    <textarea class="form-input" rows="3" @bind="testBody"></textarea>
+                </div>
+                @if (testResult != null)
+                {
+                    <div class="@(testResult.Ok ? "ep-result ep-result--ok" : "ep-result ep-result--err")">
+                        <div class="ep-result__head">
+                            @(testResult.Ok ? "✅ Sent" : "❌ Failed")
+                            <span class="ep-result__meta">@testResult.DurationMs ms</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(testResult.Error)) { <div class="ep-result__row"><strong>Error:</strong> @testResult.Error</div> }
+                        @if (!string.IsNullOrWhiteSpace(testResult.Response)) { <pre class="ep-result__resp">@testResult.Response</pre> }
+                    </div>
+                }
+            </div>
+            <div class="ep-modal__foot">
+                <button class="btn btn-ghost" @onclick="CloseTest" disabled="@testing">Close</button>
+                <button class="btn btn-primary" @onclick="SendTest" disabled="@testing">@(testing ? "Sending…" : "Send")</button>
+            </div>
+        </div>
+    }
+}
+
+<style>
+    .ep-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @@media(max-width:900px){ .ep-grid{grid-template-columns:1fr} }
+
+    .ep-card{position:relative;display:block;background:#fff;border:2px solid var(--gray-200);border-radius:16px;padding:16px 18px;cursor:pointer;transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease}
+    .ep-card:hover{border-color:#bfdbfe;box-shadow:0 12px 26px -18px rgba(15,27,51,.25);transform:translateY(-1px)}
+    .ep-card--active{border-color:var(--orange);box-shadow:0 0 0 4px rgba(245,130,32,.12)}
+    .ep-card input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+
+    .ep-card__head{display:flex;align-items:flex-start;gap:12px}
+    .ep-card__ico{font-size:24px;flex:0 0 auto;width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#FFF7ED,#FFEDD5);display:inline-flex;align-items:center;justify-content:center}
+    .ep-card__meta{flex:1;min-width:0}
+    .ep-card__title{font-size:16px;font-weight:800;color:var(--navy)}
+    .ep-card__sub{font-size:12.5px;color:var(--gray-500);margin-top:2px;line-height:1.45}
+    .ep-card__body{margin-top:12px}
+    .ep-card__body small{color:var(--gray-500);font-size:12px}
+
+    .ep-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.4px}
+    .ep-badge--ok{background:#DCFCE7;color:#15803D}
+
+    .ep-token-row{display:flex;align-items:center;gap:10px}
+    .ep-token-mask{flex:1;padding:9px 12px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;color:var(--gray-500);font-family:monospace;letter-spacing:2px}
+
+    .ep-test-bar{margin-top:20px;background:#FFF7ED;border:1px dashed #FED7AA;border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .ep-test-bar__txt{flex:1;min-width:200px;color:var(--navy);font-size:13px}
+    .ep-test-bar__txt strong{color:var(--orange)}
+
+    .ep-modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(2px);z-index:90}
+    .ep-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100vw - 32px));background:#fff;border-radius:18px;box-shadow:0 28px 60px -20px rgba(15,23,42,.45);z-index:91;overflow:hidden;animation:epFade .25s ease}
+    @@keyframes epFade{from{opacity:0;transform:translate(-50%,-46%)}to{opacity:1;transform:translate(-50%,-50%)}}
+    .ep-modal__head{display:flex;align-items:flex-start;gap:10px;padding:16px 20px;border-bottom:1px solid var(--gray-200)}
+    .ep-modal__title{font-size:16px;font-weight:800;color:var(--navy)}
+    .ep-modal__sub{font-size:12px;color:var(--gray-500);margin-top:2px}
+    .ep-modal__sub strong{color:var(--orange)}
+    .ep-modal__close{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:var(--gray-100);color:var(--gray-600);font-size:18px;cursor:pointer}
+    .ep-modal__body{padding:16px 20px}
+    .ep-modal__foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;background:var(--gray-50);border-top:1px solid var(--gray-200)}
+
+    .ep-result{margin-top:10px;border-radius:12px;padding:12px 14px;font-size:13px;border:1px solid var(--gray-200);background:#fff}
+    .ep-result--ok{border-color:#86EFAC;background:#F0FDF4}
+    .ep-result--err{border-color:#FCA5A5;background:#FEF2F2}
+    .ep-result__head{font-weight:800;display:flex;justify-content:space-between;align-items:center;color:var(--navy)}
+    .ep-result__meta{font-size:11px;color:var(--gray-500);font-weight:600}
+    .ep-result__row{margin-top:8px;color:var(--gray-700)}
+    .ep-result__resp{margin-top:8px;background:#0F172A;color:#E2E8F0;padding:10px 12px;border-radius:8px;font-size:11.5px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+</style>
+
+@code {
+    private EmailProviderSettings? provider;
+    private ZeptoMailSettings? zepto;
+    private string activeProviderKey = "smtp";
+    private EmailLogStats? stats;
+
+    // Token-change UX — only send a new value when the admin clicks "Change".
+    private bool tokenHasValue;
+    private bool changingToken;
+    private string? newToken;
+
+    private bool saving;
+    private string? savedMsg;
+    private string? errorMsg;
+
+    // Test-email modal state.
+    private bool testOpen;
+    private string testProviderKey = "smtp";
+    private string testRecipient = string.Empty;
+    private string testSubject = "RioCommerce — test email";
+    private string testBody = "If you're reading this, the selected email provider is delivering successfully.";
+    private bool testing;
+    private EmailSendResult? testResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        provider = await Svc.GetEmailProviderAsync();
+        zepto = await Svc.GetZeptoMailAsync();
+        tokenHasValue = !string.IsNullOrWhiteSpace(zepto.Token);
+        activeProviderKey = await Router.GetActiveProviderKeyAsync();
+        try { stats = await LogSvc.StatsAsync(); } catch { /* table may not exist on a fresh install */ }
+    }
+
+    private async Task SetTransport(string t)
+    {
+        if (provider == null) return;
+        provider.Transport = t;
+        await SaveProviderQuiet();
+    }
+
+    private async Task SaveProviderQuiet()
+    {
+        if (provider == null) return;
+        await Svc.SaveEmailProviderAsync(provider);
+        activeProviderKey = await Router.GetActiveProviderKeyAsync();
+    }
+
+    private void StartChangingToken() { changingToken = true; newToken = string.Empty; }
+    private void CancelChangingToken() { changingToken = false; newToken = null; }
+
+    private async Task SaveZepto()
+    {
+        if (zepto == null) return;
+        saving = true; savedMsg = null; errorMsg = null;
+        try
+        {
+            // Only overwrite the token when admin actively entered a new one.
+            if (changingToken || !tokenHasValue)
+            {
+                if (!string.IsNullOrWhiteSpace(newToken))
+                    zepto.Token = newToken.Trim();
+            }
+            else
+            {
+                // Re-read the existing encrypted token so SaveZeptoMailAsync re-encrypts the same value.
+                var existing = await Svc.GetZeptoMailAsync();
+                zepto.Token = existing.Token;
+            }
+
+            await Svc.SaveZeptoMailAsync(zepto);
+
+            // Reload to pick up trimmed / canonical values and reset the token UI.
+            zepto = await Svc.GetZeptoMailAsync();
+            tokenHasValue = !string.IsNullOrWhiteSpace(zepto.Token);
+            changingToken = false;
+            newToken = null;
+            savedMsg = "ZeptoMail settings saved.";
+        }
+        catch (Exception ex) { errorMsg = ex.Message; }
+        finally { saving = false; }
+    }
+
+    private void OpenTest(string providerKey)
+    {
+        testProviderKey = providerKey;
+        testResult = null;
+        testOpen = true;
+    }
+    private void CloseTest() => testOpen = false;
+
+    private async Task SendTest()
+    {
+        if (string.IsNullOrWhiteSpace(testRecipient)) { testResult = EmailSendResult.Failure("Recipient email is required.", null, 0); return; }
+        testing = true; testResult = null;
+        try
+        {
+            var msg = new EmailMessage(testRecipient.Trim(), null, testSubject, testBody);
+            testResult = await Router.SendTestAsync(testProviderKey, msg);
+        }
+        catch (Exception ex) { testResult = EmailSendResult.Failure(ex.Message, null, 0); }
+        finally { testing = false; }
+    }
+}

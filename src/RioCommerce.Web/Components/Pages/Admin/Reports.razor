@@ -1,0 +1,63 @@
+@page "/admin/reports"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IReportsService Svc
+<PageTitle>Reports — RioCommerce Admin</PageTitle>
+
+<div class="page__header"><h1>Sales Reports</h1></div>
+
+@if (r == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+}
+else
+{
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-card__label">Total Revenue</div><div class="kpi-card__value">₹@r.RevenueTotal.ToString("N0")</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">This Month</div><div class="kpi-card__value" style="color:var(--green)">₹@r.RevenueMtd.ToString("N0")</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Today</div><div class="kpi-card__value">₹@r.RevenueToday.ToString("N0")</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Avg Order Value</div><div class="kpi-card__value">₹@r.AvgOrderValue.ToString("N0")</div></div>
+    </div>
+
+    <div class="data-card" style="margin-top:20px">
+        <div class="data-card__title">Revenue — last 14 days</div>
+        <div class="report-bars">
+            @{ var max = r.Last14Days.Count == 0 ? 1 : Math.Max(1, (double)r.Last14Days.Max(d => d.Revenue)); }
+            @foreach (var d in r.Last14Days)
+            {
+                <div class="report-bar" title="@d.Date: ₹@d.Revenue.ToString("N0")">
+                    <div class="report-bar__fill" style="height:@(((double)d.Revenue / max * 100).ToString("0"))%"></div>
+                    <span class="report-bar__label">@d.Date.Split(' ')[0]</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="account-grid" style="margin-top:20px">
+        <div class="data-card">
+            <div class="data-card__title">Revenue by Source</div>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Source</th><th>Orders</th><th>Revenue</th></tr></thead>
+                <tbody>
+                    @if (r.BySource.Count == 0) { <tr><td colspan="3" style="text-align:center;color:var(--gray-400)">No data.</td></tr> }
+                    else { @foreach (var s in r.BySource) { <tr><td>@s.Source</td><td>@s.Orders</td><td><strong>₹@s.Revenue.ToString("N0")</strong></td></tr> } }
+                </tbody>
+            </table></div>
+        </div>
+        <div class="data-card">
+            <div class="data-card__title">Top Courses</div>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Course</th><th>Orders</th><th>Revenue</th></tr></thead>
+                <tbody>
+                    @if (r.TopProducts.Count == 0) { <tr><td colspan="3" style="text-align:center;color:var(--gray-400)">No data.</td></tr> }
+                    else { @foreach (var p in r.TopProducts) { <tr><td style="max-width:240px">@p.Title</td><td>@p.Orders</td><td><strong>₹@p.Revenue.ToString("N0")</strong></td></tr> } }
+                </tbody>
+            </table></div>
+        </div>
+    </div>
+}
+
+@code {
+    private SalesReport? r;
+    protected override async Task OnInitializedAsync() => r = await Svc.SalesAsync();
+}

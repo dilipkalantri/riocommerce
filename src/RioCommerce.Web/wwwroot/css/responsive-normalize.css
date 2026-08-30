@@ -1,0 +1,208 @@
+/* =====================================================================
+   responsive-normalize.css
+   Global responsive normalization. Loaded LAST so it can override
+   anything earlier. Touches DEFAULTS only — no page-specific selectors,
+   so individual designs keep their look but inherit safer behaviour
+   on smaller viewports.
+
+   Breakpoints (matching the spec's checklist):
+     ≥1366 px  desktop          — defaults
+     ≤1280 px  laptop           — first tightening
+     ≤1024 px  tablet landscape — sidebar/grid collapse
+     ≤ 768 px  tablet portrait  — single-column trends
+     ≤ 576 px  large phone      — controls become full-width
+     ≤ 430 px  modern phone     — final tightening
+     ≤ 360 px  small phone      — last-mile reductions
+   ===================================================================== */
+
+/* ── Overflow guards ────────────────────────────────────────────────── */
+/* clip (not hidden) so horizontal overflow is still contained without turning
+   body into a scroll container, which would break the sticky site header. */
+html, body { overflow-x: clip; }
+* { box-sizing: border-box; }
+body, .container, main, .page, .main-content, section, article, header, footer {
+    max-width: 100%;
+}
+
+/* ── Images & media — always fluid, never stretched ─────────────────── */
+img, picture, video {
+    max-width: 100%;
+    height: auto;
+    object-fit: cover;          /* default; cards/heroes can override */
+    display: inline-block;
+}
+img[width][height] { /* preserve intrinsic ratio for layout-shift avoidance */
+    height: auto;
+}
+
+/* ── Icons — clamp every loose SVG to a sane size per breakpoint ────── */
+/* This catches the "icons too big after publish" regression: any <svg>
+   that doesn't already carry an explicit width gets a fluid clamp. Per
+   the spec: desktop 18–24, tablet 18–22, mobile 16–20. */
+svg:not([width]):not([data-large]):not(.svg-noclamp) {
+    width: clamp(16px, 1.4vw, 22px);
+    height: clamp(16px, 1.4vw, 22px);
+    flex: none;                  /* SVGs in flex rows shouldn't expand */
+}
+
+/* Buttons-with-icons safety: keep the icon proportional to the label */
+button svg:not([data-large]):not(.svg-noclamp),
+.btn svg:not([data-large]):not(.svg-noclamp),
+a.btn svg:not([data-large]):not(.svg-noclamp) {
+    width: 16px; height: 16px;
+    vertical-align: middle;
+}
+
+/* Emoji "icons" used as text — keep them paragraph-sized, never huge */
+.icon-emoji, .header__chip svg + span:empty {
+    font-size: 1em;
+}
+
+/* ── Buttons — never overflow, never collapse the label ─────────────── */
+.btn, button {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.btn { white-space: nowrap; }
+.btn--wrap { white-space: normal; }
+
+/* ── Form controls — always 100% inside their grid cell ─────────────── */
+input, select, textarea, .form-input {
+    max-width: 100%;
+    min-width: 0;                /* defeats flex/grid min-content blow-up */
+}
+
+/* ── Tables — horizontal scroll wrapper fallback ────────────────────── */
+.table-wrap, .table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.table-wrap > table {
+    min-width: 0;                /* respect inner min-widths set per page */
+}
+
+/* ── Modals — never wider than the viewport ─────────────────────────── */
+.modal__card, .ac-modal__card, .cust-modal__card, [class*="-modal__card"] {
+    max-width: min(94vw, 720px);
+    max-height: 92vh;
+    overflow-y: auto;
+}
+
+/* ── Cards — equal radius / shadow already enforced per family; this
+        just keeps them from overflowing on narrow viewports ─────────── */
+.card, [class*="-card"] {
+    max-width: 100%;
+}
+
+/* ── Sidebar group items — defend against deep min-content children ─── */
+.sidebar__group-items, .sidebar__link, .sidebar__txt {
+    min-width: 0;
+}
+.sidebar__link {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* =====================================================================
+   Breakpoints
+   ===================================================================== */
+
+/* ── Laptop ≤1280 px ────────────────────────────────────────────────── */
+@media (max-width: 1280px) {
+    .page { padding-left: max(env(safe-area-inset-left), 16px);
+            padding-right: max(env(safe-area-inset-right), 16px); }
+}
+
+/* ── Tablet landscape ≤1024 px ──────────────────────────────────────── */
+@media (max-width: 1024px) {
+    /* Grids that used 3-4 columns drop to 2 */
+    .grid-cols-3, .grid-cols-4, .kpi-grid:not(.kpi-grid--fixed) {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+    /* Icons clamp tighter */
+    svg:not([width]):not([data-large]):not(.svg-noclamp) {
+        width: clamp(16px, 1.8vw, 20px);
+        height: clamp(16px, 1.8vw, 20px);
+    }
+}
+
+/* ── Tablet portrait ≤768 px ────────────────────────────────────────── */
+@media (max-width: 768px) {
+    h1 { font-size: clamp(22px, 5vw, 30px); line-height: 1.2; }
+    h2 { font-size: clamp(20px, 4.4vw, 26px); line-height: 1.25; }
+    h3 { font-size: clamp(18px, 3.6vw, 22px); line-height: 1.3; }
+    body, p, .form-input, .btn { font-size: 14.5px; }
+    .container, .page { padding-left: 14px; padding-right: 14px; }
+
+    /* Tables shift to horizontal scroll (page-specific stacks still win) */
+    table { min-width: 0; }
+
+    /* Sidebar overlay drawer pattern (existing AdminLayout already does this) */
+    .admin-layout .sidebar { width: min(80vw, 320px); }
+}
+
+/* ── Large phone ≤576 px ────────────────────────────────────────────── */
+@media (max-width: 576px) {
+    h1 { font-size: 22px; }
+    h2 { font-size: 20px; }
+    h3 { font-size: 17px; }
+    /* Action button rows go full-width and stack */
+    .btn-row, .form-actions, .modal__foot, .save-bar__actions {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+    .btn-row > .btn, .form-actions > .btn,
+    .modal__foot > .btn, .save-bar__actions > .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    /* Icons inside buttons stay readable */
+    svg:not([width]):not([data-large]):not(.svg-noclamp) {
+        width: 18px; height: 18px;
+    }
+}
+
+/* ── Modern phone ≤430 px ───────────────────────────────────────────── */
+@media (max-width: 430px) {
+    .container, .page { padding-left: 12px; padding-right: 12px; }
+    .card__head, .ac-card__head, .au-h1 { padding: 12px 14px; }
+    .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px; }
+    .au-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    /* Filter dropdowns stack instead of overflowing the row */
+    .psearch__grid, .au-filters, .search-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ── Small phone ≤360 px ────────────────────────────────────────────── */
+@media (max-width: 360px) {
+    .container, .page { padding-left: 10px; padding-right: 10px; }
+    h1 { font-size: 20px; }
+    body, p, .form-input { font-size: 13.5px; }
+    svg:not([width]):not([data-large]):not(.svg-noclamp) {
+        width: 16px; height: 16px;
+    }
+    /* KPI tiles drop to single column to stop label/value collisions */
+    .kpi-grid, .au-kpis, .fin-summary {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ── High-DPR images stay crisp without layout shift ────────────────── */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    img { image-rendering: auto; }
+}
+
+/* ── Reduced motion — disables our heavier transitions for users who ask
+        for it. Existing keyframe animations elsewhere will still play, but
+        nothing on this sheet introduces motion. ──────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+    }
+}

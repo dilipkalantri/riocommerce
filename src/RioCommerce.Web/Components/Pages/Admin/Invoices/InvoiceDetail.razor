@@ -1,0 +1,178 @@
+@page "/admin/invoices/{Id:guid}"
+@using RioCommerce.Core.DTOs.Invoices
+@using RioCommerce.Core.Enums
+@using IvDetail = RioCommerce.Core.DTOs.Invoices.InvoiceDetail
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,support,backend_user,accounts")]
+@inject IInvoiceService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+<PageTitle>Invoice Detail — RioCommerce Admin</PageTitle>
+
+<style>
+    .ivd-grid { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:16px }
+    @@media(max-width:920px){ .ivd-grid { grid-template-columns:1fr } }
+    .ivd-card { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:18px; margin-bottom:14px }
+    .ivd-card__title { font-weight:700; color:var(--navy); font-size:14px; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--gray-100) }
+    .ivd-kv { display:grid; grid-template-columns:140px 1fr; gap:6px 14px; font-size:13px }
+    .ivd-kv dt { color:var(--gray-500); font-weight:600 }
+    .ivd-kv dd { margin:0; color:var(--navy); word-break:break-word }
+    .ivd-totals dt { color:var(--gray-500); font-weight:500 }
+    .ivd-totals dd { text-align:right; font-variant-numeric:tabular-nums }
+    .ivd-totals .ivd-totals__grand dt { color:var(--navy); font-weight:700 }
+    .ivd-totals .ivd-totals__grand dd { color:var(--orange); font-weight:800; font-size:18px }
+    .ivd-items { width:100%; border-collapse:collapse; font-size:12.5px }
+    .ivd-items th, .ivd-items td { padding:8px 10px; border-bottom:1px solid var(--gray-100); text-align:left }
+    .ivd-items th { background:var(--gray-50); font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--gray-500); font-weight:700 }
+    .ivd-items td.num { text-align:right; font-variant-numeric:tabular-nums }
+    .ivd-status { display:inline-block; padding:3px 9px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px }
+    .ivd-status--active    { background:#D1FAE5; color:#065F46 }
+    .ivd-status--cancelled { background:#FEE2E2; color:#991B1B }
+    .ivd-bar { display:flex; gap:8px; flex-wrap:wrap; padding:14px; background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; margin-bottom:14px; align-items:center }
+</style>
+
+@if (loading) { <p style="color:var(--gray-400); padding:30px 0; text-align:center">Loading…</p> }
+else if (inv == null)
+{
+    <div class="ivd-card">
+        <p>Invoice not found. <a href="/admin/invoices">Back to list</a>.</p>
+    </div>
+}
+else
+{
+    <div class="page__header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px">
+        <div>
+            <h1 style="margin:0; font-family:'JetBrains Mono',ui-monospace,monospace">@inv.InvoiceNumber</h1>
+            <p style="color:var(--gray-500); font-size:13px; margin:4px 0 0">
+                <a href="/admin/invoices" style="color:var(--gray-500); text-decoration:none">← Back to list</a>
+                · <a href="/admin/orders/@inv.OrderId" style="color:var(--orange); text-decoration:none">Order @inv.OrderNumber</a>
+            </p>
+        </div>
+        <span class="ivd-status ivd-status--@inv.Status.ToString().ToLowerInvariant()" style="font-size:13px; padding:6px 14px">@inv.Status</span>
+    </div>
+
+    <div class="ivd-bar">
+        <span style="font-size:13px; color:#92400E; font-weight:600; margin-right:8px">Actions:</span>
+        <a class="btn btn-primary btn-sm" href="/api/admin/invoices/@inv.Id/pdf" target="_blank">📄 Preview PDF</a>
+        <a class="btn btn-primary btn-sm" href="/api/admin/invoices/@inv.Id/pdf?download=1">⬇ Download PDF</a>
+        @if (inv.Status == InvoiceStatus.Active)
+        {
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" disabled="@busy" @onclick="Cancel">⛔ Cancel Invoice</button>
+        }
+        @if (inv.Status == InvoiceStatus.Cancelled)
+        {
+            <span style="color:var(--gray-500); font-size:12.5px; font-style:italic">
+                Cancelled @inv.CancelledAt?.ToLocalTime().ToString("dd MMM yyyy, HH:mm") — @inv.CancelledReason
+            </span>
+        }
+    </div>
+
+    <div class="ivd-grid">
+        <div>
+            <div class="ivd-card">
+                <div class="ivd-card__title">Line items</div>
+                <table class="ivd-items">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Description</th><th class="num">Qty</th><th class="num">Rate</th>
+                            <th class="num">Discount</th><th class="num">GST%</th><th class="num">GST</th><th class="num">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in inv.LineItems)
+                        {
+                            <tr>
+                                <td>@l.LineNumber</td>
+                                <td>
+                                    <strong>@l.Description</strong>
+                                    @if (!string.IsNullOrEmpty(l.ModeName)) { <div style="color:var(--gray-500); font-size:11.5px">@l.ModeName</div> }
+                                </td>
+                                <td class="num">@l.Quantity</td>
+                                <td class="num">@Money(l.UnitPrice)</td>
+                                <td class="num">@Money(l.Discount)</td>
+                                <td class="num">@(l.GstRate.HasValue ? $"{l.GstRate:0.##}%" : "—")</td>
+                                <td class="num">@Money(l.GstAmount)</td>
+                                <td class="num"><strong>@Money(l.LineTotal)</strong></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div>
+            <div class="ivd-card">
+                <div class="ivd-card__title">Customer</div>
+                <dl class="ivd-kv">
+                    <dt>Name</dt><dd>@inv.CustomerName</dd>
+                    @if (!string.IsNullOrEmpty(inv.CustomerEmail)) { <dt>Email</dt><dd>@inv.CustomerEmail</dd> }
+                    @if (!string.IsNullOrEmpty(inv.CustomerPhone)) { <dt>Phone</dt><dd>@inv.CustomerPhone</dd> }
+                    @if (!string.IsNullOrEmpty(inv.CustomerGstin))  { <dt>GSTIN</dt><dd><code>@inv.CustomerGstin</code></dd> }
+                    @if (!string.IsNullOrEmpty(inv.BillingAddress)) { <dt>Address</dt><dd>@inv.BillingAddress, @inv.BillingCity, @inv.BillingState @inv.BillingPincode</dd> }
+                    <dt>GST class.</dt><dd>@inv.GstClassification</dd>
+                </dl>
+            </div>
+
+            <div class="ivd-card">
+                <div class="ivd-card__title">Totals</div>
+                <dl class="ivd-kv ivd-totals">
+                    <dt>Subtotal</dt><dd>@Money(inv.Subtotal)</dd>
+                    @if (inv.DiscountAmount > 0) { <dt>Discount</dt><dd>− @Money(inv.DiscountAmount)</dd> }
+                    @if (inv.CgstAmount > 0) { <dt>CGST</dt><dd>@Money(inv.CgstAmount)</dd> }
+                    @if (inv.SgstAmount > 0) { <dt>SGST</dt><dd>@Money(inv.SgstAmount)</dd> }
+                    @if (inv.IgstAmount > 0) { <dt>IGST</dt><dd>@Money(inv.IgstAmount)</dd> }
+                    @if (inv.ShippingCharges > 0) { <dt>Shipping</dt><dd>@Money(inv.ShippingCharges)</dd> }
+                    <div class="ivd-totals__grand" style="display:contents">
+                        <dt>Grand Total</dt><dd>@Money(inv.TotalAmount)</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div class="ivd-card">
+                <div class="ivd-card__title">Payment &amp; metadata</div>
+                <dl class="ivd-kv">
+                    <dt>Gateway</dt><dd>@(inv.PaymentMode?.ToString() ?? "—")</dd>
+                    <dt>Mode</dt><dd>@(string.IsNullOrWhiteSpace(inv.GatewayPaymentMode) ? "—" : inv.GatewayPaymentMode)</dd>
+                    @if (!string.IsNullOrEmpty(inv.PaymentReference)) { <dt>Ref</dt><dd><code>@inv.PaymentReference</code></dd> }
+                    @if (inv.PaidAt.HasValue) { <dt>Paid at</dt><dd>@inv.PaidAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd> }
+                    <dt>Issued</dt><dd>@inv.InvoiceDate.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd>
+                    @if (!string.IsNullOrEmpty(inv.GeneratedByName)) { <dt>By</dt><dd>@inv.GeneratedByName</dd> }
+                </dl>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private IvDetail? inv;
+    private bool loading = true;
+    private bool busy;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        inv = await Svc.GetAsync(Id);
+        loading = false;
+    }
+
+    private async Task Cancel()
+    {
+        if (inv == null) return;
+        var reason = await JS.InvokeAsync<string>("prompt", "Cancel this invoice — reason (required):", "");
+        if (string.IsNullOrWhiteSpace(reason)) return;
+        busy = true;
+        try
+        {
+            var ok = await Svc.CancelAsync(inv.Id, reason, null, null);
+            if (ok) { Toast.Success("Invoice cancelled."); await Load(); }
+            else { Toast.Error("Could not cancel."); }
+        }
+        finally { busy = false; }
+    }
+
+    private static string Money(decimal v) => "₹" + v.ToString("N2");
+}

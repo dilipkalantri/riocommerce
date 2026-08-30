@@ -1,0 +1,140 @@
+<a href="/@Product.Slug" class="course-card">
+    <span class="course-card__glow" aria-hidden="true"></span>
+
+    <div class="course-card__image course-card__image--@LevelClass">
+        @{ var cardImg = !string.IsNullOrWhiteSpace(Product.HomeCardImageUrl) ? Product.HomeCardImageUrl : Product.PrimaryImageUrl; }
+        @if (!string.IsNullOrEmpty(cardImg))
+        {
+            <img class="course-card__photo" src="@cardImg" alt="@Product.Title" loading="lazy" />
+        }
+        else
+        {
+            <div class="course-card__illustration">
+                <span class="course-card__ico">
+                    @switch (Product.Level)
+                    {
+                        case CourseLevel.CaIntermediate:
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
+                            break;
+                        case CourseLevel.Books:
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            break;
+                        case CourseLevel.TestSeries:
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h6a2 2 0 0 1 2 2v0H7v0a2 2 0 0 1 2-2Z"/><rect x="5" y="4" width="14" height="18" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+                            break;
+                        default:
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                            break;
+                    }
+                </span>
+                <span class="course-card__illustration-label">@LevelLabel</span>
+            </div>
+        }
+        @* Batch Status badge — overlay variant, top-left corner. Reads Product.BatchStatus (live DB value);
+           label comes from Product.BatchStatusText (single source of truth — DO NOT hardcode strings here). *@
+        <div class="bs-badge bs-badge--overlay bs-badge--@BatchStatusClass(Product.BatchStatus)">
+            <span class="bs-badge__dot"></span>@Product.BatchStatusText
+        </div>
+        @if (!string.IsNullOrEmpty(Product.Badge))
+        {
+            <div class="course-card__badge course-card__badge--@BadgeClass">@Product.Badge</div>
+        }
+    </div>
+
+    <div class="course-card__body">
+        <span class="course-card__level">@LevelLabel</span>
+        <h3 class="course-card__title">@Product.Title</h3>
+        @if (!string.IsNullOrEmpty(Product.FacultyName))
+        {
+            <p class="course-card__faculty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>
+                by @Product.FacultyName
+            </p>
+        }
+
+        @* Meta row is rating-only. The enrolled-students badge was removed; the guard
+           below must therefore key off RatingCount alone, otherwise a product with
+           orders but no ratings would still emit an empty .course-card__meta div and
+           leave a stray gap above the footer. *@
+        @if (Product.RatingCount > 0)
+        {
+            <div class="course-card__meta">
+                <span class="course-card__stat course-card__stat--star">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg>
+                    @Product.AvgRating.ToString("0.0") <small>(@Product.RatingCount)</small>
+                </span>
+            </div>
+        }
+
+        <div class="course-card__footer">
+            <div class="course-card__pricing">
+                <span class="course-card__price">₹@Product.EffectivePrice.ToString("N0")</span>
+                @if (StrikethroughPrice > Product.EffectivePrice) { <span class="course-card__mrp">₹@StrikethroughPrice.ToString("N0")</span> }
+            </div>
+            @if (DiscountPct > 0) { <span class="course-card__discount">@DiscountPct% OFF</span> }
+        </div>
+
+        <span class="course-card__cta">
+            View Details
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </span>
+    </div>
+</a>
+
+@code {
+    [Parameter, EditorRequired] public ProductListItem Product { get; set; } = null!;
+
+    // When special price is active, the strikethrough shows the higher of MRP or regular selling price.
+    // When not active, it's just the MRP (if higher than selling price).
+    private decimal StrikethroughPrice => Product.IsSpecialPriceActive
+        ? Math.Max(Product.Mrp, Product.SellingPrice)
+        : Product.Mrp;
+
+    private int DiscountPct => StrikethroughPrice > Product.EffectivePrice && StrikethroughPrice > 0
+        ? (int)Math.Round((StrikethroughPrice - Product.EffectivePrice) / StrikethroughPrice * 100) : 0;
+
+    private string LevelLabel => Product.Level switch
+    {
+        CourseLevel.CaFoundation => "CA Foundation",
+        CourseLevel.CaIntermediate => "CA Intermediate",
+        CourseLevel.CaFinal => "CA Final",
+        CourseLevel.Books => "Books",
+        CourseLevel.TestSeries => "Test Series",
+        _ => Product.Level.ToString()
+    };
+
+    private string LevelClass => Product.Level switch
+    {
+        CourseLevel.CaIntermediate => "inter",
+        CourseLevel.CaFinal => "final",
+        CourseLevel.Books => "books",
+        CourseLevel.TestSeries => "tests",
+        _ => "foundation"
+    };
+
+    // Enum -> CSS variant. Display text comes from Product.BatchStatusText so the label is centralised.
+    private static string BatchStatusClass(BatchStatus s) => s switch
+    {
+        BatchStatus.Upcoming => "upcoming",
+        BatchStatus.Ongoing => "ongoing",
+        BatchStatus.PreRecorded => "prerec",
+        BatchStatus.OutOfStock => "oos",
+        BatchStatus.ComingSoon => "soon",
+        _ => "upcoming"
+    };
+
+    // Maps the admin-entered Badge text to a colour variant — LIVE pulses, BESTSELLER is gold, etc.
+    private string BadgeClass
+    {
+        get
+        {
+            var b = (Product.Badge ?? "").ToUpperInvariant();
+            if (b.Contains("LIVE")) return "live";
+            if (b.Contains("BESTSELLER") || b.Contains("BEST")) return "best";
+            if (b.Contains("COMBO")) return "combo";
+            if (b.Contains("TREND")) return "trend";
+            if (b.Contains("LIMITED")) return "limited";
+            return "new";
+        }
+    }
+}

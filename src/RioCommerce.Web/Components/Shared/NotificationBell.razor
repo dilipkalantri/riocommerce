@@ -1,0 +1,118 @@
+@implements IDisposable
+@inject INotificationCenterService Center
+@inject IRealtimeBus Bus
+@inject ToastService Toast
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="notif">
+    <button class="notif__bell" @onclick="Toggle" title="Notifications">
+        🔔
+        @if (unread > 0) { <span class="notif__badge">@(unread > 99 ? "99+" : unread.ToString())</span> }
+    </button>
+    @if (open)
+    {
+        <div class="notif__backdrop" @onclick="() => open = false"></div>
+        <div class="notif__panel">
+            <div class="notif__head">
+                <strong>Notifications</strong>
+                <div style="display:flex;gap:10px">
+                    @if (unread > 0) { <a href="#" @onclick:preventDefault @onclick="MarkAllRead">Mark all read</a> }
+                    <a href="/admin/alerts" @onclick="() => open = false">View all</a>
+                </div>
+            </div>
+            <div class="notif__list">
+                @if (feed.Count == 0) { <div class="notif__empty">You're all caught up 🎉</div> }
+                else
+                {
+                    @foreach (var n in feed)
+                    {
+                        <div class="notif__item" @onclick="() => OpenItem(n)">
+                            <span class="notif__dot notif__dot--@Variant(n.Severity)">@Icon(n.Type)</span>
+                            <div class="notif__body">
+                                <div class="notif__title">@n.Title</div>
+                                <div class="notif__msg">@n.Message</div>
+                                <div class="notif__time">@Ago(n.CreatedAt)</div>
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<AdminNotificationDto> feed = new();
+    private int unread;
+    private bool open;
+    private Guid? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        userId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        var f = await Center.GetFeedAsync(userId);
+        feed.AddRange(f.Items);
+        unread = f.UnreadCount;
+        Bus.NotificationPublished += OnNotification;
+    }
+
+    private void OnNotification(AdminNotificationDto n)
+    {
+        // Raised from the publishing circuit's thread — marshal onto this circuit before touching state.
+        _ = InvokeAsync(async () =>
+        {
+            feed.Insert(0, n);
+            if (feed.Count > 20) feed.RemoveRange(20, feed.Count - 20);
+            unread++;
+            StateHasChanged();
+            Toast.Info(n.Title);
+            try { await JS.InvokeVoidAsync("hjc.beep"); } catch { }
+        });
+    }
+
+    private void Toggle() => open = !open;
+
+    private async Task MarkAllRead()
+    {
+        await Center.MarkAllReadAsync(userId);
+        unread = 0;
+    }
+
+    private async Task OpenItem(AdminNotificationDto n)
+    {
+        open = false;
+        await Center.MarkAllReadAsync(userId);
+        unread = 0;
+        if (!string.IsNullOrEmpty(n.LinkUrl)) Nav.NavigateTo(n.LinkUrl);
+    }
+
+    public void Dispose() => Bus.NotificationPublished -= OnNotification;
+
+    private static string Variant(NotificationSeverity s) => s switch
+    {
+        NotificationSeverity.Success => "success",
+        NotificationSeverity.Warning => "warning",
+        NotificationSeverity.Error => "error",
+        _ => "info"
+    };
+    private static string Icon(AdminNotificationType t) => t switch
+    {
+        AdminNotificationType.NewOrder => "🛒",
+        AdminNotificationType.PaymentSuccess => "💰",
+        AdminNotificationType.Refund => "↩",
+        AdminNotificationType.EnrollmentActivated => "🎓",
+        AdminNotificationType.FranchisePayout => "🏪",
+        _ => "⚠"
+    };
+    private static string Ago(DateTime utc)
+    {
+        var span = DateTime.UtcNow - utc;
+        if (span.TotalMinutes < 1) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
+        return utc.ToLocalTime().ToString("dd MMM, HH:mm");
+    }
+}

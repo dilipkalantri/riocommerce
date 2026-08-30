@@ -1,0 +1,55 @@
+@page "/{Slug}"
+@inject ISeoUrlService SeoUrls
+
+@* ── The ONE central root-level slug resolver ──
+   GET /{slug} → look up the global URL registry → render the owning storefront page.
+   The public URL never reveals the entity type. Reserved/system routes are more specific
+   Blazor/endpoint routes and win over this parameter route, so they never reach here. *@
+
+@if (resolving)
+{
+    <div class="ps-loading">Loading…</div>
+}
+else if (entityType == SeoEntityTypes.Category)
+{
+    <CategoryBrowse Slug="@Slug" Q="@Q" SubjectId="@SubjectId" FacultyId="@FacultyId" PageQ="@PageQ" />
+}
+else if (entityType == SeoEntityTypes.Product)
+{
+    <CourseDetail Slug="@Slug" />
+}
+else
+{
+    <div style="text-align:center;padding:80px 20px">
+        <h1>404 — Page Not Found</h1>
+        <p style="color:var(--gray-500)">The page you're looking for doesn't exist.</p>
+        <a href="/" class="btn btn-primary" style="margin-top:16px">Back To Home</a>
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    // This resolver owns the query-string binding and forwards it to the category page.
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "subject")] public Guid? SubjectId { get; set; }
+    [SupplyParameterFromQuery(Name = "faculty")] public Guid? FacultyId { get; set; }
+    [SupplyParameterFromQuery(Name = "page")] public int? PageQ { get; set; }
+
+    private string? entityType;
+    private bool resolving = true;
+    private string? resolvedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Resolve once per slug; query-only changes just re-forward to the child.
+        if (Slug != resolvedFor)
+        {
+            resolvedFor = Slug;
+            resolving = true;
+            var res = await SeoUrls.ResolveAsync(Slug);
+            entityType = res?.EntityType;
+            resolving = false;
+        }
+    }
+}

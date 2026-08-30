@@ -1,0 +1,323 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   hero-banner.css — homepage hero carousel in CENTRE MODE.
+
+   The active slide is centred at ~86% of the content container, with the
+   previous and next slides peeking at either edge, scaled down and faded.
+
+   Structure:
+     .hjc-banner-wrap      site container (max 1280px); its padding is the gutter
+       .hjc-banner         positioning context; overflow VISIBLE so arrows can
+                           overlap outside the viewport
+         .hjc-banner__viewport   clips the track horizontally
+           .hjc-banner__track    flex strip of cells, translated by JS
+             .hjc-banner__slide  the rounded card (radius + shadow live here)
+         arrows, dots
+
+   ── Centring maths ──────────────────────────────────────────────────────────
+   The track carries a negative left margin so the FIRST REAL slide (cell index
+   1, since cell 0 is the infinite-loop clone of the last slide) is already
+   centred before any JavaScript runs — no first-paint jump.
+
+     viewport width V, slide width w·V, gap g
+     cell[1].offsetLeft            = w·V + g
+     centred offsetLeft should be  = (V − w·V) / 2
+     ⇒ margin-left M               = V·(0.5 − 1.5w) − g
+     as a percentage of V          = (50 − 150w)%          e.g. w=86% → −79%
+
+   Percentage margins resolve against the containing block's inline size (the
+   viewport), which is exactly what this needs. The JS positions later slides
+   with translateX computed from measured offsetLeft — that measurement already
+   includes this margin, so the two agree and nothing double-counts.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Deliberately WIDER than the site's 1280px content container: the reference
+   carousel runs essentially edge-to-edge, which is what makes the peeks read as
+   generous "there's more" hints rather than slivers. Capped so ultra-wide
+   monitors don't get an oversized banner. */
+.hjc-banner-wrap{
+    width:100%;
+    max-width:1720px;
+    margin:18px auto 0;
+    padding:0;
+}
+
+.hjc-banner{
+    /* --peek is the visible sliver of each neighbour, as a % of the carousel
+       width; --slide-w is what's left for the active card (100 − 2×peek).
+       --track-shift is always (50 − 150×w)% for slide width w — it centres the
+       FIRST REAL slide (cell 1, since cell 0 is the loop clone) before JS runs.
+       Change --slide-w and you MUST recompute --track-shift. */
+    --peek:14%;
+    --slide-w:72%;
+    --gap:20px;
+    --track-shift:-58%;          /* = 50 − 150×0.72 */
+    --card-radius:22px;
+
+    position:relative;
+    width:100%;
+    overflow:visible;            /* arrows overlap outside the viewport */
+}
+
+/* Clips the strip horizontally. The vertical padding (cancelled by an equal
+   negative margin) gives the active card's shadow room instead of shearing it
+   off at the top and bottom edges. */
+.hjc-banner__viewport{
+    overflow:hidden;
+    padding:26px 0;
+    margin:-26px 0;
+}
+
+/* The track MUST stay exactly as wide as the viewport.
+   flex-basis on the slides is a percentage of this element, so anything that
+   changes the track's used width silently rescales every slide. A negative
+   margin-left is exactly that trap: for a block-level box with width:auto the
+   used width is `containing block − margins`, so a negative margin WIDENS it
+   (−79% ⇒ 1.79×V), and `flex:0 0 86%` then resolved to ~154% of the viewport —
+   which cropped the active slide and blew the neighbours up to half the screen.
+   The initial offset therefore rides on `transform`, which is paint-only and
+   never feeds back into layout. offsetLeft (used by the JS) is likewise a layout
+   value and ignores transforms, so the two stay in agreement. */
+.hjc-banner__track{
+    display:flex;
+    align-items:center;
+    gap:var(--gap);
+    transform:translate3d(calc(var(--track-shift) - var(--gap)), 0, 0);
+    transition:transform .62s cubic-bezier(.4, 0, .2, 1);
+    will-change:transform;
+    backface-visibility:hidden;      /* avoids sub-pixel shimmer mid-transition */
+}
+
+/* A lone slide has no clones to offset against — just centre it. */
+.hjc-banner--single .hjc-banner__track{
+    transform:none;
+    justify-content:center;
+}
+
+/* ── Slide cards ─────────────────────────────────────────────────────────────
+   Side slides sit slightly smaller and faded; the active one scales to full and
+   gains the premium shadow. Transforms don't affect offsetLeft/offsetWidth, so
+   the scaling never disturbs the JS centring maths. */
+.hjc-banner__slide{
+    position:relative;
+    flex:0 0 var(--slide-w);
+    /* The card follows the DESKTOP artwork's own 1920×600 ratio rather than a
+       fixed pixel band. A fixed height would force object-fit:cover to shave
+       ~31% off the width of a 3.2:1 banner — i.e. crop the artwork — and would
+       also leave a dead strip whenever the image is shorter than the card. */
+    aspect-ratio:1920 / 600;
+    border-radius:var(--card-radius);
+    overflow:hidden;             /* artwork respects the rounded corners */
+    background:var(--gray-100, #f1f3f5);
+    /* Kept close to 1 on purpose: every % shrunk here is peek width given back,
+       because scaling pulls the neighbour's inner edge away from the viewport. */
+    transform:scale(.955);
+    opacity:.6;
+    transition:transform .62s cubic-bezier(.4, 0, .2, 1), opacity .62s ease, box-shadow .62s ease;
+    backface-visibility:hidden;
+    line-height:0;
+}
+.hjc-banner__slide.is-active{
+    transform:scale(1);
+    opacity:1;
+    box-shadow:0 22px 48px -20px rgba(11,31,58,.45),
+               0 6px 16px rgba(11,31,58,.08);
+}
+
+.hjc-banner__link{ display:block; width:100%; height:100%; }
+
+/* <picture> is display:inline by default, so it never filled the card and the
+   <img>'s height:100% had no definite box to resolve against — the artwork fell
+   back to its natural ratio and left a dead strip under it. Making the picture a
+   block that fills the slide gives the image a real box to cover. */
+.hjc-banner__slide picture{ display:block; width:100%; height:100%; }
+
+.hjc-banner__img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    object-position:center;
+    display:block;
+}
+
+/* ── Optional text/button overlay ── */
+.hjc-banner__overlay{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    padding:clamp(20px, 5vw, 72px);
+    /* Left-anchored scrim so overlay text stays legible on busy artwork without
+       darkening the whole image. */
+    background:linear-gradient(90deg, rgba(15,23,42,.55) 0%, rgba(15,23,42,.25) 45%, rgba(15,23,42,0) 75%);
+    line-height:1.4;
+    pointer-events:none;          /* clicks fall through to the slide link */
+}
+.hjc-banner__content{ max-width:min(560px, 70%); color:#fff; }
+.hjc-banner__title{
+    margin:0 0 .4em;
+    font-size:clamp(22px, 3.2vw, 44px);
+    font-weight:800;
+    line-height:1.12;
+    text-shadow:0 2px 14px rgba(0,0,0,.35);
+}
+.hjc-banner__desc{
+    margin:0 0 1em;
+    font-size:clamp(14px, 1.4vw, 19px);
+    font-weight:500;
+    opacity:.95;
+    text-shadow:0 1px 8px rgba(0,0,0,.3);
+}
+.hjc-banner__btn{
+    display:inline-block;
+    background:var(--orange, #f97316);
+    color:#fff;
+    font-weight:700;
+    font-size:clamp(13px, 1.2vw, 16px);
+    padding:.7em 1.6em;
+    border-radius:999px;
+    pointer-events:none;          /* the parent <a> handles the navigation */
+    box-shadow:0 6px 20px rgba(10,199,229,.4);
+    transition:transform .2s ease, box-shadow .2s ease;
+}
+.hjc-banner__link:hover .hjc-banner__btn{
+    transform:translateY(-2px);
+    box-shadow:0 10px 26px rgba(10,199,229,.5);
+}
+
+/* ── Arrows ──────────────────────────────────────────────────────────────────
+   White circular buttons, soft shadow, dark chevron, vertically centred and
+   always visible (never hover-gated). They straddle the card edge on desktop,
+   sitting in the container gutter. */
+.hjc-banner__arrow{
+    position:absolute;
+    top:50%;
+    transform:translateY(-50%);
+    z-index:5;
+    width:48px; height:48px;
+    display:flex; align-items:center; justify-content:center;
+    padding:0;
+    border:1px solid rgba(11,31,58,.06);
+    border-radius:50%;
+    background:#fff;
+    color:var(--navy, #0b1f3a);
+    cursor:pointer;
+    box-shadow:0 8px 22px -6px rgba(11,31,58,.35), 0 2px 6px rgba(11,31,58,.08);
+    transition:transform .22s cubic-bezier(.4,0,.2,1), box-shadow .22s ease, background .22s ease;
+    -webkit-tap-highlight-color:transparent;
+}
+.hjc-banner__arrow svg{ width:22px; height:22px; }
+.hjc-banner__arrow:hover{
+    transform:translateY(-50%) scale(1.09);
+    box-shadow:0 14px 30px -8px rgba(11,31,58,.45), 0 3px 8px rgba(11,31,58,.1);
+}
+.hjc-banner__arrow:active{ transform:translateY(-50%) scale(.96); }
+/* Parked on the active card's own edge — i.e. at the peek boundary — so they
+   straddle it exactly like the reference instead of floating in dead space. */
+.hjc-banner__arrow--prev{ left:calc(var(--peek) - 24px); }
+.hjc-banner__arrow--next{ right:calc(var(--peek) - 24px); }
+
+/* ── Pagination dots ── */
+.hjc-banner__dots{
+    position:absolute;
+    left:0; right:0; bottom:16px;
+    z-index:4;
+    display:flex; gap:9px; justify-content:center;
+    line-height:0;
+}
+.hjc-banner__dot{
+    width:10px; height:10px;
+    padding:0; border:none; border-radius:50%;
+    background:rgba(255,255,255,.6);
+    cursor:pointer;
+    box-shadow:0 1px 5px rgba(0,0,0,.3);
+    transition:background .3s ease, width .3s cubic-bezier(.4,0,.2,1), border-radius .3s ease;
+    -webkit-tap-highlight-color:transparent;
+}
+.hjc-banner__dot:hover{ background:rgba(255,255,255,.9); }
+.hjc-banner__dot.is-active{
+    background:var(--orange, #f97316);
+    width:28px;
+    border-radius:999px;
+}
+
+/* Keyboard focus visibility (quality floor). */
+.hjc-banner__arrow:focus-visible,
+.hjc-banner__dot:focus-visible{
+    outline:3px solid var(--orange, #f97316);
+    outline-offset:3px;
+}
+
+/* ── Spacing into the navy hero section that follows ─────────────────────────
+   The old full-bleed banner faded into the hero via a navy gradient plus a
+   negative margin. A centred card deck needs clean separation instead, so the
+   gradient is gone — but the hero's oversized top padding stays reduced here so
+   the large dark strip that fix addressed doesn't come back. */
+.hjc-app .hjc-banner-wrap + .hero{
+    margin-top:20px;
+    padding-top:clamp(32px, 3.6vw, 52px);
+}
+
+/* ── Laptop (1280 / 1366) ──
+   Same 76/12 ratio as desktop — only the gap tightens. Keeping one ratio is what
+   holds the measured peek in the 8–9% band at every width; varying --slide-w per
+   breakpoint made the narrow ones drift down to 5%. */
+@media (max-width:1280px){
+    .hjc-banner{ --gap:18px; }
+}
+
+/* ── Tablet: same ratio, tighter gap and radius ── */
+@media (max-width:1024px){
+    .hjc-banner{
+        --gap:16px;
+        --card-radius:20px;
+    }
+    /* slide keeps the 1920×600 desktop ratio here too — see the base rule */
+    .hjc-banner__arrow{ width:44px; height:44px; }
+    .hjc-banner__arrow--prev{ left:calc(var(--peek) - 22px); }
+    .hjc-banner__arrow--next{ right:calc(var(--peek) - 22px); }
+    .hjc-app .hjc-banner-wrap + .hero{ margin-top:18px; padding-top:clamp(30px, 3.4vw, 44px); }
+}
+
+/* ── Mobile: single slide, no peek ──
+   Falls back to the portrait mobile artwork ratio (768×900) so the mobile art
+   isn't cropped, and keeps the arrows visible at a comfortable tap size. */
+@media (max-width:767.98px){
+    .hjc-banner{
+        --peek:0%;
+        --slide-w:100%;
+        --gap:10px;
+        --track-shift:-100%;     /* = 50 − 150×1.00 */
+        --card-radius:16px;
+    }
+    .hjc-banner-wrap{
+        margin-top:12px;
+        padding:0 var(--space-md, 16px);   /* one full slide, small side margin */
+    }
+    .hjc-banner__arrow--prev{ left:10px; }
+    .hjc-banner__arrow--next{ right:10px; }
+    .hjc-banner__viewport{ padding:16px 0; margin:-16px 0; }
+    .hjc-banner__slide{
+        /* The mobile banner slot currently holds the SAME 1920×600 landscape art
+           as desktop (verified against the uploaded files), so the card keeps that
+           ratio here too — forcing a portrait box would make object-fit:cover shave
+           ~73% off the width. If genuinely portrait mobile artwork is uploaded
+           later, change this to match it (e.g. 768/900). */
+        aspect-ratio:1920 / 600;
+        transform:scale(1);      /* nothing to shrink against — no peek here */
+        opacity:1;
+    }
+    .hjc-banner__arrow{ width:40px; height:40px; }
+    .hjc-banner__arrow svg{ width:19px; height:19px; }
+    .hjc-banner__arrow--prev{ left:8px; }
+    .hjc-banner__arrow--next{ right:8px; }
+    .hjc-banner__dots{ bottom:12px; }
+    .hjc-app .hjc-banner-wrap + .hero{ margin-top:16px; padding-top:clamp(26px, 5vw, 38px); }
+}
+
+/* Respect reduced-motion: instant moves, no scaling animation. */
+@media (prefers-reduced-motion: reduce){
+    .hjc-banner__track,
+    .hjc-banner__slide,
+    .hjc-banner__arrow,
+    .hjc-banner__dot{ transition:none; }
+}

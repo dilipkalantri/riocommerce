@@ -1,0 +1,85 @@
+@page "/admin/reports-exports"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IFranchiseService Franchise
+<PageTitle>Reports & Exports — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Reports &amp; Exports</h1>
+</div>
+
+<div class="form-card" style="margin-bottom:20px">
+    <div class="form-card__title">Filters</div>
+    <div class="form-grid form-grid--3col">
+        <div class="form-group"><label class="form-label">From</label><input type="date" class="form-input" @bind="from" /></div>
+        <div class="form-group"><label class="form-label">To</label><input type="date" class="form-input" @bind="to" /></div>
+        <div class="form-group">
+            <label class="form-label">Franchise</label>
+            <select class="form-input" @bind="franchiseId">
+                <option value="">All franchises</option>
+                @if (franchises != null) { @foreach (var f in franchises) { <option value="@f.Id">@f.Name (@f.Code)</option> } }
+            </select>
+        </div>
+    </div>
+    <div class="form-hint">Filters apply to every download below. Status/Source filters apply only to the Orders report.</div>
+</div>
+
+<div class="account-grid">
+    @foreach (var r in Reports)
+    {
+        <div class="form-card">
+            <div class="form-card__title">@r.Title</div>
+            <p style="font-size:13px;color:var(--gray-600);margin-bottom:14px">@r.Description</p>
+            <div class="form-actions">
+                <a class="btn btn-primary btn-sm" target="_blank" href="@Url(r.Type, "xlsx")">⬇ Excel</a>
+                <a class="btn btn-outline btn-sm" target="_blank" href="@Url(r.Type, "pdf")">⬇ PDF</a>
+            </div>
+        </div>
+    }
+</div>
+
+<div class="form-card" style="margin-top:20px">
+    <div class="form-card__title">Invoice / Document Download</div>
+    <p style="font-size:13px;color:var(--gray-600);margin-bottom:14px">Open any order's detail page and click <strong>Download Invoice</strong>, or paste an Order ID below.</p>
+    <div class="form-grid form-grid--3col">
+        <div class="form-group form-group--full"><label class="form-label">Order ID (GUID)</label><input class="form-input" @bind="invoiceOrderId" placeholder="e.g. 6c4b46b7-3fa2-4b12-bb73-10d20b718b1f" /></div>
+        <div class="form-group" style="display:flex;align-items:flex-end">
+            <a class="btn btn-primary" target="_blank" href="@InvoiceUrl">⬇ Invoice PDF</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private record ReportDef(string Type, string Title, string Description);
+    private static readonly List<ReportDef> Reports = new()
+    {
+        new("orders",     "Orders Report",       "All orders in the date range, with status, source, and revenue total."),
+        new("commission", "Commission Report",   "Per-franchise commission entries with base amount, rule, and earned commission."),
+        new("faculty-share", "Faculty Share Report", "Earned faculty shares per order line — taxable base, rule, share, GST on the share, and total payout."),
+        new("wallet",     "Wallet Transactions", "Credit/debit ledger across the selected franchise(s) — top-ups, order debits, adjustments."),
+        new("customers",  "Customer Report",     "Distinct customers (individual + organization) with order count and total spend."),
+        new("b2b",        "GST — B2B",           "Registered buyers only. GSTIN, place of supply, taxable value, CGST / SGST / IGST, RCM flag."),
+        new("b2c",        "GST — B2C",           "Unregistered buyers only. Place of supply, taxable value, CGST / SGST / IGST."),
+        new("gst",        "Tax / GST — Combined","B2B and B2C together with a class column, for a single reconciliation view."),
+    };
+
+    private DateTime? from = DateTime.UtcNow.AddMonths(-1).Date;
+    private DateTime? to = DateTime.UtcNow.Date;
+    private string? franchiseId;
+    private string? invoiceOrderId;
+
+    private List<FranchiseCard>? franchises;
+
+    protected override async Task OnInitializedAsync() => franchises = await Franchise.FranchisesAsync();
+
+    private string Url(string type, string fmt)
+    {
+        var qs = $"?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+        if (Guid.TryParse(franchiseId, out _)) qs += $"&franchiseId={franchiseId}";
+        return $"/api/admin/reports/{type}.{fmt}{qs}";
+    }
+
+    private string InvoiceUrl => Guid.TryParse(invoiceOrderId, out var g)
+        ? $"/api/admin/orders/{g}/invoice.pdf"
+        : "javascript:alert('Enter a valid order ID')";
+}

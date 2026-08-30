@@ -1,0 +1,15 @@
+@* Loading placeholder rows for AdminGrid. *@
+@for (var r = 0; r < Rows; r++)
+{
+    <tr class="ag-skel">
+        @for (var c = 0; c < Cols; c++)
+        {
+            <td><span class="skel" style="width:@(45 + (c * 17 + r * 7) % 45)%"></span></td>
+        }
+    </tr>
+}
+
+@code {
+    [Parameter] public int Rows { get; set; } = 6;
+    [Parameter] public int Cols { get; set; } = 5;
+}

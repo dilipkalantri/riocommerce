@@ -1,0 +1,70 @@
+@page "/franchise/earnings"
+@attribute [Authorize(Roles = "franchise_admin")]
+@inject IFranchiseService Franchise
+@inject IFranchisePortalService Portal
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>Earnings — RioCommerce Franchise</PageTitle>
+
+<div class="container account-page">
+    <h1 class="account-page__title">Franchise Portal</h1>
+    <FranchiseNav />
+
+    <div class="page__header" style="margin-top:8px"><h1>Earnings &amp; Commissions</h1></div>
+
+    @if (summary == null)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+    }
+    else
+    {
+        <div class="kpi-grid" style="margin-bottom:20px">
+            <div class="kpi-card"><div class="kpi-card__label">Total Earnings</div><div class="kpi-card__value">₹@summary.TotalEarnings.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Orders w/ Commission</div><div class="kpi-card__value">@summary.OrderCount</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">This Month</div><div class="kpi-card__value" style="color:var(--green)">₹@summary.MtdEarnings.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Last Month</div><div class="kpi-card__value">₹@summary.LastMonthEarnings.ToString("N0")</div></div>
+        </div>
+
+        <div class="data-card">
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>Date</th><th>Order</th><th>Product</th><th style="text-align:right">Base ₹</th><th>Rule</th><th style="text-align:right">Commission</th></tr></thead>
+                    <tbody>
+                        @if (items == null || items.Count == 0)
+                        { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No commission entries yet — they'll appear here once you place franchise orders.</td></tr> }
+                        else
+                        {
+                            @foreach (var e in items)
+                            {
+                                <tr>
+                                    <td style="white-space:nowrap">@e.EarnedAt.ToLocalTime().ToString("dd MMM, HH:mm")</td>
+                                    <td><strong>@e.OrderNumber</strong></td>
+                                    <td>@e.ProductTitle</td>
+                                    <td style="text-align:right;white-space:nowrap">₹@e.BaseAmount.ToString("N0")</td>
+                                    <td style="white-space:nowrap"><span style="font-size:11px;color:var(--gray-500)">@(e.Type == CommissionType.Percent ? $"{e.Value}%" : $"₹{e.Value}/unit")</span></td>
+                                    <td style="text-align:right;white-space:nowrap"><strong style="color:var(--green)">₹@e.CommissionAmount.ToString("N2")</strong></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private FranchiseEarningsSummary? summary;
+    private List<FranchiseEarningRow>? items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(idClaim, out var userId)) return;
+        var fid = await Portal.ResolveFranchiseIdAsync(userId);
+        if (fid == null) return;
+        summary = await Franchise.GetEarningsSummaryAsync(fid.Value);
+        var paged = await Franchise.GetEarningsAsync(fid.Value, null, null, 1, 50);
+        items = paged.Items;
+    }
+}

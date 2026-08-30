@@ -1,0 +1,98 @@
+@page "/admin/dashboard"
+@layout AdminLayout
+@* This is where the header's "Admin" button lands everyone, so a narrowly-scoped role has to be
+   able to REACH it — otherwise they meet a bare 403 instead of their own section. Reaching it is
+   not the same as seeing it: AdminLayout still gates the dashboard body on dashboard.view and
+   forwards anyone without it to the first page they actually hold. *@
+@attribute [Authorize(Roles = "super_admin,admin,operations,faculty,franchise_admin,backend_user,seo")]
+@implements IDisposable
+@inject IDashboardService Svc
+@inject IRealtimeBus Bus
+<PageTitle>Dashboard — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;align-items:center;gap:10px"><h1>Dashboard</h1><span class="live-dot" title="Live updates on">● Live</span></div>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-card__label">Today's Revenue</div><div class="kpi-card__value">₹@((d?.RevenueToday ?? 0).ToString("N0"))</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Orders Today</div><div class="kpi-card__value" style="color:var(--green)">@(d?.OrdersToday ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Pending Orders</div><div class="kpi-card__value" style="color:var(--warning)">@(d?.PendingOrders ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Active Students</div><div class="kpi-card__value">@(d?.ActiveStudents ?? 0)</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px" class="dash-grid">
+    <div class="data-card">
+        <div class="data-card__title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Recent Orders</span><a href="/admin/orders" class="btn btn-ghost btn-sm">View All →</a>
+        </div>
+        <div class="table-wrap"><table>
+            <thead><tr><th>Order #</th><th>Student</th><th>Product</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody>
+                @if (d == null) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+                else if (d.RecentOrders.Count == 0) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No orders yet.</td></tr> }
+                else
+                {
+                    @foreach (var o in d.RecentOrders)
+                    {
+                        <tr><td><strong>#@o.OrderNumber</strong></td><td>@o.StudentName</td><td>@o.ProductSummary</td><td>₹@o.Amount.ToString("N0")</td>
+                            <td><span class="status @StatusClass(o.Status)"><span class="dot"></span>@o.Status</span></td></tr>
+                    }
+                }
+            </tbody>
+        </table></div>
+    </div>
+
+    <div class="data-card">
+        <div class="data-card__title" style="display:flex;justify-content:space-between;align-items:center">
+            <span>Faculty Earnings (This Month)</span><a href="/admin/faculty-sharing" class="btn btn-ghost btn-sm">Manage →</a>
+        </div>
+        <div class="table-wrap"><table>
+            <thead><tr><th>Faculty</th><th>Orders</th><th>Earnings</th></tr></thead>
+            <tbody>
+                @if (d == null) { <tr><td colspan="3" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+                else if (d.FacultyEarnings.Count == 0) { <tr><td colspan="3" style="text-align:center;color:var(--gray-400)">No earnings this month.</td></tr> }
+                else
+                {
+                    @foreach (var f in d.FacultyEarnings)
+                    {
+                        <tr><td><strong>@f.FacultyName</strong></td><td>@f.Orders</td><td><strong>₹@f.Earnings.ToString("N0")</strong></td></tr>
+                    }
+                }
+            </tbody>
+        </table></div>
+    </div>
+</div>
+
+@code {
+    private DashboardData? d;
+    private int reloadToken;
+
+    protected override async Task OnInitializedAsync()
+    {
+        d = await Svc.GetAsync();
+        Bus.DataChanged += OnData;
+    }
+
+    private void OnData(RealtimeEvent e)
+    {
+        if (e.Scope is "dashboard" or "orders") _ = DebouncedReload();
+    }
+
+    // Coalesce bursts of events, and run the DB read on the circuit's dispatcher (DbContext isn't thread-safe).
+    private async Task DebouncedReload()
+    {
+        var token = ++reloadToken;
+        await Task.Delay(400);
+        if (token != reloadToken) return;
+        await InvokeAsync(async () => { d = await Svc.GetAsync(); StateHasChanged(); });
+    }
+
+    public void Dispose() => Bus.DataChanged -= OnData;
+
+    private static string StatusClass(OrderStatus s) => s switch
+    {
+        OrderStatus.Confirmed or OrderStatus.Activated or OrderStatus.Delivered => "status--confirmed",
+        OrderStatus.Pending or OrderStatus.Draft => "status--pending",
+        OrderStatus.Processing => "status--processing",
+        _ => "status--cancelled"
+    };
+}

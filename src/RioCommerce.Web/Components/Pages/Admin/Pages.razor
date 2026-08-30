@@ -1,0 +1,53 @@
+@page "/admin/pages"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IContentService Svc
+<PageTitle>CMS Pages — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>CMS Pages</h1>
+    <a href="/admin/pages/new" class="btn btn-primary btn-sm">➕ New Page</a>
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:12px 0">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Title</th><th>Slug / URL</th><th>Order</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No pages yet.</td></tr> }
+            else
+            {
+                @foreach (var p in items)
+                {
+                    <tr>
+                        <td><strong>@p.Title</strong></td>
+                        <td><code>/page/@p.Slug</code></td>
+                        <td>@p.DisplayOrder</td>
+                        <td><span class="status @(p.IsPublished ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(p.IsPublished ? "Published" : "Draft")</span></td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <a href="/admin/pages/@p.Id" class="btn btn-ghost btn-sm">✏️ Edit</a>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(p.Id)">@(p.IsPublished ? "Unpublish" : "Publish")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(p.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<CmsPageItem>? items;
+    private bool msgOk;
+    private string? msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => items = await Svc.ListPagesAsync();
+
+    private async Task Toggle(Guid id) { await Svc.TogglePageAsync(id); await Reload(); }
+    private async Task Delete(Guid id) { var (ok, e) = await Svc.DeletePageAsync(id); await Reload(); msgOk = ok; msg = ok ? "Page deleted." : e; }
+}

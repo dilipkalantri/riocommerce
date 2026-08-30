@@ -1,0 +1,117 @@
+@page "/account/profile"
+@attribute [Authorize]
+@inject IAccountService AccountSvc
+@inject AuthenticationStateProvider AuthProvider
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Profile — RioCommerce" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">My Account</h1>
+    <AccountNav />
+
+    @if (profile == null)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+    }
+    else
+    {
+        <div class="account-grid">
+            <div class="form-card">
+                <div class="form-card__title">Profile Details</div>
+                @if (profileMsg != null)
+                {
+                    <div class="inline-alert @(profileOk ? "inline-alert--ok" : "inline-alert--err")">@profileMsg</div>
+                }
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Full Name <span class="required">*</span></label>
+                        <input class="form-input" @bind="profile.FullName" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input class="form-input" @bind="profile.Phone" />
+                    </div>
+                    <div class="form-group form-group--full">
+                        <label class="form-label">Email</label>
+                        <input class="form-input" @bind="profile.Email" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">City</label>
+                        <input class="form-input" @bind="profile.City" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">State</label>
+                        <input class="form-input" @bind="profile.State" />
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top:6px">
+                    <button class="btn btn-primary" disabled="@savingProfile" @onclick="SaveProfile">@(savingProfile ? "Saving…" : "Save Changes")</button>
+                </div>
+                <p class="form-hint">Changes to your name show on new sign-ins.</p>
+            </div>
+
+            <div class="form-card">
+                <div class="form-card__title">Change Password</div>
+                @if (pwMsg != null)
+                {
+                    <div class="inline-alert @(pwOk ? "inline-alert--ok" : "inline-alert--err")">@pwMsg</div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Current Password</label>
+                    <input type="password" class="form-input" @bind="currentPw" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">New Password</label>
+                    <input type="password" class="form-input" @bind="newPw" placeholder="Min 6 characters" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Confirm New Password</label>
+                    <input type="password" class="form-input" @bind="confirmPw" />
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" disabled="@savingPw" @onclick="SavePassword">@(savingPw ? "Updating…" : "Update Password")</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ProfileView? profile;
+    private Guid userId;
+    private bool savingProfile, savingPw, profileOk, pwOk;
+    private string? profileMsg, pwMsg;
+    private string currentPw = "", newPw = "", confirmPw = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId))
+            profile = await AccountSvc.GetProfileAsync(userId);
+    }
+
+    private async Task SaveProfile()
+    {
+        if (profile == null) return;
+        savingProfile = true; profileMsg = null;
+        var (ok, error) = await AccountSvc.UpdateProfileAsync(userId, new ProfileUpdate
+        {
+            FullName = profile.FullName, Email = profile.Email, Phone = profile.Phone, City = profile.City, State = profile.State
+        });
+        profileOk = ok;
+        profileMsg = ok ? "Profile saved." : error;
+        savingProfile = false;
+    }
+
+    private async Task SavePassword()
+    {
+        pwMsg = null;
+        if (newPw != confirmPw) { pwOk = false; pwMsg = "New passwords don't match."; return; }
+        savingPw = true;
+        var (ok, error) = await AccountSvc.ChangePasswordAsync(userId, new ChangePasswordRequest(currentPw, newPw));
+        pwOk = ok;
+        pwMsg = ok ? "Password updated." : error;
+        if (ok) { currentPw = newPw = confirmPw = ""; }
+        savingPw = false;
+    }
+}

@@ -1,0 +1,170 @@
+@page "/admin/franchises/{FranchiseId:guid}/commissions"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IFranchiseService Svc
+@inject NavigationManager Nav
+<PageTitle>Commissions — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Per-Product Commissions</h1>
+    <a href="/admin/franchises" class="btn btn-ghost">‹ Back to Franchises</a>
+</div>
+
+@if (detail == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+}
+else
+{
+    <div class="form-card" style="margin-bottom:16px">
+        <div class="form-card__title">@detail.Name @if (!string.IsNullOrWhiteSpace(detail.BusinessName)) {<span style="color:var(--gray-500);font-weight:400;font-size:14px"> · @detail.BusinessName</span>}</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px;color:var(--gray-600)">
+            <span>Code: <strong>@detail.Code</strong></span>
+            <span>City: <strong>@detail.City</strong></span>
+            <span>Wallet: <strong>₹@detail.WalletBalance.ToString("N0")</strong></span>
+            <span>Credit Limit: <strong>₹@detail.CreditLimit.ToString("N0")</strong></span>
+        </div>
+    </div>
+
+    @if (msg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:14px">@msg</div> }
+    @if (err != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@err</div> }
+
+    <div class="form-card" style="margin-bottom:16px">
+        <div class="form-card__title">Bulk Apply</div>
+        <div class="form-grid form-grid--3col">
+            <div class="form-group">
+                <label class="form-label">Type</label>
+                <select class="form-input" @bind="bulkType">
+                    <option value="@CommissionType.Percent">Percent (%)</option>
+                    <option value="@CommissionType.Fixed">Fixed (₹/unit)</option>
+                </select>
+            </div>
+            <div class="form-group"><label class="form-label">Value</label><input type="number" step="0.01" class="form-input" @bind="bulkValue" /></div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+                <button class="btn btn-primary" disabled="@(busy || SelectedCount == 0)" @onclick="ApplyBulk">@(busy ? "Applying…" : $"Apply to {SelectedCount} selected")</button>
+            </div>
+        </div>
+        <div class="form-hint">Tick rows below, set type &amp; value, then Apply. Use <em>Clear</em> on a row to fall back to the product's default franchise share.</div>
+    </div>
+
+    <div class="data-card">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:30px"><input type="checkbox" checked="@AllChecked" @onchange="ToggleAll" /></th>
+                        <th>Product</th>
+                        <th>Selling</th>
+                        <th>Default Share</th>
+                        <th>Rule</th>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (rows == null) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+                    else if (rows.Count == 0) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No active products.</td></tr> }
+                    else
+                    {
+                        @foreach (var r in rows)
+                        {
+                            <tr>
+                                <td><input type="checkbox" checked="@selected.Contains(r.ProductId)" @onchange="e => Toggle(r.ProductId, e)" /></td>
+                                <td><strong>@r.Title</strong><br /><span style="font-size:11px;color:var(--gray-500)">@r.Slug</span></td>
+                                <td>₹@r.SellingPrice.ToString("N0")</td>
+                                <td>
+                                    @if (r.DefaultShareEnabled && r.DefaultShareValue > 0)
+                                    {
+                                        @(r.DefaultShareType == CommissionType.Percent
+                                            ? r.DefaultShareValue.ToString("0.##") + "%"
+                                            : "₹" + r.DefaultShareValue.ToString("N0"))
+                                    }
+                                    else { <span>—</span> }
+                                </td>
+                                <td>
+                                    @if (r.HasRule)
+                                    { <span class="status status--confirmed"><span class="dot"></span>Override</span> }
+                                    else if (r.DefaultShareEnabled && r.DefaultShareValue > 0)
+                                    { <span class="status status--pending"><span class="dot"></span>Default share</span> }
+                                    else
+                                    { <span class="status status--pending"><span class="dot"></span>None</span> }
+                                </td>
+                                <td>
+                                    <select class="form-input" style="min-width:120px" @bind="r.Type">
+                                        <option value="@CommissionType.Percent">Percent</option>
+                                        <option value="@CommissionType.Fixed">Fixed ₹</option>
+                                    </select>
+                                </td>
+                                <td><input type="number" step="0.01" class="form-input" style="max-width:120px" @bind="r.Value" /></td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" disabled="@busy" @onclick="() => SaveRow(r)">Save</button>
+                                    @if (r.HasRule) { <button class="btn btn-sm btn-ghost" disabled="@busy" @onclick="() => ClearRow(r)">Clear</button> }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid FranchiseId { get; set; }
+    private FranchiseAdminDetail? detail;
+    private List<FranchiseCommissionRow>? rows;
+    private HashSet<Guid> selected = new();
+    private CommissionType bulkType = CommissionType.Percent;
+    private decimal bulkValue;
+    private bool busy;
+    private string? msg, err;
+
+    private int SelectedCount => selected.Count;
+    private bool AllChecked => rows != null && rows.Count > 0 && selected.Count == rows.Count;
+
+    protected override async Task OnInitializedAsync()
+    {
+        detail = await Svc.GetDetailAsync(FranchiseId);
+        if (detail == null) { Nav.NavigateTo("/admin/franchises"); return; }
+        await LoadRows();
+    }
+
+    private async Task LoadRows() => rows = await Svc.ListCommissionsAsync(FranchiseId);
+
+    private void Toggle(Guid id, ChangeEventArgs e) { if ((bool?)e.Value == true) selected.Add(id); else selected.Remove(id); }
+    private void ToggleAll(ChangeEventArgs e) { if (rows == null) return; if ((bool?)e.Value == true) selected = rows.Select(r => r.ProductId).ToHashSet(); else selected.Clear(); }
+
+    private async Task SaveRow(FranchiseCommissionRow r)
+    {
+        busy = true; err = null; msg = null;
+        var (ok, error) = await Svc.SetCommissionAsync(new SetCommissionRequest
+        { FranchiseId = FranchiseId, ProductId = r.ProductId, Type = r.Type, Value = r.Value }, Guid.Empty);
+        busy = false;
+        if (!ok) { err = error; return; }
+        msg = $"Saved commission for {r.Title}.";
+        await LoadRows();
+    }
+
+    private async Task ClearRow(FranchiseCommissionRow r)
+    {
+        busy = true; err = null; msg = null;
+        var (ok, error) = await Svc.ClearCommissionAsync(FranchiseId, r.ProductId, Guid.Empty);
+        busy = false;
+        if (!ok) { err = error; return; }
+        msg = $"Cleared rule for {r.Title} (reverted to default margin).";
+        await LoadRows();
+    }
+
+    private async Task ApplyBulk()
+    {
+        busy = true; err = null; msg = null;
+        var (ok, error, n) = await Svc.BulkSetCommissionsAsync(new BulkSetCommissionRequest
+        { FranchiseId = FranchiseId, ProductIds = selected.ToList(), Type = bulkType, Value = bulkValue }, Guid.Empty);
+        busy = false;
+        if (!ok) { err = error; return; }
+        msg = $"Applied to {n} product(s).";
+        selected.Clear();
+        await LoadRows();
+    }
+}

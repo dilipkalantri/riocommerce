@@ -1,0 +1,319 @@
+@page "/admin/customers/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ICustomerAdminService Svc
+@inject IAdminUserService UserSvc
+@inject ToastService Toast
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>Edit customer — RioCommerce Admin</PageTitle>
+
+<style>
+    .pe-bar{position:sticky;top:52px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border:1px solid var(--gray-200);border-radius:14px;padding:10px 14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 24px -16px rgba(15,23,42,.35)}
+    .pe-bar__title{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .pe-bar__title h1{font-size:clamp(15px,1.8vw,19px);font-weight:800;color:var(--navy);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw}
+    .pe-bar__title a{font-size:12px;color:var(--orange);font-weight:600}
+    .pe-bar__actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+    .pe-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .pe-card__head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;cursor:pointer;font-weight:700;color:var(--navy);font-size:14px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,var(--gray-50))}
+    .pe-card__head .chev{color:var(--gray-400);font-size:11px;transition:transform .18s}
+    .pe-card.is-collapsed .pe-card__head{border-bottom:0}
+    .pe-card.is-collapsed .chev{transform:rotate(-90deg)}
+    .pe-card__body{padding:clamp(14px,1.6vw,20px)}
+    .pe-card.is-collapsed .pe-card__body{display:none}
+    .pe-chk{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--gray-700);cursor:pointer}
+    .pe-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:6px}
+    .pe-meta .k{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);font-weight:700}
+    .pe-meta .v{font-size:13.5px;color:var(--navy);font-weight:600}
+    .pe-roles{display:flex;flex-wrap:wrap;gap:8px}
+    .pwd-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .pe-pics th,.pe-pics td{border:1px solid var(--gray-200);padding:8px 10px;font-size:13px;text-align:left;vertical-align:middle}
+    .pe-pics th{background:var(--gray-50);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500)}
+    @@media(max-width:560px){.pe-bar{top:0;border-radius:0;margin:-4px -4px 14px}.pe-bar__title h1{max-width:70vw}.pe-bar__actions .btn{flex:1}}
+</style>
+
+@if (notFound)
+{
+    <div class="pe-card"><div class="pe-card__body">Customer not found. <a href="/admin/customers">Back to customers</a></div></div>
+}
+else if (model == null)
+{
+    <div class="pe-card"><div class="pe-card__body"><div class="skel" style="height:18px;width:240px;margin-bottom:14px"></div>@for (var i = 0; i < 5; i++) { <div class="skel" style="height:14px;width:@(70 - i * 8)%;margin-bottom:10px"></div> }</div></div>
+}
+else
+{
+    @* ── sticky action bar ── *@
+    <div class="pe-bar">
+        <div class="pe-bar__title">
+            <h1 title="@model.FullName">Edit customer — @(string.IsNullOrWhiteSpace(model.FullName) ? model.Email : model.FullName)</h1>
+            <a href="/admin/customers">← back to customer list</a>
+        </div>
+        <div class="pe-bar__actions">
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "💾 Save")</button>
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="SaveContinue">Save &amp; continue edit</button>
+            @if (!string.IsNullOrEmpty(model.Email)) { <a href="mailto:@model.Email" class="btn btn-success btn-sm">✉ Send email</a> }
+            <button class="btn btn-danger btn-sm" @onclick="Delete">🗑 Delete</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error)) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@error</div> }
+
+    @* ── Customer info ── *@
+    <div class="pe-card @(IsCollapsed("info") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("info")'><span>ℹ️ Customer info</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group"><label class="form-label">Email</label><input class="form-input" @bind="model.Email" /></div>
+                <div class="form-group"><label class="form-label">Password</label>
+                    <div class="pwd-row"><input class="form-input" value="••••••••" readonly style="flex:1" /><button class="btn btn-outline btn-sm" type="button" @onclick="() => showPwd = true">Change password</button></div>
+                </div>
+                <div class="form-group"><label class="form-label">First name</label><input class="form-input" @bind="model.FirstName" /></div>
+                <div class="form-group"><label class="form-label">Last name</label><input class="form-input" @bind="model.LastName" /></div>
+                <div class="form-group"><label class="form-label">Gender</label>
+                    <div style="display:flex;gap:18px;padding-top:8px">
+                        <label class="pe-chk"><input type="radio" name="gender" checked="@(model.Gender == "Male")" @onchange='() => model.Gender = "Male"' /> Male</label>
+                        <label class="pe-chk"><input type="radio" name="gender" checked="@(model.Gender == "Female")" @onchange='() => model.Gender = "Female"' /> Female</label>
+                    </div>
+                </div>
+                <div class="form-group"><label class="form-label">Phone</label><input class="form-input" @bind="model.Phone" /></div>
+                <div class="form-group"><label class="form-label">Level</label>
+                    <select class="form-input" @onchange="OnLevel">
+                        <option value="">— None —</option>
+                        @foreach (var l in Enum.GetValues<CourseLevel>()) { <option value="@l" selected="@(model.Level == l)">@LevelLabel(l)</option> }
+                    </select>
+                </div>
+                <div class="form-group"><label class="form-label">Attempt</label><input class="form-input" @bind="model.Attempt" placeholder="e.g. Sept 2026" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Customer roles <span class="required">*</span></label>
+                    <div class="pe-roles">
+                        @if (roles != null)
+                        {
+                            @foreach (var r in roles)
+                            {
+                                var has = model.Roles.Contains(r.Name);
+                                <button type="button" class="btn btn-sm @(has ? "btn-success" : "btn-outline")" @onclick="() => ToggleRole(r.Name)">@(has ? "✓ " : "+ ")@r.DisplayName</button>
+                            }
+                        }
+                    </div>
+                </div>
+                <div class="form-group form-group--full"><label class="form-label">Admin comment</label><textarea class="form-input" rows="2" @bind="model.AdminComment"></textarea></div>
+            </div>
+            <div class="pe-checks" style="display:flex;gap:24px;flex-wrap:wrap;margin-top:8px">
+                <label class="pe-chk"><input type="checkbox" @bind="model.Newsletter" /> Newsletter subscriber</label>
+                <label class="pe-chk"><input type="checkbox" @bind="model.IsActive" /> Active</label>
+            </div>
+            <div class="pe-meta">
+                <div><span class="k">Created on</span><div class="v">@model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</div></div>
+                <div><span class="k">Last activity</span><div class="v">@(model.LastActivity?.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt") ?? "—")</div></div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Orders ── *@
+    <div class="pe-card @(IsCollapsed("orders") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("orders")'><span>🛒 Orders @(orders?.Count > 0 ? $"({orders.Count})" : "")</span><span class="chev">▾</span></div>
+        <div class="pe-card__body" style="padding:0">
+            <div class="ag__wrap"><table class="ag__table" style="min-width:620px">
+                <thead><tr><th>Order #</th><th class="ag-right">Total</th><th>Order status</th><th>Payment</th><th>Created</th><th></th></tr></thead>
+                <tbody>
+                    @if (orders == null) { <tr><td colspan="6"><div class="skel" style="height:30px;margin:10px"></div></td></tr> }
+                    else if (orders.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400);padding:18px">This customer has no orders.</td></tr> }
+                    else
+                    {
+                        @foreach (var o in orders)
+                        {
+                            <tr>
+                                <td data-label="Order #"><strong>#@o.OrderNumber</strong></td>
+                                <td data-label="Total" class="ag-right">₹@o.Total.ToString("N0")</td>
+                                <td data-label="Order status">@o.OrderStatus</td>
+                                <td data-label="Payment">@o.PaymentStatus</td>
+                                <td data-label="Created">@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</td>
+                                <td data-label="" class="ag-right"><a href="/admin/orders/@o.OrderId" class="btn btn-ghost btn-sm">View</a></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table></div>
+        </div>
+    </div>
+
+    @* ── Addresses ── *@
+    <div class="pe-card @(IsCollapsed("addresses") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("addresses")'><span>🏠 Addresses @(addresses?.Count > 0 ? $"({addresses.Count})" : "")</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="table-wrap"><table class="pe-pics" style="width:100%;border-collapse:collapse">
+                <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Address</th><th></th></tr></thead>
+                <tbody>
+                    @if (addresses == null) { <tr><td colspan="5"><div class="skel" style="height:30px"></div></td></tr> }
+                    else if (addresses.Count == 0) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No addresses yet.</td></tr> }
+                    else
+                    {
+                        @foreach (var a in addresses)
+                        {
+                            <tr>
+                                <td>@($"{a.FirstName} {a.LastName}".Trim())</td>
+                                <td>@a.Email</td>
+                                <td>@a.Phone</td>
+                                <td style="font-size:12.5px">@(string.Join(", ", new[] { a.Address1, a.City, a.State, a.Pincode, a.Country }.Where(x => !string.IsNullOrWhiteSpace(x))))</td>
+                                <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" @onclick="() => OpenAddr(a)">Edit</button><button class="btn btn-danger btn-sm" @onclick="() => DeleteAddr(a.Id!.Value)">Delete</button></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table></div>
+            <button class="btn btn-primary btn-sm" style="margin-top:12px" @onclick="() => OpenAddr(null)">➕ Add new address</button>
+        </div>
+    </div>
+}
+
+@* ── Change password modal ── *@
+<Modal @bind-Visible="showPwd" Title="Change password" Size="sm">
+    <ChildContent>
+        <div class="form-group form-group--full"><label class="form-label">New password</label><input type="password" class="form-input" @bind="newPwd" autocomplete="new-password" /></div>
+        <p style="font-size:12px;color:var(--gray-400)">At least 6 characters. The customer can sign in with this immediately.</p>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showPwd = false">Cancel</button>
+        <button class="btn btn-primary" disabled="@pwdBusy" @onclick="SetPassword">Set password</button>
+    </Footer>
+</Modal>
+
+@* ── Address modal ── *@
+<Modal @bind-Visible="showAddr" Title="@(addrEdit?.Id == null ? "Add address" : "Edit address")" Size="md">
+    <ChildContent>
+        @if (addrEdit != null)
+        {
+            <div class="form-grid">
+                <div class="form-group"><label class="form-label">First name</label><input class="form-input" @bind="addrEdit.FirstName" /></div>
+                <div class="form-group"><label class="form-label">Last name</label><input class="form-input" @bind="addrEdit.LastName" /></div>
+                <div class="form-group"><label class="form-label">Email</label><input class="form-input" @bind="addrEdit.Email" /></div>
+                <div class="form-group"><label class="form-label">Phone</label><input class="form-input" @bind="addrEdit.Phone" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Address</label><input class="form-input" @bind="addrEdit.Address1" /></div>
+                <div class="form-group"><label class="form-label">City</label><input class="form-input" @bind="addrEdit.City" /></div>
+                <div class="form-group"><label class="form-label">State</label><input class="form-input" @bind="addrEdit.State" /></div>
+                <div class="form-group"><label class="form-label">Pincode</label><input class="form-input" @bind="addrEdit.Pincode" /></div>
+                <div class="form-group"><label class="form-label">Country</label><input class="form-input" @bind="addrEdit.Country" /></div>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showAddr = false">Cancel</button>
+        <button class="btn btn-primary" disabled="@addrBusy" @onclick="SaveAddr">Save address</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private CustomerEditModel? model;
+    private List<RoleOption>? roles;
+    private List<CustomerOrderRow>? orders;
+    private List<CustomerAddressEdit>? addresses;
+    private bool notFound, saving;
+    private string? error;
+    private readonly HashSet<string> collapsed = new();
+    private Guid? actorId; private string actorName = "admin";
+
+    // password modal
+    private bool showPwd, pwdBusy;
+    private string newPwd = "";
+    // address modal
+    private bool showAddr, addrBusy;
+    private CustomerAddressEdit? addrEdit;
+
+    private void Toggle(string k) { if (!collapsed.Remove(k)) collapsed.Add(k); }
+    private bool IsCollapsed(string k) => collapsed.Contains(k);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+        roles = await Svc.RolesAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        orders = null; addresses = null;
+        model = await Svc.GetAsync(Id);
+        notFound = model == null;
+        if (model != null)
+        {
+            orders = await Svc.OrdersAsync(Id);
+            addresses = await Svc.AddressesAsync(Id);
+        }
+    }
+
+    private void OnLevel(ChangeEventArgs e) { if (model != null) model.Level = Enum.TryParse<CourseLevel>(e.Value?.ToString(), out var l) ? l : null; }
+    private void ToggleRole(string name) { if (model == null) return; if (!model.Roles.Remove(name)) model.Roles.Add(name); }
+
+    private Task Save() => DoSave(false);
+    private Task SaveContinue() => DoSave(true);
+
+    private async Task DoSave(bool stay)
+    {
+        if (model == null) return;
+        if (model.Roles.Count == 0) { error = "Select at least one customer role."; collapsed.Remove("info"); return; }
+        error = null; saving = true;
+        var (ok, err) = await Svc.SaveAsync(model, actorId, actorName);
+        saving = false;
+        if (!ok) { error = err; Toast.Error(err ?? "Save failed."); return; }
+        Toast.Success("Customer saved.");
+        if (!stay) Nav.NavigateTo("/admin/customers");
+        else model = await Svc.GetAsync(Id);
+    }
+
+    private async Task Delete()
+    {
+        var (ok, err) = await UserSvc.AnonymizeUserAsync(Id, actorId ?? Guid.Empty, actorName);
+        if (ok) { Toast.Info("Customer anonymised (GDPR erasure)."); Nav.NavigateTo("/admin/customers"); }
+        else Toast.Error(err ?? "Could not delete.");
+    }
+
+    // ── password ──
+    private async Task SetPassword()
+    {
+        pwdBusy = true;
+        var (ok, err) = await Svc.SetPasswordAsync(Id, newPwd);
+        pwdBusy = false;
+        if (ok) { showPwd = false; newPwd = ""; Toast.Success("Password updated."); }
+        else Toast.Error(err ?? "Could not set password.");
+    }
+
+    // ── addresses ──
+    private void OpenAddr(CustomerAddressEdit? a)
+    {
+        addrEdit = a == null ? new CustomerAddressEdit() : new CustomerAddressEdit
+        {
+            Id = a.Id, FirstName = a.FirstName, LastName = a.LastName, Email = a.Email, Phone = a.Phone,
+            FaxNumber = a.FaxNumber, Address1 = a.Address1, City = a.City, State = a.State, Pincode = a.Pincode, Country = a.Country
+        };
+        showAddr = true;
+    }
+
+    private async Task SaveAddr()
+    {
+        if (addrEdit == null) return;
+        addrBusy = true;
+        var (ok, err) = await Svc.SaveAddressAsync(Id, addrEdit);
+        addrBusy = false;
+        if (ok) { showAddr = false; addresses = await Svc.AddressesAsync(Id); Toast.Success("Address saved."); }
+        else Toast.Error(err ?? "Could not save address.");
+    }
+
+    private async Task DeleteAddr(Guid addressId)
+    {
+        await Svc.DeleteAddressAsync(addressId);
+        addresses = await Svc.AddressesAsync(Id);
+        Toast.Info("Address removed.");
+    }
+
+    private static string LevelLabel(CourseLevel l) => l switch
+    {
+        CourseLevel.CaFoundation => "CA Foundation",
+        CourseLevel.CaIntermediate => "CA Intermediate",
+        CourseLevel.CaFinal => "CA Final",
+        CourseLevel.Books => "Books",
+        CourseLevel.TestSeries => "Test Series",
+        _ => l.ToString()
+    };
+}

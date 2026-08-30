@@ -1,0 +1,171 @@
+@page "/admin/franchisees/import"
+@using RioCommerce.Core.DTOs.Franchise
+@using RioCommerce.Core.Interfaces
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IFranchiseService Franchises
+@inject AuthenticationStateProvider AuthProvider
+@inject ToastService Toast
+<PageTitle>Import Franchisees — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Import Franchisees</h1>
+    <a href="/admin/franchisees" class="btn btn-ghost btn-sm">← Back to franchisees</a>
+</div>
+
+<div class="data-card" style="padding:20px;max-width:960px">
+    <p style="color:var(--gray-500);margin-top:0">
+        Upload the franchisee list (.xlsx) exported from the old ERP. Each row is created as an
+        <strong>approved, active</strong> franchise with a <code>franchise_admin</code> login.
+        Wallet balance, credit limit and commissions are <strong>not</strong> imported — set those in admin.
+        No passwords or emails are sent; franchisees set a password via “forgot password”.
+        Re-running is safe: existing franchises (matched by email) are updated, not duplicated.
+    </p>
+
+    @if (uploadErr != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:10px">@uploadErr</div> }
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <label class="btn btn-outline">
+            <InputFile OnChange="OnFile" accept=".xlsx" hidden />
+            @(parsing ? "Reading…" : "📁 Choose franchisee .xlsx")
+        </label>
+        @if (parsedRows != null) { <span style="font-size:13px;color:var(--gray-500)">@parsedRows.Count row(s) read from the file.</span> }
+    </div>
+
+    @if (parsedRows != null && parsedRows.Count > 0)
+    {
+        <div style="display:flex;gap:18px;margin-top:14px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" @bind="autoAssignShares" /> Auto-assign default product shares</label>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px">
+            <button class="btn btn-ghost" @onclick="Preview" disabled="@busy">@(busy && dry ? "Previewing…" : "Dry run (preview)")</button>
+            <button class="btn btn-primary" @onclick="ConfirmImport" disabled="@busy">@(busy && !dry ? "Importing…" : "Run import")</button>
+        </div>
+        <p style="color:var(--gray-400);font-size:13px;margin-top:8px">Always dry-run first to review, then run the import.</p>
+    }
+</div>
+
+@if (showConfirm)
+{
+    <div class="data-card" style="padding:18px;max-width:960px;margin-top:14px;border:1px solid #FCD9C0">
+        <strong>Create/update @(parsedRows?.Count ?? 0) franchisee(s) now?</strong>
+        <p style="color:var(--gray-500);margin:6px 0 12px">This writes to the live database. It's idempotent, but please confirm.</p>
+        <div style="display:flex;gap:10px">
+            <button class="btn btn-ghost" @onclick="() => showConfirm = false">Cancel</button>
+            <button class="btn btn-primary" @onclick="RunImport" disabled="@busy">Yes, import</button>
+        </div>
+    </div>
+}
+
+@if (result != null)
+{
+    <div class="data-card" style="padding:20px;max-width:960px;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="margin:0">@(result.DryRun ? "Preview result" : "Import result")</h3>
+            <span class="status @(result.Errors == 0 ? "status--success" : "status--warning")">
+                <span class="dot"></span>@result.Created created · @result.Updated updated · @result.Skipped skipped · @result.Errors error(s)
+            </span>
+        </div>
+
+        @if (!result.Ok)
+        {
+            <div class="inline-alert inline-alert--err" style="margin-top:12px">@result.Error</div>
+        }
+        else
+        {
+            <div class="table-wrap" style="margin-top:12px;max-height:420px;overflow:auto"><table>
+                <thead><tr><th>Name</th><th>Email</th><th>Code</th><th>Outcome</th><th>Note</th></tr></thead>
+                <tbody>
+                    @foreach (var i in result.Items)
+                    {
+                        <tr>
+                            <td>@i.Name</td>
+                            <td style="color:var(--gray-500)">@i.Email</td>
+                            <td>@i.Code</td>
+                            <td>
+                                @if (i.Outcome == "created") { <span class="status status--success"><span class="dot"></span>Created</span> }
+                                else if (i.Outcome == "updated") { <span class="status status--warning"><span class="dot"></span>Updated</span> }
+                                else if (i.Outcome == "skipped") { <span style="color:var(--gray-500)">Skipped</span> }
+                                else { <span style="color:var(--danger,#DC2626)">Error</span> }
+                            </td>
+                            <td style="font-size:12px;color:var(--gray-500)">@i.Message</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            @if (result.DryRun)
+            {
+                <p style="color:var(--gray-400);font-size:12px;margin-top:6px">Nothing was written (dry run). Review, then Run import.</p>
+            }
+        }
+    </div>
+}
+
+@code {
+    private List<FranchiseImportRow>? parsedRows;
+    private bool parsing, busy, dry, showConfirm, autoAssignShares = true;
+    private string? uploadErr;
+    private FranchiseImportResult? result;
+    private Guid actorId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : Guid.Empty;
+    }
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        uploadErr = null; result = null; showConfirm = false; parsedRows = null;
+        parsing = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await e.File.OpenReadStream(20 * 1024 * 1024).CopyToAsync(ms); // 20 MB cap
+            ms.Position = 0;
+            parsedRows = await Franchises.ParseFranchiseExcelAsync(ms);
+            if (parsedRows.Count == 0) uploadErr = "No franchisee rows found in the file.";
+        }
+        catch (Exception ex) { uploadErr = "Could not read the file: " + ex.Message; }
+        finally { parsing = false; }
+    }
+
+    private async Task Preview()
+    {
+        showConfirm = false;
+        if (parsedRows == null || parsedRows.Count == 0) { Toast.Error("Upload a file first."); return; }
+        busy = true; dry = true;
+        try
+        {
+            result = await Franchises.BulkImportAsync(new FranchiseImportRequest
+            {
+                Rows = parsedRows, DryRun = true, AutoAssignProductShares = autoAssignShares
+            }, actorId);
+            if (result.Ok) Toast.Success("Preview complete — review, then run the import.");
+            else Toast.Error("Preview failed — see details.");
+        }
+        finally { busy = false; }
+    }
+
+    private void ConfirmImport()
+    {
+        if (parsedRows == null || parsedRows.Count == 0) { Toast.Error("Upload a file first."); return; }
+        showConfirm = true;
+    }
+
+    private async Task RunImport()
+    {
+        showConfirm = false;
+        busy = true; dry = false;
+        try
+        {
+            result = await Franchises.BulkImportAsync(new FranchiseImportRequest
+            {
+                Rows = parsedRows!, DryRun = false, AutoAssignProductShares = autoAssignShares
+            }, actorId);
+            if (result.Ok) Toast.Success($"Imported: {result.Created} created, {result.Updated} updated.");
+            else Toast.Error("Import failed — see details.");
+        }
+        finally { busy = false; }
+    }
+}

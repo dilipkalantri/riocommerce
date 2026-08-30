@@ -1,0 +1,320 @@
+@page "/admin/serial-keys/{Id:guid}"
+@using RioCommerce.Core.DTOs.SerialKeys
+@using SkDetail = RioCommerce.Core.DTOs.SerialKeys.SerialKeyDetail
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,support,backend_user")]
+@inject ISerialKeyService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+<PageTitle>Serial Key Detail — RioCommerce Admin</PageTitle>
+
+@*
+    Full detail view for one SerialKeyRecord. Shows request + response payloads as
+    pretty-printed JSON — invaluable when debugging a provider that returns something
+    unexpected. Action bar offers Regenerate / Revoke / Activate (when supported).
+*@
+
+<style>
+    .sk-grid { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr); gap:16px }
+    @@media(max-width:920px){ .sk-grid { grid-template-columns:1fr } }
+    .sk-card { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:18px; margin-bottom:14px }
+    .sk-card__title { font-weight:700; color:var(--navy); font-size:14px; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--gray-100) }
+    .sk-kv { display:grid; grid-template-columns:140px 1fr; gap:6px 14px; font-size:13px }
+    .sk-kv dt { color:var(--gray-500); font-weight:600 }
+    .sk-kv dd { margin:0; color:var(--navy); word-break:break-word }
+    .sk-kv dd code { font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11.5px; background:var(--gray-100); padding:1px 6px; border-radius:4px }
+    .sk-key-big { font-family:'JetBrains Mono',ui-monospace,monospace; font-size:16px; font-weight:600; color:var(--navy); background:var(--gray-50); padding:10px 14px; border-radius:10px; border:1px dashed var(--gray-300); display:flex; align-items:center; justify-content:space-between; gap:10px }
+    .sk-status { display:inline-block; padding:3px 9px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px }
+    .sk-status--pending     { background:var(--gray-100); color:var(--gray-600) }
+    .sk-status--generating  { background:#DBEAFE; color:#1E40AF }
+    .sk-status--generated   { background:#D1FAE5; color:#065F46 }
+    .sk-status--activated   { background:#A7F3D0; color:#064E3B }
+    .sk-status--failed      { background:#FEF3C7; color:#92400E }
+    .sk-status--deadlettered{ background:#FEE2E2; color:#991B1B }
+    .sk-status--revoked     { background:var(--gray-200); color:var(--gray-500); text-decoration:line-through }
+    .sk-payload { background:#0F172A; color:#E2E8F0; padding:14px; border-radius:10px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11.5px; line-height:1.55; max-height:400px; overflow:auto; white-space:pre-wrap; word-break:break-all }
+    .sk-payload--empty { color:#64748B; font-style:italic; background:var(--gray-50); border:1px dashed var(--gray-200) }
+    .sk-actions-bar { display:flex; gap:8px; flex-wrap:wrap; padding:14px; background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; margin-bottom:14px; align-items:center }
+    .sk-actions-bar__label { font-size:13px; color:#92400E; font-weight:600; margin-right:8px }
+    /* Re-issue confirmation sits inline in the action bar rather than a browser dialog. */
+    .sk-reissue { flex:1 1 260px; font-size:12.5px; color:#92400E; line-height:1.5 }
+</style>
+
+@if (loading)
+{
+    <p style="color:var(--gray-400); padding:30px 0; text-align:center">Loading…</p>
+}
+else if (rec == null)
+{
+    <div class="sk-card">
+        <p>Record not found. <a href="/admin/serial-keys">Back to list</a>.</p>
+    </div>
+}
+else
+{
+    <div class="page__header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px">
+        <div>
+            <h1 style="margin:0">Serial Key Record</h1>
+            <p style="color:var(--gray-500); font-size:13px; margin:4px 0 0">
+                <a href="/admin/serial-keys" style="color:var(--gray-500); text-decoration:none">← Back to list</a>
+            </p>
+        </div>
+        <span class="sk-status sk-status--@rec.Status.ToString().ToLowerInvariant()" style="font-size:13px; padding:6px 14px">@rec.Status</span>
+    </div>
+
+    @* ── Action bar ── *@
+    <div class="sk-actions-bar">
+        <span class="sk-actions-bar__label">Actions:</span>
+        @if (rec.Status is SerialKeyStatus.Failed or SerialKeyStatus.DeadLettered or SerialKeyStatus.Pending)
+        {
+            <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="Regenerate">🔄 @(busy ? "Working…" : "Regenerate")</button>
+        }
+        else if (rec.Status is SerialKeyStatus.Generated or SerialKeyStatus.Activated or SerialKeyStatus.Revoked)
+        {
+            @* A key that already worked can still need re-issuing — most often because the product has
+               since been moved to a different vendor and the customer needs a key from the new one.
+               Kept behind a confirm because, unlike retrying a failure, this issues a SECOND
+               registration at the vendor for a customer who already has one. *@
+            @if (!confirmReissue)
+            {
+                <button class="btn btn-outline btn-sm" disabled="@busy" @onclick="() => confirmReissue = true">🔄 Re-issue key</button>
+            }
+            else
+            {
+                <span class="sk-reissue">
+                    Re-issue this key? It goes to whichever provider the product is mapped to
+                    <strong>now</strong> — currently recorded as <strong>@rec.ProviderKey</strong>.
+                    Anything the customer already has stays working.
+                </span>
+                <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="Regenerate">@(busy ? "Working…" : "Yes, re-issue")</button>
+                <button class="btn btn-ghost btn-sm" disabled="@busy" @onclick="() => confirmReissue = false">Cancel</button>
+            }
+        }
+        @if (rec.Status == SerialKeyStatus.Generated && !string.IsNullOrEmpty(rec.SerialKey))
+        {
+            <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="Activate">▶ @(busy ? "Working…" : "Activate")</button>
+        }
+        @if (rec.Status is SerialKeyStatus.Generated or SerialKeyStatus.Activated)
+        {
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" disabled="@busy" @onclick="Revoke">⛔ Revoke</button>
+        }
+        @if (rec.Status == SerialKeyStatus.Revoked)
+        {
+            <span style="color:var(--gray-500); font-size:12.5px; font-style:italic">Revoked @rec.RevokedAt?.ToLocalTime().ToString("dd MMM yyyy, HH:mm") — @rec.RevokedReason</span>
+        }
+    </div>
+
+    @* ── Serial key display ── *@
+    @if (!string.IsNullOrEmpty(rec.SerialKey))
+    {
+        <div class="sk-key-big">
+            <span>@rec.SerialKey</span>
+            <button class="btn btn-ghost btn-sm" @onclick="() => CopyKey(rec.SerialKey!)">📋 Copy</button>
+        </div>
+        <div style="height:14px"></div>
+    }
+
+    <div class="sk-grid">
+        @* ── Left column: payloads ── *@
+        <div>
+            <div class="sk-card">
+                <div class="sk-card__title">📤 Request payload <span style="font-weight:400; font-size:11px; color:var(--gray-500)">(internal)</span></div>
+                @if (string.IsNullOrEmpty(rec.RequestPayload) || rec.RequestPayload == "{}")
+                {
+                    <div class="sk-payload sk-payload--empty">No request body recorded.</div>
+                }
+                else
+                {
+                    <pre class="sk-payload">@PrettyJson(rec.RequestPayload)</pre>
+                }
+            </div>
+
+            <div class="sk-card">
+                <div class="sk-card__title">🔌 API parameters sent <span style="font-weight:400; font-size:11px; color:var(--gray-500)">(actual, to provider)</span></div>
+                @if (string.IsNullOrEmpty(rec.ApiRequestPayload))
+                {
+                    <div class="sk-payload sk-payload--empty">No provider request sent yet.</div>
+                }
+                else
+                {
+                    <pre class="sk-payload">@PrettyJson(rec.ApiRequestPayload)</pre>
+                }
+            </div>
+
+            <div class="sk-card">
+                <div class="sk-card__title">📥 Response payload</div>
+                @if (string.IsNullOrEmpty(rec.ResponsePayload))
+                {
+                    <div class="sk-payload sk-payload--empty">No response body recorded yet.</div>
+                }
+                else
+                {
+                    <pre class="sk-payload">@PrettyJson(rec.ResponsePayload)</pre>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(rec.ErrorMessage))
+            {
+                <div class="sk-card" style="border-color:#FCA5A5; background:#FEF2F2">
+                    <div class="sk-card__title" style="color:#991B1B">⚠ Last error</div>
+                    <div style="font-size:13px; color:#991B1B"><strong>@(rec.ErrorCode ?? "error"):</strong> @rec.ErrorMessage</div>
+                </div>
+            }
+        </div>
+
+        @* ── Right column: metadata ── *@
+        <div>
+            <div class="sk-card">
+                <div class="sk-card__title">Order &amp; product</div>
+                <dl class="sk-kv">
+                    <dt>Order</dt>
+                    <dd><a href="/admin/orders/@rec.OrderId" style="color:var(--orange); text-decoration:none; font-weight:600">@rec.OrderNumber</a></dd>
+                    <dt>Customer</dt>
+                    <dd>@rec.CustomerName</dd>
+                    <dt>Product</dt>
+                    <dd>@rec.ProductTitle</dd>
+                    @if (!string.IsNullOrEmpty(rec.ModeName))
+                    {
+                        <dt>Lecture mode</dt>
+                        <dd>@rec.ModeName</dd>
+                    }
+                    @if (!string.IsNullOrEmpty(rec.ConfigSource))
+                    {
+                        <dt>Config source</dt>
+                        <dd><span style="font-weight:600; color:var(--orange)">@rec.ConfigSource</span></dd>
+                    }
+                </dl>
+            </div>
+
+            <div class="sk-card">
+                <div class="sk-card__title">Provider</div>
+                <dl class="sk-kv">
+                    <dt>Provider</dt>
+                    <dd><code>@rec.ProviderKey</code></dd>
+                    @if (!string.IsNullOrEmpty(rec.TenantRef))
+                    {
+                        <dt>Tenant ref</dt>
+                        <dd><code>@rec.TenantRef</code></dd>
+                    }
+                    @if (!string.IsNullOrEmpty(rec.ExternalReference))
+                    {
+                        <dt>External ref</dt>
+                        <dd><code>@rec.ExternalReference</code></dd>
+                    }
+                </dl>
+            </div>
+
+            <div class="sk-card">
+                <div class="sk-card__title">Lifecycle</div>
+                <dl class="sk-kv">
+                    <dt>Created</dt>
+                    <dd>@rec.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd>
+                    @if (rec.LastAttemptAt.HasValue)
+                    {
+                        <dt>Last attempt</dt>
+                        <dd>@rec.LastAttemptAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd>
+                    }
+                    <dt>Attempts</dt>
+                    <dd>@rec.AttemptCount</dd>
+                    @if (rec.NextRetryAt.HasValue && (rec.Status == SerialKeyStatus.Failed || rec.Status == SerialKeyStatus.Pending))
+                    {
+                        <dt>Next retry</dt>
+                        <dd>@rec.NextRetryAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd>
+                    }
+                    @if (rec.GeneratedAt.HasValue)
+                    {
+                        <dt>Generated</dt>
+                        <dd>@rec.GeneratedAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd>
+                    }
+                    @if (rec.ActivatedAt.HasValue)
+                    {
+                        <dt>Activated</dt>
+                        <dd>@rec.ActivatedAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd>
+                    }
+                </dl>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private SkDetail? rec;
+    private bool loading = true;
+    private bool busy;
+    /// A re-issue on an already-working key registers the customer a second time at the vendor,
+    /// so it asks first — inline rather than a browser confirm, matching the rest of the admin.
+    private bool confirmReissue;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        rec = await Svc.GetAsync(Id);
+        loading = false;
+    }
+
+    private async Task Regenerate()
+    {
+        if (rec == null) return;
+        busy = true;
+        try
+        {
+            var ok = await Svc.RegenerateAsync(rec.Id, null);
+            if (ok) { confirmReissue = false; Toast.Success("Queued — next scheduled-task tick (≤60s) will pick it up."); await Load(); }
+            else { Toast.Error("Couldn't queue retry."); }
+        }
+        finally { busy = false; }
+    }
+
+    private async Task Activate()
+    {
+        if (rec == null || string.IsNullOrEmpty(rec.SerialKey)) return;
+        busy = true;
+        try
+        {
+            var r = await Svc.ActivateAsync(rec.SerialKey);
+            if (r.Success) { Toast.Success("Activated."); await Load(); }
+            else { Toast.Error($"{r.ErrorCode}: {r.ErrorMessage}"); }
+        }
+        finally { busy = false; }
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private async Task Revoke()
+    {
+        if (rec == null) return;
+        var reason = await JS.InvokeAsync<string>("prompt", "Revoke reason (required):", "");
+        if (string.IsNullOrWhiteSpace(reason)) return;
+        busy = true;
+        try
+        {
+            var ok = await Svc.RevokeAsync(rec.Id, reason, null);
+            if (ok) { Toast.Success("Revoked."); await Load(); }
+            else { Toast.Error("Revoke failed."); }
+        }
+        finally { busy = false; }
+    }
+
+    private async Task CopyKey(string key)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", key);
+        Toast.Success("Key copied.");
+    }
+
+    private static string PrettyJson(string raw)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            return System.Text.Json.JsonSerializer.Serialize(doc, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return raw;        // Already not JSON, or already pretty — show as-is.
+        }
+    }
+}

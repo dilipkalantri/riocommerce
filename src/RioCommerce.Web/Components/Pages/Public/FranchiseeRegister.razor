@@ -1,0 +1,170 @@
+@page "/franchisee/register"
+@inject IFranchiseService Svc
+@inject IJSRuntime JS
+@implements IDisposable
+<SeoHead Seo="@(new SeoMetadata { Title = "Become a Franchisee — RioCommerce", Description = "Apply to become an RioCommerce franchisee partner — fill the registration form and our team will reach out." })" />
+
+<div class="container contact-page">
+    <div class="contact-hero">
+        <h1>Become An RioCommerce Franchisee</h1>
+        <p>Tell us about your business — our team will review and reach out within 2 working days.</p>
+    </div>
+
+    <div class="account-grid">
+        <div class="form-card">
+            <div class="form-card__title">Franchisee Application</div>
+            @if (submitted)
+            {
+                <div class="inline-alert inline-alert--ok">✅ Thanks @submittedName! Your application is verified and now awaiting review. We'll email you at <strong>@submittedEmail</strong> once it's approved.</div>
+                <a href="/" class="btn btn-outline btn-sm" style="margin-top:10px">Back To Home</a>
+            }
+            else if (awaitingOtp)
+            {
+                @* ── OTP verification step ── the code was emailed/SMSed when the application was submitted.
+                     Verifying moves the application from Unverified → Pending so admins can review + approve. *@
+                <p class="form-hint" style="margin-bottom:14px">We've sent a 6-digit code to <strong>@submittedEmail</strong> and your mobile. Enter it below to confirm your application.</p>
+                @if (error != null) { <div class="inline-alert inline-alert--err">@error</div> }
+                <div class="otp-boxes" style="display:flex;gap:10px;justify-content:center;margin:6px 0 18px">
+                    @for (var i = 0; i < 6; i++)
+                    {
+                        var idx = i;
+                        <input id="fr-otp-@idx" class="form-input" style="width:48px;height:56px;text-align:center;font-size:22px;font-weight:700"
+                               type="text" inputmode="numeric" maxlength="1" autocomplete="off"
+                               value="@digits[idx]" @oninput="(e) => OnInput(idx, e)" @onkeydown="(e) => OnKeyDown(idx, e)" />
+                    }
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" disabled="@(busy || !OtpComplete)" @onclick="VerifyOtp">@(busy ? "Verifying…" : "Verify & Submit")</button>
+                </div>
+                <div class="form-hint" style="margin-top:14px">
+                    @if (cooldown > 0) { <span>Resend code in @cooldown s</span> }
+                    else { <button class="btn-link" style="background:none;border:0;color:var(--orange);font-weight:700;cursor:pointer;padding:0" disabled="@busy" @onclick="ResendOtp">Resend code</button> }
+                </div>
+            }
+            else
+            {
+                @if (error != null) { <div class="inline-alert inline-alert--err">@error</div> }
+                <div class="form-group"><label class="form-label">Franchisee Name <span class="required">*</span></label><input class="form-input" @bind="req.FranchiseeName" /></div>
+                <div class="form-group"><label class="form-label">Business / Organization Name</label><input class="form-input" @bind="req.BusinessName" placeholder="Optional" /></div>
+                <div class="form-group"><label class="form-label">Mobile Number <span class="required">*</span></label><input class="form-input" @bind="req.ContactPhone" placeholder="10-digit mobile" /></div>
+                <div class="form-group"><label class="form-label">Email Address <span class="required">*</span></label><input class="form-input" @bind="req.ContactEmail" placeholder="you@example.com" /></div>
+                <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" @bind="req.Gstin" placeholder="Optional · 15 chars" /></div>
+                <div class="form-group"><label class="form-label">PAN</label><input class="form-input" @bind="req.Pan" placeholder="Optional · 10 chars" /></div>
+                <div class="form-group"><label class="form-label">Address</label><textarea class="form-input" rows="2" @bind="req.AddressLine" placeholder="Office / shop address"></textarea></div>
+                <div class="form-group"><label class="form-label">State <span class="required">*</span></label><input class="form-input" @bind="req.State" placeholder="Maharashtra" /></div>
+                <div class="form-group"><label class="form-label">City <span class="required">*</span></label><input class="form-input" @bind="req.City" placeholder="Pune" /></div>
+                <div class="form-group"><label class="form-label">PIN Code</label><input class="form-input" @bind="req.PinCode" placeholder="411002" /></div>
+                <div class="form-group"><label class="form-label">Supporting Documents (URLs, optional)</label><input class="form-input" @bind="req.DocumentUrls" placeholder="Comma-separated drive / dropbox links" /></div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" disabled="@busy" @onclick="Submit">@(busy ? "Submitting…" : "Submit Application")</button>
+                </div>
+                <div class="form-hint" style="margin-top:14px">Already approved? <a href="/login">Sign in to your portal</a>.</div>
+            }
+        </div>
+
+        <div class="form-card">
+            <div class="form-card__title">Why Partner With RioCommerce?</div>
+            <ul style="padding-left:18px;line-height:1.8">
+                <li>Sell courses at franchise pricing.</li>
+                <li>Wallet-based ordering with credit limit support.</li>
+                <li>Dedicated franchisee dashboard with sales &amp; commission reports.</li>
+                <li>Centralized order fulfilment, marketing, and faculty support.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    private FranchiseRegistrationRequest req = new();
+    private bool busy, submitted, awaitingOtp;
+    private string? error, submittedName, submittedEmail;
+    private readonly string[] digits = new string[6] { "", "", "", "", "", "" };
+    private int cooldown;
+    private System.Threading.Timer? timer;
+
+    private bool OtpComplete => digits.All(d => d.Length == 1 && char.IsDigit(d[0]));
+    private string OtpCode => string.Concat(digits);
+
+    private async Task Submit()
+    {
+        error = null;
+        busy = true;
+        var (ok, err, _) = await Svc.RegisterAsync(req);
+        if (!ok) { error = err; busy = false; return; }
+        submittedName = req.FranchiseeName.Trim();
+        submittedEmail = req.ContactEmail.Trim();
+        // RegisterAsync already sent the verification code. Move to the OTP step.
+        awaitingOtp = true;
+        busy = false;
+        StartCooldown();
+    }
+
+    private async Task VerifyOtp()
+    {
+        error = null; busy = true;
+        try
+        {
+            var (ok, err) = await Svc.VerifyApplicationAsync(submittedEmail!, OtpCode);
+            if (ok) { awaitingOtp = false; submitted = true; }
+            else
+            {
+                error = err ?? "Incorrect code.";
+                for (var i = 0; i < 6; i++) digits[i] = "";
+                await FocusAsync(0);
+            }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task ResendOtp()
+    {
+        error = null; busy = true;
+        try { await Svc.ResendApplicationCodeAsync(submittedEmail!); StartCooldown(); }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void OnInput(int idx, ChangeEventArgs e)
+    {
+        var v = (e.Value?.ToString() ?? "").Trim();
+        if (v.Length > 1)
+        {
+            var clean = new string(v.Where(char.IsDigit).Take(6).ToArray());
+            for (var i = 0; i < 6; i++) digits[i] = i < clean.Length ? clean[i].ToString() : "";
+            _ = FocusAsync(Math.Min(clean.Length, 5));
+            return;
+        }
+        digits[idx] = new string(v.Where(char.IsDigit).ToArray());
+        if (digits[idx].Length == 1 && idx < 5) _ = FocusAsync(idx + 1);
+    }
+
+    private async Task OnKeyDown(int idx, KeyboardEventArgs e)
+    {
+        if (e.Key == "Backspace" && digits[idx].Length == 0 && idx > 0)
+        {
+            digits[idx - 1] = "";
+            await FocusAsync(idx - 1);
+        }
+    }
+
+    private async Task FocusAsync(int idx)
+    {
+        try { await JS.InvokeVoidAsync("hjc.focusEl", $"fr-otp-{idx}"); } catch { }
+        StateHasChanged();
+    }
+
+    private void StartCooldown()
+    {
+        cooldown = 30;
+        timer?.Dispose();
+        timer = new System.Threading.Timer(_ =>
+        {
+            cooldown--;
+            if (cooldown <= 0) { timer?.Dispose(); timer = null; }
+            InvokeAsync(StateHasChanged);
+        }, null, 1000, 1000);
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

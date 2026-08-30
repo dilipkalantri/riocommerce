@@ -1,0 +1,156 @@
+@page "/admin/serial-keys/erp-import"
+@using RioCommerce.Core.DTOs.SerialKeys
+@using RioCommerce.Core.Interfaces
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin")]
+@inject ISerialKeyService Svc
+@inject AuthenticationStateProvider AuthProvider
+@inject ToastService Toast
+<PageTitle>Import ERP Provider Mappings — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Import ERP Serial-Key Mappings</h1>
+    <a href="/admin/serial-keys/bulk-map" class="btn btn-ghost btn-sm">Bulk map (manual) →</a>
+</div>
+
+<div class="data-card" style="padding:20px;max-width:920px">
+    <p style="color:var(--gray-500);margin-top:0">
+        Reads the old ERP <code>dbo.Products</code> and maps each product's serial-key provider to the new
+        system, matched by <strong>SKU</strong>. Provider is decided by <code>PackId</code>:
+        no pack → <strong>RioPlay</strong> (uses the default tenant); has pack → <strong>Valence</strong>.
+        Saving <strong>overwrites</strong> existing config for matched products. Valence packs must already
+        be synced locally.
+    </p>
+
+    @if (result?.Error != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:10px">@result.Error</div> }
+
+    <div class="form-group">
+        <label class="form-label">ERP SQL Server connection string</label>
+        <input class="form-input" type="password" @bind="conn"
+               placeholder="Server=...,1433;Database=erp_riocommerce_com;User Id=...;Password=...;TrustServerCertificate=True;Encrypt=False" />
+        <small style="color:var(--gray-400)">Read-only access is sufficient. Not stored — used only for this run.</small>
+    </div>
+
+    <div class="data-card" style="padding:16px;background:var(--gray-50);margin-top:8px">
+        <strong style="font-size:13px">Valence connection (applied to every Valence product)</strong>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+            <div class="form-group" style="margin:0">
+                <label class="form-label">Base URL *</label>
+                <input class="form-input" @bind="valBaseUrl" placeholder="https://edubeessecurelms.com/edubeessecurelms" />
+            </div>
+            <div class="form-group" style="margin:0">
+                <label class="form-label">Path segment *</label>
+                <input class="form-input" @bind="valPath" placeholder="obfuscated controller segment" />
+            </div>
+            <div class="form-group" style="margin:0">
+                <label class="form-label">Class id</label>
+                <input class="form-input" @bind="valClassId" placeholder="e.g. 5702" />
+            </div>
+        </div>
+        <small style="color:var(--gray-400)">Views (key_views) is taken per-product from the ERP (eWatchTime → eOpens → 1).</small>
+    </div>
+
+    <div style="margin-top:16px;display:flex;gap:10px">
+        <button class="btn btn-ghost" @onclick="Preview" disabled="@busy">@(busy && dry ? "Previewing…" : "Dry run (preview)")</button>
+        <button class="btn btn-primary" @onclick="ConfirmRun" disabled="@busy">@(busy && !dry ? "Importing…" : "Run import")</button>
+    </div>
+    <p style="color:var(--gray-400);font-size:13px;margin-top:8px">Always dry-run first to check the Rio/Valence counts and skipped rows.</p>
+</div>
+
+@if (showConfirm)
+{
+    <div class="data-card" style="padding:18px;max-width:920px;margin-top:14px;border:1px solid #FCD9C0">
+        <strong>Import provider mappings now?</strong>
+        <p style="color:var(--gray-500);margin:6px 0 12px">This writes serial-key config to the live database (overwrites matched products).</p>
+        <div style="display:flex;gap:10px">
+            <button class="btn btn-ghost" @onclick="() => showConfirm = false">Cancel</button>
+            <button class="btn btn-primary" @onclick="RunImport" disabled="@busy">Yes, import</button>
+        </div>
+    </div>
+}
+
+@if (result != null && result.Ok)
+{
+    <div class="data-card" style="padding:20px;max-width:920px;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="margin:0">@(result.DryRun ? "Preview result" : "Import result")</h3>
+            <span class="status @(result.Errors == 0 ? "status--success" : "status--warning")">
+                <span class="dot"></span>Rio @result.RioMapped · Valence @result.ValenceMapped · Skipped @result.Skipped · Errors @result.Errors
+            </span>
+        </div>
+        <div class="table-wrap" style="margin-top:12px;max-height:460px;overflow:auto"><table>
+            <thead><tr><th>SKU</th><th>Provider</th><th>Outcome</th><th>Note</th></tr></thead>
+            <tbody>
+                @foreach (var i in result.Items)
+                {
+                    <tr>
+                        <td>@i.Sku</td>
+                        <td>@i.Provider</td>
+                        <td>
+                            @if (i.Outcome == "created") { <span class="status status--success"><span class="dot"></span>Mapped</span> }
+                            else if (i.Outcome == "skipped") { <span style="color:var(--gray-500)">Skipped</span> }
+                            else { <span style="color:var(--danger,#DC2626)">Error</span> }
+                        </td>
+                        <td style="font-size:12px;color:var(--gray-500)">@i.Message</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+        @if (result.DryRun) { <p style="color:var(--gray-400);font-size:12px;margin-top:6px">Nothing was written (dry run).</p> }
+    </div>
+}
+
+@code {
+    private string? conn, valBaseUrl, valPath, valClassId;
+    private bool busy, dry, showConfirm;
+    private ErpMappingImportResult? result;
+    private Guid? actorId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+    }
+
+    private ErpMappingImportRequest Build(bool dryRun) => new()
+    {
+        SourceConnectionString = conn ?? "",
+        DryRun = dryRun,
+        ValenceBaseUrl = valBaseUrl,
+        ValencePathSegment = valPath,
+        ValenceClassId = valClassId,
+    };
+
+    private async Task Preview()
+    {
+        showConfirm = false;
+        if (string.IsNullOrWhiteSpace(conn)) { Toast.Error("Enter the ERP connection string."); return; }
+        busy = true; dry = true;
+        try
+        {
+            result = await Svc.ImportErpProviderMappingsAsync(Build(true), actorId);
+            if (result.Ok) Toast.Success("Preview complete — review, then run.");
+            else Toast.Error("Preview failed — see details.");
+        }
+        finally { busy = false; }
+    }
+
+    private void ConfirmRun()
+    {
+        if (string.IsNullOrWhiteSpace(conn)) { Toast.Error("Enter the ERP connection string."); return; }
+        showConfirm = true;
+    }
+
+    private async Task RunImport()
+    {
+        showConfirm = false;
+        busy = true; dry = false;
+        try
+        {
+            result = await Svc.ImportErpProviderMappingsAsync(Build(false), actorId);
+            if (result.Ok) Toast.Success($"Imported: Rio {result.RioMapped}, Valence {result.ValenceMapped}.");
+            else Toast.Error("Import failed — see details.");
+        }
+        finally { busy = false; }
+    }
+}

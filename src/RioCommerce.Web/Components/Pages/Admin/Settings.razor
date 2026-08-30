@@ -1,0 +1,160 @@
+@page "/admin/settings"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject ISiteSettingsService Svc
+<PageTitle>Settings — RioCommerce Admin</PageTitle>
+
+<style>
+    .logo-card{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:18px;align-items:start}
+    .logo-card__preview{position:relative;height:120px;border-radius:14px;background:linear-gradient(135deg,#1a3a5c,#2a5580);display:flex;align-items:center;justify-content:center;padding:12px;border:1px solid var(--gray-200)}
+    .logo-card__preview img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+    .logo-card__empty{color:rgba(255,255,255,.6);font-size:12.5px;text-align:center}
+    .logo-card__controls{display:flex;flex-direction:column;gap:8px}
+    .logo-card__upload{cursor:pointer;align-self:flex-start}
+    .logo-card__upload input[type="file"]{display:none}
+    .logo-card__hints{margin:6px 0 0;padding:0 0 0 18px;color:var(--gray-500);font-size:12.5px;line-height:1.7}
+    @@media(max-width:680px){.logo-card{grid-template-columns:1fr}}
+</style>
+
+<div class="page__header"><h1>Site Settings</h1></div>
+
+@if (model == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+}
+else
+{
+    @if (msg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:14px">@msg</div> }
+
+    @* ── Website Logo ── *@
+    <div class="form-card" style="margin-bottom:14px">
+        <div class="form-card__title">🖼 Website Logo</div>
+        @if (logoMsg != null) { <div class="inline-alert @(logoOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:10px">@logoMsg</div> }
+        <div class="logo-card">
+            <div class="logo-card__preview">
+                @if (!string.IsNullOrWhiteSpace(model.LogoUrl))
+                {
+                    <img src="@model.LogoUrl" alt="Current site logo" />
+                }
+                else
+                {
+                    <div class="logo-card__empty">No custom logo<br />— using bundled brand asset</div>
+                }
+            </div>
+            <div class="logo-card__controls">
+                <label class="btn btn-primary btn-sm logo-card__upload">
+                    <InputFile OnChange="OnLogoUpload" accept=".png,.jpg,.jpeg,.webp,.svg" hidden />
+                    @(logoUploading ? "Uploading…" : (string.IsNullOrWhiteSpace(model.LogoUrl) ? "📤 Choose & upload" : "🔁 Replace logo"))
+                </label>
+                @if (!string.IsNullOrWhiteSpace(model.LogoUrl))
+                {
+                    <button type="button" class="btn btn-ghost btn-sm" disabled="@logoUploading" @onclick="DeleteLogo">🗑 Revert to bundled logo</button>
+                }
+                <ul class="logo-card__hints">
+                    <li>Use a <strong>transparent PNG</strong> or <strong>SVG</strong> for best results on both the navy contact strip and the white header</li>
+                    <li>Recommended height: <strong>96 px</strong> (header renders at ~46 px)</li>
+                    <li>Allowed: PNG · JPG · WEBP · SVG — appears on the storefront header, footer, mobile drawer and login screens</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="account-grid">
+        <div class="form-card">
+            <div class="form-card__title">Branding</div>
+            <div class="form-group"><label class="form-label">Company Name</label><input class="form-input" @bind="model.CompanyName" placeholder="My Store" /><div class="form-hint">Appears in footer, invoices, emails and share text.</div></div>
+            <div class="form-group"><label class="form-label">Website URL</label><input class="form-input" @bind="model.WebsiteUrl" placeholder="https://example.com" /></div>
+            <div class="form-group"><label class="form-label">Copyright Text</label><input class="form-input" @bind="model.CopyrightText" placeholder="Leave empty to use company name" /></div>
+        </div>
+        <div class="form-card">
+            <div class="form-card__title">Contact Details</div>
+            <div class="form-group"><label class="form-label">Phone 1 (primary)</label><input class="form-input" @bind="model.ContactPhone1" placeholder="9876543210" /><div class="form-hint">Used for call buttons and floating dock.</div></div>
+            <div class="form-group"><label class="form-label">Phone 2</label><input class="form-input" @bind="model.ContactPhone2" /></div>
+            <div class="form-group"><label class="form-label">Phone 3</label><input class="form-input" @bind="model.ContactPhone3" /></div>
+            <div class="form-group"><label class="form-label">Contact Email</label><input class="form-input" @bind="model.ContactEmail" placeholder="enquiry@example.com" /></div>
+            <div class="form-group"><label class="form-label">Support Email</label><input class="form-input" @bind="model.SupportEmail" placeholder="support@example.com" /><div class="form-hint">Shown on checkout/payment pages. Falls back to contact email.</div></div>
+            <div class="form-group"><label class="form-label">Office Address</label><input class="form-input" @bind="model.Address" placeholder="Full address" /></div>
+            <div class="form-group"><label class="form-label">Google Maps URL</label><input class="form-input" @bind="model.GoogleMapsUrl" placeholder="https://maps.google.com/?q=..." /><div class="form-hint">Optional. Auto-generated from address if empty.</div></div>
+            <div class="form-group"><label class="form-label">Business Hours</label><input class="form-input" @bind="model.BusinessHours" placeholder="Mon–Sat, 10:00 AM – 7:00 PM" /></div>
+        </div>
+    </div>
+    <div class="account-grid" style="margin-top:14px">
+        <div class="form-card">
+            <div class="form-card__title">Social &amp; Messaging</div>
+            <div class="form-group"><label class="form-label">WhatsApp Number</label><input class="form-input" @bind="model.WhatsappNumber" placeholder="9876543210" /></div>
+            <div class="form-group"><label class="form-label">WhatsApp Pre-filled Message</label><input class="form-input" @bind="model.WhatsappMessage" placeholder="Hi! I'd like to enquire about your courses." /></div>
+            <div class="form-group"><label class="form-label">Instagram URL</label><input class="form-input" @bind="model.InstagramUrl" placeholder="https://www.instagram.com/yourhandle/" /></div>
+            <div class="form-group"><label class="form-label">YouTube URL</label><input class="form-input" @bind="model.YoutubeUrl" placeholder="https://www.youtube.com/@@yourchannel" /></div>
+            <div class="form-group"><label class="form-label">Telegram URL</label><input class="form-input" @bind="model.TelegramUrl" placeholder="https://t.me/yourchannel" /></div>
+        </div>
+        <div class="form-card">
+            <div class="form-card__title">Analytics &amp; Tracking</div>
+            <div class="form-group"><label class="form-label">Google Analytics 4 ID</label><input class="form-input" @bind="model.Ga4Id" placeholder="G-XXXXXXXXXX" /><div class="form-hint">Injected site-wide when set.</div></div>
+            <div class="form-group"><label class="form-label">Google Tag Manager ID</label><input class="form-input" @bind="model.GtmId" placeholder="GTM-XXXXXXX" /></div>
+            <div class="form-group"><label class="form-label">Meta (Facebook) Pixel ID</label><input class="form-input" @bind="model.MetaPixelId" /></div>
+        </div>
+    </div>
+    <div class="account-grid" style="margin-top:14px">
+        <div class="form-card">
+            <div class="form-card__title">Widgets</div>
+            <div class="form-group"><label class="form-label">Announcement Bar Text</label><input class="form-input" @bind="model.AnnouncementText" placeholder="🎉 New batch starting soon!" /></div>
+            <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="model.FomoEnabled" /> Enable FOMO popups</label></div>
+        </div>
+    </div>
+    <div class="form-actions" style="margin-top:4px">
+        <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save Settings")</button>
+    </div>
+}
+
+@code {
+    private SiteSettings? model;
+    private bool saving;
+    private string? msg;
+    // Logo upload state
+    private bool logoUploading, logoOk;
+    private string? logoMsg;
+
+    protected override async Task OnInitializedAsync() => model = await Svc.GetAsync();
+
+    private async Task Save()
+    {
+        if (model == null) return;
+        saving = true; msg = null;
+        await Svc.SaveAsync(model);
+        saving = false;
+        msg = "Settings saved. Analytics changes apply on the next page load.";
+    }
+
+    private async Task OnLogoUpload(InputFileChangeEventArgs e)
+    {
+        if (model == null) return;
+        var file = e.File;
+        if (file == null) return;
+        const long maxBytes = 3 * 1024 * 1024;     // 3 MB — logos should be small
+        if (file.Size > maxBytes) { logoOk = false; logoMsg = "Logo too large — keep it under 3 MB."; return; }
+        var ext = System.IO.Path.GetExtension(file.Name);
+        logoMsg = null; logoUploading = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            var (ok, err, url) = await Svc.UploadLogoAsync(ext, stream);
+            if (ok && !string.IsNullOrWhiteSpace(url))
+            {
+                model.LogoUrl = url;
+                logoOk = true;
+                logoMsg = "Logo uploaded — refresh the storefront to see it.";
+            }
+            else { logoOk = false; logoMsg = err ?? "Upload failed."; }
+        }
+        finally { logoUploading = false; }
+    }
+
+    private async Task DeleteLogo()
+    {
+        if (model == null) return;
+        await Svc.DeleteLogoAsync();
+        model.LogoUrl = null;
+        logoOk = true;
+        logoMsg = "Reverted to the bundled brand asset.";
+    }
+}

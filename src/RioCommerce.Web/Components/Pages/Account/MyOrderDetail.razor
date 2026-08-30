@@ -1,0 +1,238 @@
+@page "/account/orders/{OrderNumber}"
+@attribute [Authorize]
+@inject IAccountService AccountSvc
+@inject ICheckoutService CheckoutSvc
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<SeoHead Seo="@(new SeoMetadata { Title = $"Order {OrderNumber} — RioCommerce" })" />
+
+<div class="container account-page">
+    <div class="breadcrumb"><a href="/account">My Account</a><span>›</span><a href="/account/orders">Orders</a><span>›</span><span class="current">#@OrderNumber</span></div>
+
+    @if (loading)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading order…</p>
+    }
+    else if (r == null)
+    {
+        <div class="cart-empty">
+            <div style="font-size:42px">🔍</div>
+            <p>We couldn't find that order.</p>
+            <a href="/account/orders" class="btn btn-primary" style="margin-top:12px">Back to Orders</a>
+        </div>
+    }
+    else
+    {
+        <div class="invoice-sheet" id="invoice">
+            <div class="invoice-head">
+                <div>
+                    <h1 class="invoice-head__title">@(string.IsNullOrEmpty(r.InvoiceNumber) ? "Order" : "Tax Invoice")</h1>
+                    <div class="invoice-head__sub">@(r.InvoiceNumber ?? r.OrderNumber)</div>
+                </div>
+                <div class="invoice-head__brand">
+                    <strong>RioCommerce</strong><br />
+                    <span style="color:var(--gray-500);font-size:12px">CA Coaching · Maharashtra</span>
+                </div>
+            </div>
+
+            <div class="receipt-meta" style="margin-top:18px">
+                <div><span class="label">Order Number</span><span class="value">@r.OrderNumber</span></div>
+                <div><span class="label">Date</span><span class="value">@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, h:mm tt")</span></div>
+                <div><span class="label">Order Status</span><span class="value">@r.Status</span></div>
+                <div><span class="label">Payment</span><span class="value">@r.PaymentStatus@(r.PaymentMode.HasValue ? $" · {r.PaymentMode}" : "")</span></div>
+                @* What the customer actually paid with at the gateway (UPI / Credit Card / …).
+                   Absent for offline orders and for payments the gateway didn't report. *@
+                @if (!string.IsNullOrWhiteSpace(r.GatewayPaymentMode))
+                {
+                    <div><span class="label">Payment Mode</span><span class="value">@r.GatewayPaymentMode</span></div>
+                }
+                <div>
+                    <span class="label">Billed To</span>
+                    <span class="value">@(r.BillingName ?? r.StudentName)</span>
+                    <div style="font-size:12px;color:var(--gray-500)">
+                        @(string.Join(", ", new[] { r.BillingAddress, r.BillingCity, r.BillingState, r.BillingPincode }.Where(x => !string.IsNullOrWhiteSpace(x))))
+                        @if (!string.IsNullOrWhiteSpace(r.GstNumber)) { <br /> @($"GSTIN: {r.GstNumber}") }
+                    </div>
+                </div>
+                <div><span class="label">Contact</span><span class="value">@r.StudentPhone</span><div style="font-size:12px;color:var(--gray-500)">@r.StudentEmail</div></div>
+            </div>
+
+            <div class="table-wrap" style="margin-top:8px"><table>
+                <thead><tr><th>Item</th><th>Mode</th><th style="text-align:center">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Amount</th></tr></thead>
+                <tbody>
+                    @foreach (var i in r.Items)
+                    {
+                        <tr>
+                            <td><strong>@i.Title</strong></td>
+                            <td>@i.ModeName</td>
+                            <td style="text-align:center">@i.Quantity</td>
+                            <td style="text-align:right">₹@i.UnitPrice.ToString("N0")</td>
+                            <td style="text-align:right">₹@i.LineTotal.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+
+            <div style="max-width:320px;margin-left:auto;margin-top:14px">
+                <div class="summary-row"><span class="label">Subtotal</span><span class="value">₹@r.Subtotal.ToString("N0")</span></div>
+                @if (r.Discount > 0)
+                {
+                    <div class="summary-row summary-row--green"><span class="label">Discount @(r.CouponCode != null ? $"({r.CouponCode})" : "")</span><span class="value">− ₹@r.Discount.ToString("N0")</span></div>
+                }
+                @if (r.IgstAmount > 0)
+                {
+                    <div class="summary-row"><span class="label">IGST (18%, incl.)</span><span class="value">₹@r.IgstAmount.ToString("N0")</span></div>
+                }
+                else
+                {
+                    <div class="summary-row"><span class="label">CGST (9%, incl.)</span><span class="value">₹@r.CgstAmount.ToString("N0")</span></div>
+                    <div class="summary-row"><span class="label">SGST (9%, incl.)</span><span class="value">₹@r.SgstAmount.ToString("N0")</span></div>
+                }
+                <div class="summary-row summary-row--total"><span class="label">Total</span><span class="value">₹@r.Total.ToString("N0")</span></div>
+            </div>
+        </div>
+
+        @* ── Shipment ─────────────────────────────────────────────────────────────
+           Only for orders that actually ship, and only once a courier has been chosen —
+           there is nothing useful to tell the customer before that. Sits outside the
+           invoice sheet so it never lands on the printed invoice. *@
+        @if (r.Shipment is { } ship)
+        {
+            <div class="hjship">
+                <div class="hjship__head">
+                    <span class="hjship__icon">📦</span>
+                    <h2 class="hjship__title">Shipment</h2>
+                    <span class="hjship__badge hjship__badge--@ship.Status.ToLowerInvariant()">@StatusLabel(ship.Status)</span>
+                </div>
+
+                <div class="hjship__grid">
+                    <div class="hjship__cell">
+                        <span class="hjship__label">Delivery</span>
+                        <span class="hjship__value">@ship.Courier</span>
+                    </div>
+
+                    @* Absent for a courier that doesn't track (PCMC same-day) — the customer sees
+                       the delivery method alone rather than an empty tracking row. *@
+                    @if (ship.HasTracking)
+                    {
+                        <div class="hjship__cell">
+                            <span class="hjship__label">Tracking Number</span>
+                            <span class="hjship__value hjship__value--mono">@ship.TrackingNumber</span>
+                        </div>
+                    }
+
+                    @if (ship.DispatchedAt.HasValue)
+                    {
+                        <div class="hjship__cell">
+                            <span class="hjship__label">Dispatched On</span>
+                            <span class="hjship__value">@ship.DispatchedAt.Value.ToLocalTime().ToString("dd MMM yyyy, h:mm tt")</span>
+                        </div>
+                    }
+
+                    @if (ship.DeliveredAt.HasValue)
+                    {
+                        <div class="hjship__cell">
+                            <span class="hjship__label">Delivered On</span>
+                            <span class="hjship__value">@ship.DeliveredAt.Value.ToLocalTime().ToString("dd MMM yyyy, h:mm tt")</span>
+                        </div>
+                    }
+                </div>
+
+                @if (ship.HasTracking)
+                {
+                    <a class="hjship__track" href="@ship.TrackingUrl" target="_blank" rel="noopener noreferrer">
+                        Track Shipment ↗
+                    </a>
+                    <p class="hjship__note">Opens @ship.Courier's tracking page in a new tab — enter the tracking number above.</p>
+                }
+            </div>
+        }
+
+        <div class="invoice-actions">
+            <button class="btn btn-outline" @onclick="Print">🖨 Print / Save PDF</button>
+            <a class="btn btn-outline" href="@($"/api/me/orders/{r.OrderNumber}/receipt.pdf?download=1")" target="_blank">⬇ Download Receipt</a>
+            @if (r.PaymentStatus == PaymentStatus.Success && !r.IsFranchiseOrder)
+            {
+                <a class="btn btn-outline" href="@($"/api/me/orders/{r.OrderNumber}/invoice.pdf?download=1")" target="_blank">⬇ Download Invoice</a>
+            }
+            <button class="btn btn-primary" disabled="@reordering" @onclick="Reorder">@(reordering ? "Adding…" : "🛒 Reorder")</button>
+            @if (r.PaymentStatus != PaymentStatus.Success)
+            {
+                <a href="/checkout" class="btn btn-success">Complete Payment</a>
+            }
+            <a href="/account/orders" class="btn btn-ghost">← Back to Orders</a>
+        </div>
+    }
+</div>
+
+@* Component-scoped by prefix (hjship__), matching how the other pages in this project keep their
+   one-off styling local. Nothing here leaks into the shared stylesheets. *@
+<style>
+    .hjship{background:#fff;border:1px solid var(--gray-200,#e5e7eb);border-radius:12px;
+            padding:18px 20px;margin-top:18px}
+    .hjship__head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+                  padding-bottom:14px;border-bottom:1px solid var(--gray-100,#f1f3f5)}
+    .hjship__icon{font-size:18px;line-height:1}
+    .hjship__title{margin:0;font-size:16px;font-weight:700;color:var(--gray-900,#111827)}
+    .hjship__badge{margin-left:auto;font-size:12px;font-weight:600;letter-spacing:.02em;
+                   padding:4px 10px;border-radius:999px;background:#f1f3f5;color:#495057}
+    .hjship__badge--dispatched{background:#e7f5ff;color:#0B45AB}
+    .hjship__badge--delivered{background:#e6fcf5;color:#0b7285}
+    .hjship__badge--cancelled{background:#fff5f5;color:#c92a2a}
+    .hjship__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+                  gap:14px 24px;padding:16px 0}
+    .hjship__cell{display:flex;flex-direction:column;gap:3px;min-width:0}
+    .hjship__label{font-size:12px;color:var(--gray-500,#868e96)}
+    .hjship__value{font-size:14px;font-weight:600;color:var(--gray-900,#111827);
+                   overflow-wrap:anywhere}
+    .hjship__value--mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.03em}
+    .hjship__track{display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+                   background:#0B45AB;color:#fff;font-size:14px;font-weight:600;
+                   padding:10px 18px;border-radius:8px}
+    .hjship__track:hover{background:#093a8d;color:#fff}
+    .hjship__note{margin:8px 0 0;font-size:12px;color:var(--gray-500,#868e96)}
+    @@media (max-width:480px){
+        .hjship{padding:16px 14px}
+        .hjship__badge{margin-left:0}
+        .hjship__track{width:100%;justify-content:center}
+    }
+    @@media print{ .hjship{display:none} }
+</style>
+
+@code {
+    [Parameter] public string OrderNumber { get; set; } = string.Empty;
+
+    private OrderReceipt? r;
+    private bool loading = true, reordering;
+    private Guid userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out userId))
+            r = await CheckoutSvc.GetReceiptAsync(userId, OrderNumber);
+        loading = false;
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+
+    /// <summary>Customer-facing wording for the shipment state — "Pending" internally means the
+    /// parcel is still being packed, which is not what that word says to a buyer.</summary>
+    private static string StatusLabel(string status) => status switch
+    {
+        "Pending"    => "Preparing",
+        "Dispatched" => "On the way",
+        "Delivered"  => "Delivered",
+        "Cancelled"  => "Cancelled",
+        _            => status
+    };
+
+    private async Task Reorder()
+    {
+        reordering = true;
+        await AccountSvc.ReorderAsync(userId, OrderNumber);
+        Nav.NavigateTo("/cart");
+    }
+}

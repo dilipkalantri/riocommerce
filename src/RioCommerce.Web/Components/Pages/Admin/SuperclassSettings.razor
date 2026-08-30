@@ -1,0 +1,184 @@
+@page "/admin/settings/superclass"
+@using RioCommerce.Core.DTOs.SerialKeys
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject ISuperclassSettingsService Svc
+@inject ToastService Toast
+<PageTitle>Superclass Settings — RioCommerce Admin</PageTitle>
+
+@*
+    Global configuration for the Superclass LMS registration integration. Unlike RioPlay (per-tenant)
+    and Valence (per-product), Superclass uses ONE set of credentials + defaults for every request, so
+    this is a single settings form. Per-product course/validity mapping lives on the Product Edit page.
+
+    The API key is encrypted at rest via the ASP.NET Core Data Protection key ring and is never sent
+    back to the browser — leave it blank on edit to keep the existing key.
+*@
+
+<style>
+    .sc-card { background:#fff; border:1px solid var(--gray-200); border-radius:14px; margin-bottom:18px; box-shadow:0 1px 2px rgba(15,23,42,.04) }
+    .sc-card__head { padding:14px 18px; border-bottom:1px solid var(--gray-100); background:linear-gradient(180deg,#fff,var(--gray-50)) }
+    .sc-card__title { font-weight:700; color:var(--navy); font-size:15px }
+    .sc-card__subtitle { color:var(--gray-500); font-size:12.5px; margin-top:2px }
+    .sc-card__body { padding:18px }
+    .sc-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px 18px }
+    .sc-checks { display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:14px }
+    .sc-chk { display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--gray-700); cursor:pointer }
+    .sc-chip { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px }
+    .sc-chip--ok { background:#DBEAFE; color:#1E40AF }
+    .sc-chip--missing { background:#FEE2E2; color:#991B1B }
+    .sc-actions { margin-top:18px; padding-top:14px; border-top:1px solid var(--gray-100); display:flex; gap:8px; justify-content:flex-end; align-items:center }
+    .sc-info { background:#EFF6FF; border-left:3px solid #3B82F6; padding:10px 14px; border-radius:6px; font-size:13px; color:#1E40AF; margin-bottom:14px; line-height:1.55 }
+    .sc-info code { background:#DBEAFE; padding:1px 6px; border-radius:4px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12px }
+    .sc-test { margin-right:auto; font-size:12.5px }
+    .sc-test--ok { color:#065F46 }
+    .sc-test--err { color:var(--red) }
+</style>
+
+<div class="page__header">
+    <h1>Superclass Settings</h1>
+    <p style="color:var(--gray-500); font-size:13.5px; margin:4px 0 0">
+        Global credentials + defaults for the Superclass LMS registration API. Per-product course &amp; validity
+        mapping is configured on each Product's edit page.
+    </p>
+</div>
+
+<div class="sc-info">
+    <strong>How this works:</strong> When a paid order contains a product mapped to <strong>Superclass</strong>,
+    the background task <code>SerialKeyRetry</code> calls <code>POST {Base URL}/api/register</code> to register/detect
+    the student and assign the course. Superclass then sends its own welcome email + WhatsApp. View outcomes at
+    <a href="/admin/integrations/superclass">Superclass Registrations</a>.
+</div>
+
+@if (model == null)
+{
+    <p style="color:var(--gray-400); padding:30px 0">Loading…</p>
+}
+else
+{
+    <div class="sc-card">
+        <div class="sc-card__head">
+            <div class="sc-card__title">API connection</div>
+            <div class="sc-card__subtitle">Credentials are encrypted at rest and never shown again after saving.</div>
+        </div>
+        <div class="sc-card__body">
+            <div class="sc-grid">
+                <div class="form-group">
+                    <label class="form-label">API Base URL <span style="color:var(--red)">*</span></label>
+                    <input class="form-input" @bind="model.ApiBaseUrl" placeholder="https://lms.superclassapp.in" />
+                    <div class="form-hint">Root URL, no trailing slash. <code>/api/register</code> is appended automatically.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        API Authentication Key
+                        @if (model.HasApiKey)
+                        {
+                            <span class="sc-chip sc-chip--ok" style="margin-left:6px">Set</span>
+                        }
+                        else
+                        {
+                            <span class="sc-chip sc-chip--missing" style="margin-left:6px">Missing</span>
+                        }
+                    </label>
+                    <input class="form-input" type="password" autocomplete="new-password"
+                           @bind="model.ApiKey"
+                           placeholder="@(model.HasApiKey ? "Leave blank to keep the existing key" : "Paste the Superclass API key")" />
+                    <div class="form-hint">Sent as <code>Authorization: Bearer</code> and <code>X-API-Key</code>. Encrypted via the Data Protection key ring; never logged.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Class ID <span style="color:var(--red)">*</span></label>
+                    <input type="number" class="form-input" @bind="model.DefaultClassId" min="1" />
+                    <div class="form-hint">Institute default: <code>318</code>. A product can override this in its own config.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Environment</label>
+                    <select class="form-select" @bind="model.Environment">
+                        <option value="Production">Production</option>
+                        <option value="Sandbox">Sandbox</option>
+                    </select>
+                    <div class="form-hint">Informational label — the actual endpoint is the Base URL above.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Max retry attempts</label>
+                    <input type="number" class="form-input" @bind="model.MaxRetryAttempts" min="1" max="20" />
+                    <div class="form-hint">Failed registrations are retried with exponential backoff, then dead-lettered after this many attempts.</div>
+                </div>
+            </div>
+
+            <div class="sc-checks">
+                <label class="sc-chk">
+                    <input type="checkbox" @bind="model.LoggingEnabled" />
+                    <span><strong>Verbose logging</strong> — record full (key-redacted) request/response bodies to app logs</span>
+                </label>
+                <label class="sc-chk">
+                    <input type="checkbox" @bind="model.IsActive" />
+                    <span><strong>Active</strong> — uncheck to pause all Superclass provisioning</span>
+                </label>
+            </div>
+
+            <div class="sc-actions">
+                @if (testResult != null)
+                {
+                    <span class="sc-test @(testResult.Success ? "sc-test--ok" : "sc-test--err")">
+                        @if (testResult.Success)
+                        {
+                            <text>✓ Reachable (HTTP @testResult.StatusCode)</text>
+                        }
+                        else
+                        {
+                            <text>✗ @testResult.Error</text>
+                        }
+                    </span>
+                }
+                <button class="btn btn-ghost btn-sm" disabled="@busy" @onclick="TestConnection">@(testing ? "Testing…" : "Test connection")</button>
+                <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="Save">@(saving ? "Saving…" : "Save Settings")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private SuperclassSettingsEdit? model;
+    private SuperclassConnectionTestResult? testResult;
+    private bool saving;
+    private bool testing;
+    private bool busy => saving || testing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        model = await Svc.GetAsync();
+    }
+
+    private async Task Save()
+    {
+        if (model == null) return;
+        saving = true; testResult = null;
+        try
+        {
+            var (ok, err) = await Svc.SaveAsync(model);
+            if (!ok) { Toast.Error(err ?? "Save failed."); return; }
+            Toast.Success("Superclass settings saved.");
+            model = await Svc.GetAsync();   // reload → key cleared from the form, HasApiKey refreshed
+        }
+        catch (Exception ex) { Toast.Error($"Save failed: {ex.Message}"); }
+        finally { saving = false; }
+    }
+
+    private async Task TestConnection()
+    {
+        testing = true; testResult = null;
+        try
+        {
+            // Save first so the test uses the latest values, then probe reachability.
+            if (model != null)
+            {
+                var (ok, err) = await Svc.SaveAsync(model);
+                if (!ok) { Toast.Error(err ?? "Save failed."); return; }
+                model = await Svc.GetAsync();
+            }
+            testResult = await Svc.TestConnectionAsync();
+        }
+        catch (Exception ex) { testResult = new SuperclassConnectionTestResult { Success = false, Error = ex.Message }; }
+        finally { testing = false; }
+    }
+}

@@ -1,0 +1,853 @@
+@page "/admin/scheduled-tasks"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@using RioCommerce.Core.Entities
+@using RioCommerce.Core.Enums
+@inject IScheduledTaskService Svc
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>Scheduled Tasks — RioCommerce Admin</PageTitle>
+
+<div class="sched-v2">
+    @* ─── Page header ─── *@
+    <header class="sched-hero">
+        <div class="sched-hero__txt">
+            <h1 class="sched-hero__title">🕒 Scheduled Tasks</h1>
+            <p class="sched-hero__sub">Manage background jobs, payment reconciliation, cleanup tasks and automated system operations.</p>
+        </div>
+        <div class="sched-hero__actions">
+            <button class="sched-btn sched-btn--ghost" @onclick="() => showCreateInfo = true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Create Task
+            </button>
+            <button class="sched-btn sched-btn--primary" disabled="@(runningAll || tasks == null)" @onclick="RunAllAsync">
+                @if (runningAll)
+                {
+                    <span class="sched-spinner sched-spinner--sm" aria-hidden="true"></span>
+                    <span>Running…</span>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <span>Run All</span>
+                }
+            </button>
+        </div>
+    </header>
+
+    @* ─── Top success/error banner ─── *@
+    @if (toastMessage != null)
+    {
+        <div class="sched-alert sched-alert--ok" role="status">
+            <div class="sched-alert__head">
+                <span class="sched-alert__ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
+                <strong>@toastMessage.Title</strong>
+                <button type="button" class="sched-alert__close" @onclick="() => toastMessage = null" aria-label="Dismiss">×</button>
+            </div>
+            <div class="sched-alert__stats">
+                @foreach (var s in toastMessage.Stats)
+                {
+                    <span><b>@s.Key:</b> @s.Value</span>
+                }
+            </div>
+        </div>
+    }
+    @if (err != null)
+    {
+        <div class="sched-alert sched-alert--err" role="alert">
+            <div class="sched-alert__head">
+                <span class="sched-alert__ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                </span>
+                <strong>@err</strong>
+                <button type="button" class="sched-alert__close" @onclick="() => err = null" aria-label="Dismiss">×</button>
+            </div>
+        </div>
+    }
+
+    @if (tasks == null)
+    {
+        <div class="sched-skeleton-grid">
+            @for (var i = 0; i < 4; i++) { <div class="sched-skel sched-skel--card"></div> }
+        </div>
+    }
+    else if (tasks.Count == 0)
+    {
+        <div class="sched-empty">
+            <div class="sched-empty__ico">🕒</div>
+            <h2>No scheduled tasks found.</h2>
+            <p>Tasks are seeded from registered handlers when the app boots.</p>
+            <button class="sched-btn sched-btn--primary" @onclick="() => showCreateInfo = true">Create Task</button>
+        </div>
+    }
+    else
+    {
+        @* ─── Summary cards ─── *@
+        <div class="sched-stats">
+            <div class="sched-stat sched-stat--green">
+                <div class="sched-stat__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg></div>
+                <div class="sched-stat__big">@activeCount</div>
+                <div class="sched-stat__lbl">Active Tasks</div>
+            </div>
+            <div class="sched-stat sched-stat--blue">
+                <div class="sched-stat__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+                <div class="sched-stat__big">@(lastExecText ?? "—")</div>
+                <div class="sched-stat__lbl">Last Execution</div>
+            </div>
+            <div class="sched-stat sched-stat--orange">
+                <div class="sched-stat__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+                <div class="sched-stat__big">@todayRuns</div>
+                <div class="sched-stat__lbl">Today's Runs</div>
+            </div>
+            <div class="sched-stat sched-stat--red">
+                <div class="sched-stat__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg></div>
+                <div class="sched-stat__big">@failedCount</div>
+                <div class="sched-stat__lbl">Failed Tasks</div>
+            </div>
+        </div>
+
+        @* ─── Search & filter bar ─── *@
+        <div class="sched-filters">
+            <div class="sched-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" placeholder="Search task…" @bind="search" @bind:event="oninput" />
+            </div>
+            <select class="sched-select" @bind="statusFilter">
+                <option value="all">All statuses</option>
+                <option value="success">Success</option>
+                <option value="running">Running</option>
+                <option value="idle">Idle</option>
+                <option value="failed">Failed</option>
+            </select>
+            <select class="sched-select" @bind="intervalFilter">
+                <option value="all">All intervals</option>
+                <option value="30m">≤ 30 Minutes</option>
+                <option value="1h">~ 1 Hour</option>
+                <option value="1d">~ 1 Day</option>
+                <option value="other">Other</option>
+            </select>
+            <label class="sched-toggle">
+                <input type="checkbox" @bind="enabledOnly" /> Enabled only
+            </label>
+        </div>
+
+        @* ─── Task cards ─── *@
+        <div class="sched-cards">
+            @foreach (var t in FilteredTasks)
+            {
+                var iconEmoji = IconFor(t.TaskKey);
+                var status = t.LastStatus;
+                var isRunning = running == t.Id || status == ScheduledTaskStatus.Running;
+                var parsed = ParseSummary(t.LastItemsChecked, t.LastItemsUpdated, null);
+                <article class="sched-card @(isRunning ? "is-running" : "")">
+                    <header class="sched-card__head">
+                        <span class="sched-card__emoji" aria-hidden="true">@iconEmoji</span>
+                        <div class="sched-card__title-block">
+                            <h3 class="sched-card__title">@t.Name</h3>
+                            <p class="sched-card__desc">@(t.Description ?? "")</p>
+                            <code class="sched-card__key">@t.TaskKey</code>
+                        </div>
+                        <div class="sched-card__enabled">
+                            @if (t.Enabled) { <span class="sched-pill sched-pill--ok">Enabled</span> }
+                            else { <span class="sched-pill sched-pill--off">Disabled</span> }
+                        </div>
+                    </header>
+
+                    <div class="sched-card__grid">
+                        <div class="sched-meta">
+                            <div class="sched-meta__lbl">Status</div>
+                            <div class="sched-meta__val">
+                                <span class="sched-badge sched-badge--@StatusClass(status, isRunning)">
+                                    <span class="sched-badge__dot"></span>
+                                    @(isRunning ? "Running" : status.ToString())
+                                </span>
+                            </div>
+                        </div>
+                        <div class="sched-meta">
+                            <div class="sched-meta__lbl">Interval</div>
+                            <div class="sched-meta__val">
+                                <span class="sched-iv sched-iv--@IntervalClass(t.IntervalSeconds)">@FormatInterval(t.IntervalSeconds)</span>
+                            </div>
+                        </div>
+                        <div class="sched-meta">
+                            <div class="sched-meta__lbl">Last Run</div>
+                            <div class="sched-meta__val">
+                                @if (t.LastRunAt.HasValue)
+                                {
+                                    <div>@t.LastRunAt.Value.ToLocalTime().ToString("dd MMM yyyy")</div>
+                                    <div class="sched-meta__sub">@t.LastRunAt.Value.ToLocalTime().ToString("h:mm tt")</div>
+                                }
+                                else { <span class="sched-meta__sub">never</span> }
+                            </div>
+                        </div>
+                        <div class="sched-meta">
+                            <div class="sched-meta__lbl">Next Run</div>
+                            <div class="sched-meta__val">
+                                @if (t.NextRunAt.HasValue) { <span>@t.NextRunAt.Value.ToLocalTime().ToString("h:mm tt")</span> }
+                                else { <span class="sched-meta__sub">—</span> }
+                            </div>
+                        </div>
+                        <div class="sched-meta">
+                            <div class="sched-meta__lbl">Duration</div>
+                            <div class="sched-meta__val">@(t.LastDurationMs > 0 ? $"{t.LastDurationMs} ms" : "—")</div>
+                        </div>
+                    </div>
+
+                    <div class="sched-card__stats">
+                        <div class="sched-stat-pill"><span>Checked</span><b>@t.LastItemsChecked</b></div>
+                        <div class="sched-stat-pill"><span>Updated</span><b>@t.LastItemsUpdated</b></div>
+                        @if (parsed.HasSettled)   { <div class="sched-stat-pill sched-stat-pill--ok"><span>Settled</span><b>@parsed.Settled</b></div> }
+                        @if (parsed.HasFailed)    { <div class="sched-stat-pill sched-stat-pill--err"><span>Failed</span><b>@parsed.Failed</b></div> }
+                        @if (parsed.HasCancelled) { <div class="sched-stat-pill sched-stat-pill--warn"><span>Cancelled</span><b>@parsed.Cancelled</b></div> }
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(t.LastError))
+                    {
+                        <div class="sched-card__err" title="@t.LastError">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                            @(t.LastError.Length > 90 ? t.LastError[..90] + "…" : t.LastError)
+                        </div>
+                    }
+
+                    <footer class="sched-card__actions">
+                        <button class="sched-btn sched-btn--primary sched-btn--sm" disabled="@(running == t.Id || runningAll)" @onclick="() => RunNow(t)">
+                            @if (running == t.Id) { <span class="sched-spinner sched-spinner--sm" aria-hidden="true"></span> <span>Running…</span> }
+                            else
+                            {
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <span>Run Now</span>
+                            }
+                        </button>
+                        <button class="sched-btn sched-btn--outline sched-btn--sm" @onclick="() => OpenEdit(t)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+                            Edit
+                        </button>
+                        <button class="sched-btn sched-btn--ghost sched-btn--sm" @onclick="() => OpenHistory(t)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                            History
+                        </button>
+                    </footer>
+                </article>
+            }
+
+            @if (!FilteredTasks.Any())
+            {
+                <div class="sched-empty sched-empty--small">
+                    <div class="sched-empty__ico">🔍</div>
+                    <h2>No tasks match your filters.</h2>
+                    <p>Try clearing the search or filters above.</p>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* ─── Edit drawer ─── *@
+@if (editing != null)
+{
+    <div class="sched-drawer-bg" @onclick="CloseEdit"></div>
+    <aside class="sched-drawer" role="dialog" aria-modal="true">
+        <header class="sched-drawer__head">
+            <div>
+                <div class="sched-drawer__eyebrow">EDIT TASK</div>
+                <h3 class="sched-drawer__title">@editing.Name</h3>
+            </div>
+            <button class="sched-drawer__close" @onclick="CloseEdit" aria-label="Close">×</button>
+        </header>
+        <div class="sched-drawer__body">
+            <div class="sched-field">
+                <label>Task Name</label>
+                <input class="sched-input" value="@editing.Name" disabled />
+                <small>Auto-generated from the registered handler.</small>
+            </div>
+            <div class="sched-field">
+                <label>Description</label>
+                <textarea class="sched-input sched-input--ta" value="@editing.Description" disabled rows="2"></textarea>
+            </div>
+            <div class="sched-field">
+                <label>Interval</label>
+                <div class="sched-field__row">
+                    <input class="sched-input" type="number" min="1" @bind="editIntervalValue" style="flex:1" />
+                    <select class="sched-input" @bind="editIntervalUnit" style="flex:1">
+                        <option value="seconds">seconds</option>
+                        <option value="minutes">minutes</option>
+                        <option value="hours">hours</option>
+                        <option value="days">days</option>
+                    </select>
+                </div>
+                <small>Minimum 30 seconds.</small>
+            </div>
+            <div class="sched-field">
+                <label>Timeout (seconds)</label>
+                <input class="sched-input" type="number" min="10" max="3600" @bind="editTimeout" />
+                <small>Max time a single run may take before being cancelled.</small>
+            </div>
+            <div class="sched-field">
+                <label>Retry on next tick</label>
+                <input class="sched-input" type="number" min="0" max="10" value="1" disabled />
+                <small>The runner re-attempts failed tasks on the next interval automatically.</small>
+            </div>
+            <label class="sched-switch">
+                <input type="checkbox" @bind="editEnabled" />
+                <span>Enabled</span>
+            </label>
+            <label class="sched-switch">
+                <input type="checkbox" @bind="editStopOnError" />
+                <span>Stop on error (auto-disable after a failure)</span>
+            </label>
+        </div>
+        <footer class="sched-drawer__foot">
+            <button class="sched-btn sched-btn--ghost" @onclick="CloseEdit">Cancel</button>
+            <button class="sched-btn sched-btn--primary" @onclick="SaveEdit">Save</button>
+        </footer>
+    </aside>
+}
+
+@* ─── History slide-over ─── *@
+@if (historyFor != null)
+{
+    <div class="sched-drawer-bg" @onclick="CloseHistory"></div>
+    <aside class="sched-drawer sched-drawer--wide" role="dialog" aria-modal="true">
+        <header class="sched-drawer__head">
+            <div>
+                <div class="sched-drawer__eyebrow">HISTORY</div>
+                <h3 class="sched-drawer__title">@historyFor.Name</h3>
+            </div>
+            <button class="sched-drawer__close" @onclick="CloseHistory" aria-label="Close">×</button>
+        </header>
+        <div class="sched-drawer__body">
+            @if (history == null)
+            {
+                <p class="sched-meta__sub">Loading history…</p>
+            }
+            else if (history.Count == 0)
+            {
+                <div class="sched-empty sched-empty--small">
+                    <div class="sched-empty__ico">📜</div>
+                    <h2>No runs yet.</h2>
+                    <p>Run the task once to see its execution history here.</p>
+                </div>
+            }
+            else
+            {
+                <ul class="sched-history">
+                    @foreach (var r in history)
+                    {
+                        <li class="sched-history__row">
+                            <div class="sched-history__when">
+                                <strong>@r.StartedAt.ToLocalTime().ToString("dd MMM yyyy")</strong>
+                                <span>@r.StartedAt.ToLocalTime().ToString("h:mm:ss tt") · @r.Trigger</span>
+                            </div>
+                            <span class="sched-badge sched-badge--@StatusClass(r.Status, false)">
+                                <span class="sched-badge__dot"></span>@r.Status
+                            </span>
+                            <div class="sched-history__stats">
+                                <span><b>@r.DurationMs</b> ms</span>
+                                <span>Checked <b>@r.ItemsChecked</b></span>
+                                <span>Updated <b>@r.ItemsUpdated</b></span>
+                            </div>
+                            @if (!string.IsNullOrEmpty(r.Output))
+                            {
+                                <div class="sched-history__out">@r.Output</div>
+                            }
+                            @if (!string.IsNullOrEmpty(r.Error))
+                            {
+                                <div class="sched-history__err">⚠ @r.Error</div>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </aside>
+}
+
+@* ─── Create Task info modal ─── *@
+@if (showCreateInfo)
+{
+    <div class="sched-drawer-bg" @onclick="() => showCreateInfo = false"></div>
+    <div class="sched-modal" role="dialog" aria-modal="true">
+        <header class="sched-modal__head">
+            <h3>Create a new task</h3>
+            <button class="sched-drawer__close" @onclick="() => showCreateInfo = false" aria-label="Close">×</button>
+        </header>
+        <div class="sched-modal__body">
+            <p>Scheduled tasks are defined in code as <code>IScheduledTaskHandler</code> implementations. To add a new one:</p>
+            <ol>
+                <li>Create a new class in <code>RioCommerce.Infrastructure/Services/ScheduledTasks/</code> implementing <code>IScheduledTaskHandler</code> with a unique <code>Key</code>.</li>
+                <li>Register it in <code>Program.cs</code> next to the existing tasks.</li>
+                <li>Restart the app. A row is auto-seeded with your default interval; admin edits to interval / enabled are preserved across deploys.</li>
+            </ol>
+        </div>
+        <footer class="sched-modal__foot">
+            <button class="sched-btn sched-btn--primary" @onclick="() => showCreateInfo = false">Got it</button>
+        </footer>
+    </div>
+}
+
+<style>
+    /* ════════════════════════════════════════════════════════════════
+       SCHEDULED TASKS V2 — premium admin redesign (scoped to .sched-v2)
+       ════════════════════════════════════════════════════════════════ */
+    .sched-v2{--s-ink:#0F1B33;--s-mute:#64748B;--s-line:#E5ECF4;--s-bg:#F8FAFC;--s-card:#fff;--s-primary:#163A70;--s-accent:#F58220;--s-green:#22C55E;--s-blue:#3B82F6;--s-red:#EF4444;--s-orange:#F59E0B;--s-radius:16px;padding:20px 0 60px;color:var(--s-ink);font-size:14px}
+
+    /* ── Hero ── */
+    .sched-v2 .sched-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:22px;flex-wrap:wrap}
+    .sched-v2 .sched-hero__title{margin:0;font-size:26px;font-weight:800;letter-spacing:-.4px;display:flex;align-items:center;gap:8px}
+    .sched-v2 .sched-hero__sub{margin:6px 0 0;font-size:14px;color:var(--s-mute);max-width:680px;line-height:1.55}
+    .sched-v2 .sched-hero__actions{display:flex;gap:10px;flex-wrap:wrap}
+
+    /* ── Buttons ── */
+    .sched-v2 .sched-btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:12px;border:1.5px solid transparent;font-size:13.5px;font-weight:700;cursor:pointer;text-decoration:none;background:#fff;color:var(--s-ink);transition:transform .15s,box-shadow .2s,filter .2s,background .2s,border-color .2s}
+    .sched-v2 .sched-btn svg{width:15px;height:15px}
+    .sched-v2 .sched-btn:hover{transform:translateY(-1px)}
+    .sched-v2 .sched-btn[disabled]{opacity:.6;cursor:wait;transform:none}
+    .sched-v2 .sched-btn--primary{background:linear-gradient(135deg,#163A70,#1f4d92);color:#fff;box-shadow:0 12px 24px -14px rgba(22,58,112,.5)}
+    .sched-v2 .sched-btn--primary:hover{filter:brightness(1.05)}
+    .sched-v2 .sched-btn--ghost{background:transparent;border-color:var(--s-line);color:var(--s-ink)}
+    .sched-v2 .sched-btn--ghost:hover{background:#F8FAFC;border-color:#cad6e6}
+    .sched-v2 .sched-btn--outline{background:#fff;border-color:#DBE5F2;color:var(--s-primary)}
+    .sched-v2 .sched-btn--outline:hover{background:#EFF4FB;border-color:var(--s-primary)}
+    .sched-v2 .sched-btn--sm{height:34px;padding:0 12px;font-size:12.5px;border-radius:10px}
+
+    /* ── Spinner ── */
+    .sched-v2 .sched-spinner{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:s-spin .8s linear infinite}
+    .sched-v2 .sched-spinner--sm{width:12px;height:12px;border-width:1.8px}
+    @@keyframes s-spin{to{transform:rotate(360deg)}}
+
+    /* ── Top alert ── */
+    .sched-v2 .sched-alert{border-radius:16px;padding:14px 18px;margin-bottom:18px;animation:s-pop .25s ease both;border:1px solid;position:relative}
+    .sched-v2 .sched-alert--ok{background:linear-gradient(135deg,#F0FDF4,#DCFCE7);border-color:#BBF7D0;color:#14532D}
+    .sched-v2 .sched-alert--err{background:#FEF2F2;border-color:#FECACA;color:#7F1D1D}
+    .sched-v2 .sched-alert__head{display:flex;align-items:center;gap:10px;font-size:14.5px;font-weight:700}
+    .sched-v2 .sched-alert__ico{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center}
+    .sched-v2 .sched-alert--ok .sched-alert__ico{background:#22C55E;color:#fff}
+    .sched-v2 .sched-alert--err .sched-alert__ico{background:#EF4444;color:#fff}
+    .sched-v2 .sched-alert__ico svg{width:16px;height:16px}
+    .sched-v2 .sched-alert__close{margin-left:auto;border:none;background:transparent;color:inherit;font-size:20px;cursor:pointer;width:24px;height:24px;line-height:1;padding:0;opacity:.6}
+    .sched-v2 .sched-alert__close:hover{opacity:1}
+    .sched-v2 .sched-alert__stats{display:flex;flex-wrap:wrap;gap:18px;margin:8px 0 0 38px;font-size:13px;color:#15803D}
+    .sched-v2 .sched-alert--ok .sched-alert__stats b{font-weight:700;color:#14532D}
+    @@keyframes s-pop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+    /* ── Summary stat cards ── */
+    .sched-v2 .sched-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+    .sched-v2 .sched-stat{background:var(--s-card);border:1px solid var(--s-line);border-radius:var(--s-radius);padding:18px;box-shadow:0 10px 28px -22px rgba(15,27,51,.22);position:relative;overflow:hidden;transition:transform .15s,box-shadow .2s}
+    .sched-v2 .sched-stat:hover{transform:translateY(-2px);box-shadow:0 16px 36px -22px rgba(15,27,51,.28)}
+    .sched-v2 .sched-stat__ico{width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;color:#fff;margin-bottom:8px}
+    .sched-v2 .sched-stat__ico svg{width:20px;height:20px}
+    .sched-v2 .sched-stat__big{font-size:30px;font-weight:800;letter-spacing:-.4px;line-height:1}
+    .sched-v2 .sched-stat__lbl{margin-top:4px;font-size:12.5px;color:var(--s-mute);font-weight:600}
+    .sched-v2 .sched-stat--green  .sched-stat__ico{background:linear-gradient(135deg,#16A34A,#22C55E)}
+    .sched-v2 .sched-stat--green  .sched-stat__big{color:#15803D}
+    .sched-v2 .sched-stat--blue   .sched-stat__ico{background:linear-gradient(135deg,#2563EB,#3B82F6)}
+    .sched-v2 .sched-stat--blue   .sched-stat__big{color:#1D4ED8}
+    .sched-v2 .sched-stat--orange .sched-stat__ico{background:linear-gradient(135deg,#F59E0B,#FBBF24)}
+    .sched-v2 .sched-stat--orange .sched-stat__big{color:#B45309}
+    .sched-v2 .sched-stat--red    .sched-stat__ico{background:linear-gradient(135deg,#DC2626,#EF4444)}
+    .sched-v2 .sched-stat--red    .sched-stat__big{color:#B91C1C}
+
+    /* ── Filters ── */
+    .sched-v2 .sched-filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--s-line);border-radius:14px;padding:12px;margin-bottom:18px;box-shadow:0 6px 18px -16px rgba(15,27,51,.18)}
+    .sched-v2 .sched-search{flex:1;min-width:240px;display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid var(--s-line);border-radius:10px;padding:0 12px;height:38px}
+    .sched-v2 .sched-search svg{width:14px;height:14px;color:var(--s-mute);flex:0 0 auto}
+    .sched-v2 .sched-search input{border:0;background:transparent;outline:none;flex:1;font-size:13.5px;color:var(--s-ink)}
+    .sched-v2 .sched-select{height:38px;padding:0 32px 0 12px;border-radius:10px;border:1px solid var(--s-line);background:#F8FAFC url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%2364748B' d='M5 6L0 1l1.5-1.5L5 3l3.5-3.5L10 1z'/></svg>") right 10px center/10px 6px no-repeat;appearance:none;font-size:13px;font-weight:600;color:var(--s-ink);cursor:pointer}
+    .sched-v2 .sched-toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--s-ink);font-weight:600}
+
+    /* ── Task cards ── */
+    .sched-v2 .sched-cards{display:flex;flex-direction:column;gap:14px}
+    .sched-v2 .sched-card{background:var(--s-card);border:1px solid var(--s-line);border-radius:var(--s-radius);padding:18px 20px;box-shadow:0 10px 28px -22px rgba(15,27,51,.22);transition:transform .15s,box-shadow .25s,border-color .2s}
+    .sched-v2 .sched-card:hover{transform:translateY(-2px);box-shadow:0 18px 38px -22px rgba(15,27,51,.28);border-color:#cad6e6}
+    .sched-v2 .sched-card.is-running{border-color:#BFDBFE;box-shadow:0 0 0 3px rgba(59,130,246,.12),0 18px 38px -22px rgba(15,27,51,.28)}
+    .sched-v2 .sched-card__head{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+    .sched-v2 .sched-card__emoji{width:44px;height:44px;border-radius:12px;background:#F8FAFC;border:1px solid var(--s-line);display:inline-flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto}
+    .sched-v2 .sched-card__title-block{min-width:0;flex:1}
+    .sched-v2 .sched-card__title{margin:0;font-size:16px;font-weight:700;color:var(--s-ink)}
+    .sched-v2 .sched-card__desc{margin:3px 0 0;font-size:13px;color:var(--s-mute)}
+    .sched-v2 .sched-card__key{display:inline-block;margin-top:6px;font-size:10.5px;font-weight:700;letter-spacing:.4px;color:var(--s-mute);background:#F1F5F9;border:1px solid var(--s-line);padding:2px 8px;border-radius:6px;font-family:monospace}
+    .sched-v2 .sched-card__enabled{flex:0 0 auto;display:flex;align-items:center}
+
+    /* ── Meta grid ── */
+    .sched-v2 .sched-card__grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding:12px 0;border-top:1px dashed var(--s-line);border-bottom:1px dashed var(--s-line)}
+    .sched-v2 .sched-meta__lbl{font-size:10.5px;font-weight:800;color:var(--s-mute);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+    .sched-v2 .sched-meta__val{font-size:13.5px;font-weight:600;color:var(--s-ink);line-height:1.3}
+    .sched-v2 .sched-meta__sub{font-size:11.5px;color:var(--s-mute);font-weight:500}
+
+    /* ── Badges & pills ── */
+    .sched-v2 .sched-badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:800;padding:3px 10px;border-radius:999px;letter-spacing:.3px}
+    .sched-v2 .sched-badge__dot{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
+    .sched-v2 .sched-badge--success{background:#DCFCE7;color:#15803D;border:1px solid #BBF7D0}
+    .sched-v2 .sched-badge--idle{background:#F1F5F9;color:#64748B;border:1px solid var(--s-line)}
+    .sched-v2 .sched-badge--running{background:#DBEAFE;color:#1D4ED8;border:1px solid #BFDBFE;animation:s-pulse 1.5s ease-in-out infinite}
+    .sched-v2 .sched-badge--failed{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+    .sched-v2 .sched-badge--disabled{background:#F1F5F9;color:#94A3B8;border:1px solid var(--s-line)}
+    @@keyframes s-pulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,.45)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0)}}
+
+    .sched-v2 .sched-pill{display:inline-flex;font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;letter-spacing:.4px}
+    .sched-v2 .sched-pill--ok{background:#DCFCE7;color:#15803D;border:1px solid #BBF7D0}
+    .sched-v2 .sched-pill--off{background:#F1F5F9;color:#94A3B8;border:1px solid var(--s-line)}
+
+    /* Interval pill colors */
+    .sched-v2 .sched-iv{display:inline-flex;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;border:1px solid}
+    .sched-v2 .sched-iv--fast{background:#DBEAFE;color:#1D4ED8;border-color:#BFDBFE}
+    .sched-v2 .sched-iv--hour{background:#DCFCE7;color:#15803D;border-color:#BBF7D0}
+    .sched-v2 .sched-iv--day {background:#FFEDD5;color:#9A3412;border-color:#FED7AA}
+    .sched-v2 .sched-iv--week{background:#EDE9FE;color:#5B21B6;border-color:#DDD6FE}
+
+    /* ── Stat pills below meta ── */
+    .sched-v2 .sched-card__stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+    .sched-v2 .sched-stat-pill{display:inline-flex;align-items:center;gap:6px;background:#F8FAFC;border:1px solid var(--s-line);padding:6px 12px;border-radius:10px;font-size:12px;color:var(--s-mute);font-weight:600}
+    .sched-v2 .sched-stat-pill b{color:var(--s-ink);font-weight:800;font-size:13px}
+    .sched-v2 .sched-stat-pill--ok{background:#F0FDF4;border-color:#BBF7D0;color:#15803D}
+    .sched-v2 .sched-stat-pill--ok b{color:#14532D}
+    .sched-v2 .sched-stat-pill--err{background:#FEF2F2;border-color:#FECACA;color:#B91C1C}
+    .sched-v2 .sched-stat-pill--err b{color:#7F1D1D}
+    .sched-v2 .sched-stat-pill--warn{background:#FFFBEB;border-color:#FDE68A;color:#92400E}
+    .sched-v2 .sched-stat-pill--warn b{color:#78350F}
+
+    /* ── Inline error strip ── */
+    .sched-v2 .sched-card__err{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding:10px 12px;border-radius:10px;background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;font-size:12.5px;font-weight:600}
+    .sched-v2 .sched-card__err svg{width:14px;height:14px;flex:0 0 auto;margin-top:1px}
+
+    /* ── Footer actions ── */
+    .sched-v2 .sched-card__actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+
+    /* ── Empty state ── */
+    .sched-v2 .sched-empty{text-align:center;padding:60px 24px;background:#fff;border:1px dashed var(--s-line);border-radius:var(--s-radius)}
+    .sched-v2 .sched-empty--small{padding:36px 24px}
+    .sched-v2 .sched-empty__ico{font-size:42px;margin-bottom:8px}
+    .sched-v2 .sched-empty h2{margin:0 0 6px;font-size:18px;font-weight:700;color:var(--s-ink)}
+    .sched-v2 .sched-empty p{margin:0 0 18px;font-size:13.5px;color:var(--s-mute)}
+
+    /* ── Skeleton (loading) ── */
+    .sched-v2 .sched-skeleton-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}
+    .sched-v2 .sched-skel{background:linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%);background-size:200% 100%;border-radius:var(--s-radius);animation:s-shimmer 1.4s linear infinite}
+    .sched-v2 .sched-skel--card{height:120px}
+    @@keyframes s-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+
+    /* ════════════════════════════════════════════════════════════════
+       Drawers + modal — overlay surfaces (NOT scoped to .sched-v2 so the
+       fixed position works outside the page container)
+       ════════════════════════════════════════════════════════════════ */
+    .sched-drawer-bg{position:fixed;inset:0;background:rgba(15,27,51,.4);backdrop-filter:blur(3px);z-index:9998;animation:s-fade .2s ease}
+    .sched-drawer{position:fixed;right:0;top:0;height:100vh;width:480px;max-width:96vw;background:#fff;z-index:9999;display:flex;flex-direction:column;box-shadow:-24px 0 50px -20px rgba(0,0,0,.3);animation:s-slidein .3s cubic-bezier(.16,1,.3,1)}
+    .sched-drawer--wide{width:640px}
+    .sched-drawer__head{display:flex;justify-content:space-between;align-items:flex-start;padding:20px 22px;background:linear-gradient(135deg,#0F1B33,#1E3A6B);color:#fff}
+    .sched-drawer__eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1.4px;color:#FFB76E}
+    .sched-drawer__title{margin:2px 0 0;font-size:18px;font-weight:800;letter-spacing:-.2px}
+    .sched-drawer__close{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;cursor:pointer;font-size:18px;line-height:1}
+    .sched-drawer__close:hover{background:rgba(255,255,255,.22)}
+    .sched-drawer__body{padding:22px;overflow:auto;flex:1}
+    .sched-drawer__foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;background:#F8FAFC;border-top:1px solid #E5ECF4}
+
+    .sched-field{margin-bottom:16px;display:flex;flex-direction:column;gap:6px}
+    .sched-field label{font-size:12px;font-weight:800;color:#0F1B33;letter-spacing:.2px;text-transform:uppercase}
+    .sched-field small{font-size:11.5px;color:#64748B}
+    .sched-field__row{display:flex;gap:10px}
+    .sched-input{height:42px;padding:0 14px;border:1.5px solid #E5ECF4;border-radius:10px;font-size:14px;color:#0F1B33;outline:none;background:#fff;transition:border-color .2s,box-shadow .2s}
+    .sched-input:focus{border-color:#F58220;box-shadow:0 0 0 3px rgba(245,130,32,.15)}
+    .sched-input:disabled{background:#F8FAFC;color:#64748B;cursor:not-allowed}
+    .sched-input--ta{height:auto;padding:10px 14px;resize:vertical}
+
+    .sched-switch{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:600;color:#0F1B33;padding:10px 0;cursor:pointer}
+    .sched-switch input{width:16px;height:16px}
+
+    /* History list */
+    .sched-history{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+    .sched-history__row{display:grid;grid-template-columns:1fr auto;gap:8px;padding:14px;background:#F8FAFC;border:1px solid #E5ECF4;border-radius:12px}
+    .sched-history__when{grid-column:1 / 2;display:flex;flex-direction:column;line-height:1.4}
+    .sched-history__when strong{font-size:13.5px;color:#0F1B33;font-weight:700}
+    .sched-history__when span{font-size:11.5px;color:#64748B;font-weight:500}
+    .sched-history__row .sched-badge{grid-column:2 / 3;align-self:flex-start;justify-self:flex-end}
+    .sched-history__stats{grid-column:1 / -1;display:flex;gap:14px;font-size:12px;color:#64748B;font-weight:500}
+    .sched-history__stats b{font-weight:700;color:#0F1B33}
+    .sched-history__out{grid-column:1 / -1;font-family:monospace;font-size:11.5px;color:#15803D;background:#F0FDF4;border:1px solid #BBF7D0;padding:6px 10px;border-radius:8px}
+    .sched-history__err{grid-column:1 / -1;font-family:monospace;font-size:11.5px;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;padding:6px 10px;border-radius:8px}
+
+    .sched-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:18px;width:520px;max-width:92vw;max-height:88vh;display:flex;flex-direction:column;z-index:9999;box-shadow:0 40px 80px -20px rgba(0,0,0,.4);animation:s-pop .25s ease}
+    .sched-modal__head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;background:linear-gradient(135deg,#0F1B33,#1E3A6B);color:#fff;border-radius:18px 18px 0 0}
+    .sched-modal__head h3{margin:0;font-size:16px;font-weight:800}
+    .sched-modal__body{padding:22px;overflow:auto;color:#0F1B33;font-size:14px;line-height:1.6}
+    .sched-modal__body code{background:#F1F5F9;border:1px solid #E5ECF4;padding:1px 6px;border-radius:6px;font-size:12.5px}
+    .sched-modal__body ol{margin:12px 0 0;padding-left:22px;display:flex;flex-direction:column;gap:8px}
+    .sched-modal__foot{display:flex;justify-content:flex-end;padding:14px 22px;background:#F8FAFC;border-top:1px solid #E5ECF4;border-radius:0 0 18px 18px}
+
+    @@keyframes s-fade{from{opacity:0}to{opacity:1}}
+    @@keyframes s-slidein{from{transform:translateX(100%)}to{transform:translateX(0)}}
+
+    /* ════════════════════════════════════════════════════════════════
+       Responsive
+       ════════════════════════════════════════════════════════════════ */
+    @@media(max-width:1100px){
+        .sched-v2 .sched-stats{grid-template-columns:repeat(2,1fr)}
+        .sched-v2 .sched-card__grid{grid-template-columns:repeat(3,1fr)}
+    }
+    @@media(max-width:640px){
+        .sched-v2 .sched-stats,.sched-v2 .sched-skeleton-grid{grid-template-columns:1fr 1fr;gap:10px}
+        .sched-v2 .sched-card__grid{grid-template-columns:repeat(2,1fr)}
+        .sched-v2 .sched-card__actions{flex-wrap:wrap}
+        .sched-v2 .sched-card__actions .sched-btn{flex:1}
+        .sched-drawer{width:100vw}
+    }
+</style>
+
+@code {
+    private List<ScheduledTask>? tasks;
+    private List<ScheduledTaskRun>? history;
+    private bool runningAll, showCreateInfo;
+    private Guid? running;
+    private string? err;
+    private ToastModel? toastMessage;
+
+    // Filters
+    private string search = "";
+    private string statusFilter = "all";
+    private string intervalFilter = "all";
+    private bool enabledOnly;
+
+    // Stats
+    private int activeCount, failedCount, todayRuns;
+    private string? lastExecText;
+
+    // Edit drawer
+    private ScheduledTask? editing;
+    private int editIntervalValue = 1;
+    private string editIntervalUnit = "hours";
+    private int editTimeout = 300;
+    private bool editEnabled, editStopOnError;
+
+    // History drawer
+    private ScheduledTask? historyFor;
+
+    private record ToastModel(string Title, List<KeyValuePair<string, string>> Stats);
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        tasks = await Svc.ListAsync();
+        var recent = await Svc.ListHistoryAsync(null, take: 250);
+        RecomputeStats(recent);
+    }
+
+    private void RecomputeStats(List<ScheduledTaskRun> recent)
+    {
+        if (tasks == null) return;
+        activeCount = tasks.Count(t => t.Enabled);
+        failedCount = tasks.Count(t => t.LastStatus == ScheduledTaskStatus.Failed);
+        var todayLocal = DateTime.Now.Date;
+        todayRuns = recent.Count(r => r.StartedAt.ToLocalTime().Date == todayLocal);
+        var latest = tasks.Where(t => t.LastRunAt.HasValue).Max(t => t.LastRunAt) ?? (DateTime?)null;
+        lastExecText = latest?.ToLocalTime().ToString("h:mm tt");
+    }
+
+    // Derived list with search + filters applied
+    private IEnumerable<ScheduledTask> FilteredTasks
+    {
+        get
+        {
+            if (tasks == null) return Enumerable.Empty<ScheduledTask>();
+            var q = (IEnumerable<ScheduledTask>)tasks;
+            if (enabledOnly) q = q.Where(t => t.Enabled);
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim();
+                q = q.Where(t => (t.Name?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                              || (t.Description?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                              || (t.TaskKey?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            if (statusFilter != "all")
+            {
+                q = statusFilter switch
+                {
+                    "running" => q.Where(t => running == t.Id || t.LastStatus == ScheduledTaskStatus.Running),
+                    "success" => q.Where(t => t.LastStatus == ScheduledTaskStatus.Success),
+                    "idle"    => q.Where(t => t.LastStatus == ScheduledTaskStatus.Idle),
+                    "failed"  => q.Where(t => t.LastStatus == ScheduledTaskStatus.Failed),
+                    _ => q,
+                };
+            }
+            if (intervalFilter != "all")
+            {
+                q = intervalFilter switch
+                {
+                    "30m" => q.Where(t => t.IntervalSeconds <= 30 * 60),
+                    "1h"  => q.Where(t => t.IntervalSeconds > 30 * 60 && t.IntervalSeconds <= 60 * 60),
+                    "1d"  => q.Where(t => t.IntervalSeconds > 60 * 60 && t.IntervalSeconds <= 24 * 60 * 60),
+                    "other" => q.Where(t => t.IntervalSeconds > 24 * 60 * 60),
+                    _ => q,
+                };
+            }
+            return q;
+        }
+    }
+
+    private static string FormatInterval(int seconds) =>
+        seconds switch
+        {
+            >= 7 * 86400 when seconds % (7 * 86400) == 0 => $"Every {seconds / (7 * 86400)} week{(seconds == 7 * 86400 ? "" : "s")}",
+            >= 86400 when seconds % 86400 == 0 => $"Every {seconds / 86400} day{(seconds == 86400 ? "" : "s")}",
+            >= 3600  when seconds % 3600 == 0  => $"Every {seconds / 3600} hour{(seconds == 3600 ? "" : "s")}",
+            >= 60    when seconds % 60 == 0    => $"Every {seconds / 60} minutes",
+            _ => $"Every {seconds} seconds"
+        };
+
+    private static string IntervalClass(int s) =>
+        s <= 30 * 60 ? "fast"
+        : s <= 60 * 60 ? "hour"
+        : s <= 24 * 60 * 60 ? "day"
+        : "week";
+
+    private static string StatusClass(ScheduledTaskStatus s, bool isRunning)
+    {
+        if (isRunning) return "running";
+        return s switch
+        {
+            ScheduledTaskStatus.Success => "success",
+            ScheduledTaskStatus.Failed  => "failed",
+            ScheduledTaskStatus.Running => "running",
+            ScheduledTaskStatus.Skipped => "disabled",
+            _ => "idle"
+        };
+    }
+
+    private static string IconFor(string key) => key switch
+    {
+        "PaymentStatusSync" => "💳",
+        "WebhookReconciliation" => "🔄",
+        "PendingOrderCleanup" => "🗑️",
+        "ExpiredCartCleanup" => "🛒",
+        _ => "⏱️"
+    };
+
+    private sealed record SummaryParts(bool HasSettled, int Settled, bool HasFailed, int Failed, bool HasCancelled, int Cancelled);
+
+    // The PaymentStatusSync task emits an Output like "5 checked · 2 settled · 1 failed · 0 cancelled".
+    // We just expose the per-status counts as little pills when those words are present.
+    private static SummaryParts ParseSummary(int checkedCount, int updated, string? output)
+    {
+        if (string.IsNullOrEmpty(output)) return new SummaryParts(false, 0, false, 0, false, 0);
+        int Read(string label)
+        {
+            var idx = output!.IndexOf(label, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return -1;
+            // Walk back to find the leading integer
+            var end = idx; var start = idx - 1;
+            while (start >= 0 && (char.IsDigit(output[start]) || output[start] == ' ')) start--;
+            var slice = output.Substring(start + 1, end - start - 1).Trim();
+            return int.TryParse(slice, out var n) ? n : -1;
+        }
+        var settled = Read("settled");
+        var failed  = Read("failed");
+        var cancelled = Read("cancelled");
+        return new SummaryParts(settled >= 0, Math.Max(0, settled), failed >= 0, Math.Max(0, failed), cancelled >= 0, Math.Max(0, cancelled));
+    }
+
+    private async Task RunNow(ScheduledTask t)
+    {
+        toastMessage = null; err = null;
+        running = t.Id;
+        StateHasChanged();
+        var startedAt = DateTime.UtcNow;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var actor = state.User.Identity?.Name ?? "admin";
+            var summary = await Svc.RunNowAsync(t.Id, null, actor, CancellationToken.None);
+            await ReloadAsync();
+            if (summary != null)
+            {
+                var stats = new List<KeyValuePair<string, string>>
+                {
+                    new("Checked Orders", summary.ItemsChecked.ToString()),
+                    new("Updated",        summary.ItemsUpdated.ToString()),
+                    new("Execution Time", $"{(int)(DateTime.UtcNow - startedAt).TotalMilliseconds} ms"),
+                };
+                toastMessage = new ToastModel($"{t.Name} completed successfully", stats);
+            }
+            else err = "Task could not be executed.";
+        }
+        catch (Exception ex) { err = ex.Message; }
+        finally { running = null; StateHasChanged(); }
+    }
+
+    private async Task RunAllAsync()
+    {
+        if (tasks == null) return;
+        toastMessage = null; err = null;
+        runningAll = true;
+        StateHasChanged();
+        var startedAt = DateTime.UtcNow;
+        var totalChecked = 0; var totalUpdated = 0; var ran = 0;
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var actor = state.User.Identity?.Name ?? "admin";
+            foreach (var t in tasks.Where(x => x.Enabled).ToList())
+            {
+                running = t.Id;
+                StateHasChanged();
+                var s = await Svc.RunNowAsync(t.Id, null, actor, CancellationToken.None);
+                if (s != null) { totalChecked += s.ItemsChecked; totalUpdated += s.ItemsUpdated; ran++; }
+            }
+            await ReloadAsync();
+            toastMessage = new ToastModel(
+                $"{ran} task{(ran == 1 ? "" : "s")} completed",
+                new List<KeyValuePair<string, string>>
+                {
+                    new("Checked Orders", totalChecked.ToString()),
+                    new("Updated",        totalUpdated.ToString()),
+                    new("Execution Time", $"{(int)(DateTime.UtcNow - startedAt).TotalMilliseconds} ms"),
+                });
+        }
+        catch (Exception ex) { err = ex.Message; }
+        finally { runningAll = false; running = null; StateHasChanged(); }
+    }
+
+    private void OpenEdit(ScheduledTask t)
+    {
+        editing = t;
+        if (t.IntervalSeconds % 86400 == 0) { editIntervalUnit = "days";    editIntervalValue = t.IntervalSeconds / 86400; }
+        else if (t.IntervalSeconds % 3600  == 0) { editIntervalUnit = "hours";   editIntervalValue = t.IntervalSeconds / 3600; }
+        else if (t.IntervalSeconds % 60    == 0) { editIntervalUnit = "minutes"; editIntervalValue = t.IntervalSeconds / 60; }
+        else                                      { editIntervalUnit = "seconds"; editIntervalValue = t.IntervalSeconds; }
+        editTimeout = t.TimeoutSeconds;
+        editEnabled = t.Enabled;
+        editStopOnError = t.StopOnError;
+    }
+
+    private void CloseEdit() => editing = null;
+
+    private async Task SaveEdit()
+    {
+        if (editing == null) return;
+        toastMessage = null; err = null;
+        var mul = editIntervalUnit switch { "days" => 86400, "hours" => 3600, "minutes" => 60, _ => 1 };
+        var seconds = Math.Max(30, editIntervalValue * mul);
+        var ok = await Svc.UpdateAsync(editing.Id, seconds, editEnabled, editTimeout, editStopOnError);
+        if (ok)
+        {
+            toastMessage = new ToastModel($"{editing.Name} updated", new List<KeyValuePair<string, string>>
+            {
+                new("Interval", FormatInterval(seconds)),
+                new("Timeout",  $"{editTimeout} s"),
+                new("Enabled",  editEnabled ? "Yes" : "No"),
+            });
+        }
+        else err = "Could not update.";
+        editing = null;
+        await ReloadAsync();
+    }
+
+    private async Task OpenHistory(ScheduledTask t)
+    {
+        historyFor = t;
+        history = null;
+        StateHasChanged();
+        history = await Svc.ListHistoryAsync(t.Id, 50);
+    }
+
+    private void CloseHistory() { historyFor = null; history = null; }
+}

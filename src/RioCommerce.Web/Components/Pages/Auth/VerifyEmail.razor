@@ -1,0 +1,180 @@
+@page "/account/verify"
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+<PageTitle>Verify your email — RioCommerce</PageTitle>
+
+<div class="otp-wrap">
+    <div class="otp-card">
+        <div class="otp-card__icon">✉️</div>
+        <h1>Verify your email</h1>
+        <p class="otp-card__sub">
+            We've sent a 6-digit code to<br /><strong>@(string.IsNullOrEmpty(Email) ? "your email" : Email)</strong>.
+            Enter it below to activate your account.
+        </p>
+
+        @if (error != null) { <div class="otp-alert otp-alert--err">@error</div> }
+
+        <div class="otp-boxes">
+            @for (var i = 0; i < 6; i++)
+            {
+                var idx = i;
+                <input id="otp-@idx" class="otp-box" type="text" inputmode="numeric" maxlength="1" autocomplete="off"
+                       value="@digits[idx]"
+                       @oninput="(e) => OnInput(idx, e)" @onkeydown="(e) => OnKeyDown(idx, e)" />
+            }
+        </div>
+
+        <button class="otp-btn" disabled="@(verifying || !Complete)" @onclick="Verify">
+            @(verifying ? "Verifying…" : "Verify & Continue")
+        </button>
+
+        <div class="otp-resend">
+            @if (cooldown > 0)
+            {
+                <span>Resend code in @cooldown s</span>
+            }
+            else
+            {
+                <button class="otp-link" disabled="@resending" @onclick="Resend">@(resending ? "Sending…" : "Resend code")</button>
+            }
+        </div>
+
+        <a href="/login" class="otp-back">← Back to login</a>
+    </div>
+</div>
+
+<style>
+    .otp-wrap { min-height:70vh; display:flex; align-items:center; justify-content:center; padding:32px 16px; }
+    .otp-card { background:#fff; border:1px solid var(--gray-200); border-radius:18px; padding:36px 32px; max-width:440px; width:100%; text-align:center; box-shadow:0 18px 48px -24px rgba(16,42,67,.35); }
+    .otp-card__icon { font-size:40px; }
+    .otp-card h1 { font-size:24px; font-weight:800; color:var(--navy); margin:8px 0 6px; }
+    .otp-card__sub { color:var(--gray-500); font-size:14px; line-height:1.6; margin-bottom:22px; }
+    .otp-boxes { display:flex; gap:10px; justify-content:center; margin-bottom:22px; }
+    .otp-box { width:48px; height:56px; text-align:center; font-size:24px; font-weight:700; color:var(--navy);
+               border:2px solid var(--gray-200); border-radius:12px; outline:none; transition:border-color .15s; }
+    .otp-box:focus { border-color:var(--orange); }
+    .otp-btn { width:100%; padding:13px; background:var(--orange); color:#fff; border:0; border-radius:12px;
+               font-size:15px; font-weight:700; cursor:pointer; transition:opacity .15s; }
+    .otp-btn:disabled { opacity:.5; cursor:not-allowed; }
+    .otp-resend { margin-top:16px; font-size:13.5px; color:var(--gray-500); }
+    .otp-link { background:none; border:0; color:var(--orange); font-weight:700; cursor:pointer; font-size:13.5px; }
+    .otp-link:disabled { opacity:.5; cursor:not-allowed; }
+    .otp-back { display:inline-block; margin-top:18px; font-size:13px; color:var(--gray-500); text-decoration:none; }
+    .otp-alert--err { background:#FEF2F2; color:#991B1B; border:1px solid #FECACA; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:16px; }
+    @@media (max-width:420px){ .otp-box{ width:42px; height:50px; font-size:20px } }
+</style>
+
+@code {
+    private string Email = "";
+    private readonly string[] digits = new string[6] { "", "", "", "", "", "" };
+    private string? error;
+    private bool verifying, resending;
+    private int cooldown = 30;
+    private System.Threading.Timer? timer;
+
+    private bool Complete => digits.All(d => d.Length == 1 && char.IsDigit(d[0]));
+    private string Code => string.Concat(digits);
+
+    protected override void OnInitialized()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var q = ParseQuery(uri.Query);
+        Email = q.TryGetValue("email", out var e) ? e : "";
+        StartCooldown();
+    }
+
+    private void OnInput(int idx, ChangeEventArgs e)
+    {
+        var v = (e.Value?.ToString() ?? "").Trim();
+        // Allow paste of the full code into any box.
+        if (v.Length > 1)
+        {
+            var clean = new string(v.Where(char.IsDigit).Take(6).ToArray());
+            for (var i = 0; i < 6; i++) digits[i] = i < clean.Length ? clean[i].ToString() : "";
+            _ = FocusAsync(Math.Min(clean.Length, 5));
+            return;
+        }
+        digits[idx] = new string(v.Where(char.IsDigit).ToArray());
+        if (digits[idx].Length == 1 && idx < 5) _ = FocusAsync(idx + 1);
+    }
+
+    private async Task OnKeyDown(int idx, KeyboardEventArgs e)
+    {
+        if (e.Key == "Backspace" && digits[idx].Length == 0 && idx > 0)
+        {
+            digits[idx - 1] = "";
+            await FocusAsync(idx - 1);
+        }
+    }
+
+    private async Task FocusAsync(int idx)
+    {
+        try { await JS.InvokeVoidAsync("hjc.focusEl", $"otp-{idx}"); } catch { }
+        StateHasChanged();
+    }
+
+    private async Task Verify()
+    {
+        if (!Complete) return;
+        error = null; verifying = true;
+        try
+        {
+            var resp = await JS.InvokeAsync<VerifyResult>("hjc.postForm", "/api/account/verify-otp",
+                new Dictionary<string, string> { ["email"] = Email, ["code"] = Code });
+            if (resp.success && !string.IsNullOrEmpty(resp.token))
+            {
+                // Hand off to the GET bridge which sets the auth cookie + redirects home.
+                Nav.NavigateTo($"/account/complete-signin?token={Uri.EscapeDataString(resp.token!)}", forceLoad: true);
+                return;
+            }
+            error = resp.error ?? "Invalid or expired code.";
+            for (var i = 0; i < 6; i++) digits[i] = "";
+            await FocusAsync(0);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { verifying = false; }
+    }
+
+    private async Task Resend()
+    {
+        resending = true; error = null;
+        try
+        {
+            await JS.InvokeAsync<VerifyResult>("hjc.postForm", "/api/account/resend-otp",
+                new Dictionary<string, string> { ["email"] = Email });
+            StartCooldown();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { resending = false; }
+    }
+
+    private void StartCooldown()
+    {
+        cooldown = 30;
+        timer?.Dispose();
+        timer = new System.Threading.Timer(_ =>
+        {
+            cooldown--;
+            if (cooldown <= 0) { timer?.Dispose(); timer = null; }
+            InvokeAsync(StateHasChanged);
+        }, null, 1000, 1000);
+    }
+
+    public void Dispose() => timer?.Dispose();
+
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(query)) return result;
+        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0) { result[Uri.UnescapeDataString(part)] = ""; continue; }
+            result[Uri.UnescapeDataString(part[..eq])] = Uri.UnescapeDataString(part[(eq + 1)..].Replace('+', ' '));
+        }
+        return result;
+    }
+
+    private class VerifyResult { public bool success { get; set; } public string? token { get; set; } public string? error { get; set; } }
+}

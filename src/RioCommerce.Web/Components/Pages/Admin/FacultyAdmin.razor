@@ -1,0 +1,267 @@
+@page "/admin/faculty"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ICatalogAdminService Svc
+<PageTitle>Faculty — RioCommerce Admin</PageTitle>
+
+<style>
+    .fac-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;margin:-20px -24px 14px;padding:14px 24px;border-bottom:1px solid var(--gray-100);border-radius:14px 14px 0 0}
+    .fac-bar__title{font-size:16px;font-weight:700;color:var(--navy)}
+    .fac-bar__actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .fac-bar__actions .btn{display:inline-flex;align-items:center;gap:6px}
+    /* photo upload */
+    .fac-photo{display:flex;gap:14px;align-items:flex-start}
+    .fac-photo__preview{width:84px;height:84px;border-radius:14px;object-fit:cover;border:1px solid var(--gray-200);background:var(--gray-100);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:30px;color:var(--gray-300)}
+    .fac-photo__preview--empty{font-size:26px}
+    .fac-photo__controls{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
+    .fac-photo__upload{display:inline-flex;align-items:center;gap:6px;cursor:pointer;align-self:flex-start}
+    .fac-photo__upload input[type="file"]{display:none}
+</style>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Faculty</h1>
+    <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ Add Faculty</button>
+</div>
+
+@if (editing != null)
+{
+    <div class="form-card">
+        <div class="fac-bar">
+            <div class="fac-bar__title">@(editing.Id == null ? "New Faculty" : "Edit Faculty")</div>
+            <div class="fac-bar__actions">
+                @if (editing.Id is { } pid && pid != Guid.Empty && !string.IsNullOrWhiteSpace(editing.ShortCode))
+                {
+                    <a href="/faculty/@editing.ShortCode" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" title="Open the public faculty page in a new tab">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        Preview
+                    </a>
+                }
+                <button class="btn btn-primary btn-sm" disabled="@saving" @onclick='() => Save(close: true)'>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+                    @(saving ? "Saving…" : "Save")
+                </button>
+                <button class="btn btn-secondary btn-sm" disabled="@saving" @onclick='() => Save(close: false)'>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+                    Save and Continue Edit
+                </button>
+                @if (editing.Id is { } delId && delId != Guid.Empty)
+                {
+                    <button class="btn btn-danger btn-sm" disabled="@saving" @onclick="() => DeleteFromEditor(delId)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/></svg>
+                        Delete
+                    </button>
+                }
+                <button class="btn btn-ghost btn-sm" @onclick="() => editing = null" title="Close editor without saving">Close</button>
+            </div>
+        </div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">Display Name <span class="required">*</span></label><input class="form-input" @bind="editing.DisplayName" /></div>
+            <div class="form-group"><label class="form-label">Short Code <span class="required">*</span></label><input class="form-input" @bind="editing.ShortCode" placeholder="e.g. AB" /></div>
+            <div class="form-group"><label class="form-label">Designation</label><input class="form-input" @bind="editing.Designation" placeholder="Senior Faculty" /></div>
+            <div class="form-group"><label class="form-label">Qualifications</label><input class="form-input" @bind="editing.Qualifications" placeholder="CA, CS" /></div>
+            <div class="form-group form-group--full">
+                <label class="form-label">Short Description</label>
+                <textarea class="form-input" rows="4" maxlength="2000" @bind="editing.ShortDescription"
+                          placeholder=”Short bio shown on every course page. E.g. A leading educator with 10+ years of teaching experience.”></textarea>
+                <div class="form-hint">
+                    Recommended: ~300 characters. Stored unlimited.
+                    <strong>@((editing.ShortDescription ?? string.Empty).Length)</strong> / 300
+                    @if ((editing.ShortDescription ?? string.Empty).Length > 300)
+                    {
+                        <span style="color:var(--orange);font-weight:700">  · over recommended length</span>
+                    }
+                    — leave blank to fall back to the first 250 characters of Bio.
+                </div>
+            </div>
+            <div class="form-group form-group--full"><label class="form-label">Bio</label><textarea class="form-input" rows="3" @bind="editing.Bio"></textarea></div>
+            <div class="form-group">
+                <label class="form-label">Photo</label>
+                <div class="fac-photo">
+                    @if (!string.IsNullOrWhiteSpace(editing.PhotoUrl))
+                    {
+                        <img class="fac-photo__preview" src="@editing.PhotoUrl" alt="Current faculty photo" />
+                    }
+                    else
+                    {
+                        <div class="fac-photo__preview fac-photo__preview--empty">📷</div>
+                    }
+                    <div class="fac-photo__controls">
+                        <input class="form-input" @bind="editing.PhotoUrl" placeholder="Paste a URL or use Upload →" />
+                        <label class="btn btn-outline btn-sm fac-photo__upload">
+                            <InputFile OnChange="OnPhotoUpload" accept=".jpg,.jpeg,.png,.webp,.gif" hidden />
+                            @(uploading ? "Uploading…" : "📤 Upload photo")
+                        </label>
+                    </div>
+                </div>
+                <div class="form-hint">JPG / PNG / WEBP / GIF — max 4 MB. Uploaded files are saved to <code>wwwroot/uploads/faculty</code>.</div>
+            </div>
+            <div class="form-group"><label class="form-label">YouTube URL</label><input class="form-input" @bind="editing.YoutubeUrl" /></div>
+            <div class="form-group"><label class="form-label">WhatsApp number</label><input class="form-input" @bind="editing.WhatsappNumber" placeholder="9975242929" /></div>
+            <div class="form-group"><label class="form-label">Call number</label><input class="form-input" @bind="editing.CallNumber" placeholder="9975242929" /></div>
+            <div class="form-group form-group--full"><label class="form-label">Subjects (comma-separated)</label><input class="form-input" @bind="editing.SubjectsCsv" placeholder="Economics, Audit, Costing, Business Economics" /></div>
+            <div class="form-group"><label class="form-label">Display Order</label><input type="number" class="form-input" @bind="editing.DisplayOrder" /></div>
+            <div class="form-group" style="display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap">
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
+                    <input type="checkbox" @bind="editing.IsActive" /> Active
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;font-weight:700;color:var(--orange);background:#fff7ed;border:1px solid rgba(232,114,42,.35);border-radius:999px;padding:6px 12px"
+                       title="Surfaces this faculty in the homepage Our Core Team carousel. If more than 4 are ticked, the carousel auto-scrolls.">
+                    <input type="checkbox" @bind="editing.ShowOnHomePage" /> ⭐ Show on Home Page
+                </label>
+            </div>
+        </div>
+
+        <h3 style="font-size:14px;font-weight:700;color:var(--navy);margin:18px 0 10px;padding-top:12px;border-top:1px solid var(--gray-100)">📊 Profile page KPIs <span style="font-weight:400;color:var(--gray-400);font-size:12px">(free-text — leave blank to hide that tile)</span></h3>
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">Years of Experience</label><input class="form-input" @bind="editing.YearsOfExperience" placeholder="8+" /><div class="form-hint">Shown in the orange pill next to the photo.</div></div>
+            <div class="form-group"><label class="form-label">Students Taught</label><input class="form-input" @bind="editing.StudentsTaught" placeholder="25K+" /></div>
+            <div class="form-group"><label class="form-label">Hours of Teaching</label><input class="form-input" @bind="editing.HoursOfTeaching" placeholder="15K+" /></div>
+            <div class="form-group"><label class="form-label">Student Satisfaction</label><input class="form-input" @bind="editing.StudentSatisfaction" placeholder="98%" /></div>
+            <div class="form-group form-group--full"><label class="form-label">AIR Holders note</label><input class="form-input" @bind="editing.AirHoldersNote" placeholder="Produced Every Year" /><div class="form-hint">Sub-line under the "AIR Holders" tile.</div></div>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th></th><th>Name</th><th>Code</th><th>Designation</th><th>Short description</th><th>Courses</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No faculty yet.</td></tr> }
+            else
+            {
+                @foreach (var f in items)
+                {
+                    <tr>
+                        <td>
+                            @* No PhotoUrl on the admin DTO — keep the table light and show the initials fallback. *@
+                            <span class="fac-row-avatar" title="@f.DisplayName">@Initials(f.DisplayName)</span>
+                        </td>
+                        <td><strong>@f.DisplayName</strong></td>
+                        <td><code>@f.ShortCode</code></td>
+                        <td>@f.Designation</td>
+                        <td class="fac-row-short">
+                            @{ var trimmed = TrimShort(f.ShortDescription, 90); }
+                            @if (string.IsNullOrWhiteSpace(trimmed))
+                            {
+                                <span style="color:var(--gray-400);font-style:italic">Not set</span>
+                            }
+                            else
+                            {
+                                <span title="@f.ShortDescription">@trimmed</span>
+                            }
+                        </td>
+                        <td>@f.CourseCount</td>
+                        <td><span class="status @(f.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(f.IsActive ? "Active" : "Inactive")</span></td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(f.Id)">Edit</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(f.Id)">@(f.IsActive ? "Disable" : "Enable")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(f.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<FacultyAdminItem>? items;
+    private FacultyEditModel? editing;
+    private bool saving, uploading, msgOk;
+    private string? err, msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => items = await Svc.ListFacultyAsync();
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null
+            ? new FacultyEditModel { IsActive = true, DisplayOrder = (items?.Count ?? 0) + 1 }
+            : await Svc.GetFacultyAsync(id.Value);
+    }
+
+    private async Task Save(bool close = true)
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, id) = await Svc.SaveFacultyAsync(editing);
+        saving = false;
+        if (!ok) { err = error; return; }
+        await Reload();
+        if (close) { editing = null; Flash(true, "Faculty saved."); }
+        else
+        {
+            // re-open the just-saved record so the form reflects the persisted state (assigned Id on new records, normalised short-code, etc.)
+            editing = await Svc.GetFacultyAsync(id);
+            Flash(true, "Faculty saved — keep editing.");
+        }
+    }
+
+    private async Task Toggle(Guid id) { await Svc.ToggleFacultyAsync(id); await Reload(); }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteFacultyAsync(id);
+        if (ok) { await Reload(); Flash(true, "Faculty deleted."); }
+        else Flash(false, error!);
+    }
+
+    // Delete from the editor's action bar: close the form afterwards.
+    private async Task DeleteFromEditor(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteFacultyAsync(id);
+        if (ok) { editing = null; await Reload(); Flash(true, "Faculty deleted."); }
+        else Flash(false, error!);
+    }
+
+    private async Task OnPhotoUpload(InputFileChangeEventArgs e)
+    {
+        if (editing == null) return;
+        var file = e.File;
+        if (file == null) return;
+        const long maxBytes = 4 * 1024 * 1024;   // 4 MB
+        if (file.Size > maxBytes) { err = "Photo too large — max 4 MB."; return; }
+        var ext = System.IO.Path.GetExtension(file.Name);
+        err = null;
+        uploading = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            var (ok, error, url) = await Svc.UploadFacultyPhotoAsync(ext, stream);
+            if (ok && !string.IsNullOrWhiteSpace(url)) { editing.PhotoUrl = url; Flash(true, "Photo uploaded."); }
+            else err = error ?? "Upload failed.";
+        }
+        finally { uploading = false; }
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+
+    // Initials avatar fallback for the list row (admin DTO doesn't carry PhotoUrl).
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "??";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
+            : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+
+    private static string? TrimShort(string? s, int max)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var t = s.Trim();
+        return t.Length <= max ? t : t[..max].TrimEnd() + "…";
+    }
+}
+
+<style>
+    .fac-row-avatar{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#ff9d4d);color:#fff;font-size:11px;font-weight:800;letter-spacing:.3px}
+    .fac-row-short{max-width:280px;color:var(--gray-600);font-size:12.5px;line-height:1.45}
+</style>

@@ -1,0 +1,75 @@
+@inject INewsletterService Newsletter
+@inject ISiteSettingsService Settings
+
+<footer class="footer">
+    <div class="footer__newsletter">
+        <div class="footer__newsletter-text">
+            <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg> Stay in the loop</h4>
+            <p>New batch alerts, offers &amp; exam tips — straight to your inbox.</p>
+        </div>
+        <div class="footer__newsletter-form">
+            @if (subscribed)
+            {
+                <span class="footer__newsletter-done">@message</span>
+            }
+            else
+            {
+                <input type="email" placeholder="Your email address" value="@email" @oninput="e => email = e.Value?.ToString() ?? string.Empty" @onkeydown="OnKey" />
+                <button class="btn btn-primary" disabled="@busy" @onclick="Subscribe">@(busy ? "…" : "Subscribe")</button>
+            }
+        </div>
+        @if (!subscribed && message != null) { <div class="footer__newsletter-msg">@message</div> }
+    </div>
+
+    <div class="footer__inner">
+        <div class="footer__col">
+            <img src="@LogoSrc" alt="@(cfg?.CompanyName ?? "Logo")" class="footer__logo" />
+            <p>Are you a coaching center?</p>
+            <a href="/franchisee/register" class="footer__franchisee">Apply to become a franchisee partner →</a>
+        </div>
+        <div class="footer__col"><h4>Quick Links</h4><a href="/courses">Courses</a><a href="/faculty">Faculty</a><a href="/blog">Blog</a><a href="/contact">Contact</a></div>
+        <div class="footer__col"><h4>Information</h4><a href="/page/terms-and-conditions">Terms & Conditions</a><a href="/page/privacy-policy">Privacy Policy</a><a href="/page/refund-policy">Refund Policy</a></div>
+        <div class="footer__col"><h4>Find Us</h4>
+            @if (!string.IsNullOrWhiteSpace(cfg?.Address))
+            {
+                <p>@cfg.Address</p>
+            }
+            <div class="footer__phones">
+                @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone1)) { <a href="tel:@cfg.ContactPhone1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>@cfg.ContactPhone1</a> }
+                @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone2)) { <a href="tel:@cfg.ContactPhone2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>@cfg.ContactPhone2</a> }
+                @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone3)) { <a href="tel:@cfg.ContactPhone3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>@cfg.ContactPhone3</a> }
+            </div>
+            @if (!string.IsNullOrWhiteSpace(cfg?.ContactEmail))
+            {
+                <a href="mailto:@cfg.ContactEmail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>@cfg.ContactEmail</a>
+            }
+        </div>
+    </div>
+    <div class="footer__bottom"><p>© @DateTime.Now.Year @(cfg?.CopyrightText ?? cfg?.CompanyName ?? "RioCommerce"). All Rights Reserved. | Developed by <a href="https://antargyan.ai" target="_blank">Antargyan AI</a></p></div>
+</footer>
+
+@code {
+    private string email = "";
+    private bool busy, subscribed;
+    private string? message;
+    private SiteSettings? cfg;
+    private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
+    private string LogoSrc => string.IsNullOrWhiteSpace(cfg?.LogoUrl) ? FallbackLogo : cfg!.LogoUrl!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { cfg = await Settings.GetAsync(); } catch { }
+    }
+
+    private async Task OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Subscribe(); }
+
+    private async Task Subscribe()
+    {
+        if (string.IsNullOrWhiteSpace(email)) { message = "Please enter your email address."; return; }
+        busy = true; message = null;
+        var (ok, msg) = await Newsletter.SubscribeAsync(new SubscribeRequest(email, null, "footer"));
+        busy = false;
+        message = msg;
+        subscribed = ok;
+    }
+}

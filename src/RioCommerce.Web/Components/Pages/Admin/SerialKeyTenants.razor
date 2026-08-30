@@ -1,0 +1,416 @@
+@page "/admin/settings/serial-keys"
+@using RioCommerce.Core.DTOs.SerialKeys
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IRioPlayTenantService TenantSvc
+@inject ISerialKeyService Svc
+@inject IValencePackService ValenceSvc
+@inject ToastService Toast
+<PageTitle>Serial Key Providers — RioCommerce Admin</PageTitle>
+
+@*
+    Settings page for the Serial Key integration. Mirrors the nopCommerce plugin's
+    Configuration page: lets the admin manage per-tenant credentials for each provider.
+    Per-product API parameters live on the Product Edit page, not here.
+
+    Current providers:
+    • RioPlay (Antargyan)  — tenants table below
+    • Valence              — placeholder, slotted in once the docs land
+
+    Adding a new provider means: registering its ISerialKeyProvider in DI + adding a
+    new tenants section to this page. Nothing else changes.
+*@
+
+<style>
+    .sk-card { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:0; margin-bottom:18px; box-shadow:0 1px 2px rgba(15,23,42,.04) }
+    .sk-card__head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; border-bottom:1px solid var(--gray-100); background:linear-gradient(180deg,#fff,var(--gray-50)) }
+    .sk-card__title { font-weight:700; color:var(--navy); font-size:15px }
+    .sk-card__subtitle { color:var(--gray-500); font-size:12.5px; font-weight:500; margin-top:2px }
+    .sk-card__body { padding:18px }
+    .sk-tbl { width:100%; border-collapse:collapse; font-size:13px }
+    .sk-tbl th, .sk-tbl td { padding:9px 12px; border-bottom:1px solid var(--gray-100); text-align:left; vertical-align:middle }
+    .sk-tbl th { background:var(--gray-50); font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--gray-500); font-weight:700; border-bottom:1px solid var(--gray-200) }
+    .sk-tbl tr:hover td { background:var(--gray-50) }
+    .sk-empty { padding:30px 16px; text-align:center; color:var(--gray-400); font-size:13.5px }
+    .sk-chip { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px }
+    .sk-chip--default { background:#FEF3C7; color:#92400E }
+    .sk-chip--active { background:#D1FAE5; color:#065F46 }
+    .sk-chip--inactive { background:var(--gray-100); color:var(--gray-500) }
+    .sk-chip--secret-ok { background:#DBEAFE; color:#1E40AF }
+    .sk-chip--secret-missing { background:#FEE2E2; color:#991B1B }
+    .sk-actions { display:flex; gap:6px; justify-content:flex-end }
+    .sk-modal-overlay { position:fixed; inset:0; background:rgba(15,23,42,.5); display:flex; align-items:center; justify-content:center; z-index:1000; padding:20px }
+    .sk-modal { background:#fff; border-radius:16px; max-width:600px; width:100%; max-height:90vh; overflow-y:auto; box-shadow:0 25px 50px -12px rgba(0,0,0,.25) }
+    .sk-modal__head { display:flex; align-items:center; justify-content:space-between; padding:16px 22px; border-bottom:1px solid var(--gray-200) }
+    .sk-modal__title { font-weight:700; color:var(--navy); font-size:16px }
+    .sk-modal__close { background:none; border:0; color:var(--gray-400); font-size:22px; cursor:pointer; padding:0 4px; line-height:1 }
+    .sk-modal__close:hover { color:var(--navy) }
+    .sk-modal__body { padding:22px }
+    .sk-modal__foot { padding:14px 22px; border-top:1px solid var(--gray-200); display:flex; gap:8px; justify-content:flex-end }
+    .sk-info { background:#EFF6FF; border-left:3px solid #3B82F6; padding:10px 14px; border-radius:6px; font-size:13px; color:#1E40AF; margin-bottom:14px; line-height:1.55 }
+    .sk-info code { background:#DBEAFE; padding:1px 6px; border-radius:4px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12px }
+</style>
+
+<div class="page__header">
+    <h1>Serial Key Providers</h1>
+    <p style="color:var(--gray-500); font-size:13.5px; margin:4px 0 0">
+        Per-provider credentials. Per-product API parameters are configured on the Product Edit page.
+    </p>
+</div>
+
+<div class="sk-info">
+    <strong>How this works:</strong> When a paid order contains a product with serial-key config attached,
+    the background task <code>SerialKeyRetry</code> generates a key via the configured provider and emails/SMSes
+    it to the customer. View dispatched keys at <a href="/admin/serial-keys">/admin/serial-keys</a>.
+</div>
+
+@* ── RioPlay tenants ───────────────────────────────────────────────────────────── *@
+<div class="sk-card">
+    <div class="sk-card__head">
+        <div>
+            <div class="sk-card__title">🎬 RioPlay (Antargyan)</div>
+            <div class="sk-card__subtitle">Tenant credentials provided by Antargyan support. Secrets are encrypted at rest.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" @onclick="OpenAddRio">+ Add Tenant</button>
+    </div>
+    <div class="sk-card__body" style="padding:0">
+        @if (rioTenants == null)
+        {
+            <div class="sk-empty">Loading…</div>
+        }
+        else if (rioTenants.Count == 0)
+        {
+            <div class="sk-empty">
+                No tenants configured yet.
+                <div style="margin-top:6px; font-size:12px; color:var(--gray-400)">
+                    Add at least one to start generating keys.
+                </div>
+            </div>
+        }
+        else
+        {
+            <table class="sk-tbl">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Tenant ID</th>
+                        <th>Base URL</th>
+                        <th>Secret</th>
+                        <th>Status</th>
+                        <th style="text-align:right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in rioTenants)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@t.Name</strong>
+                                @if (t.IsDefault) { <span class="sk-chip sk-chip--default" style="margin-left:6px">Default</span> }
+                            </td>
+                            <td><code style="font-size:11.5px; color:var(--gray-600)">@t.TenantId</code></td>
+                            <td style="font-size:12.5px; color:var(--gray-600); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="@t.BaseUrl">@t.BaseUrl</td>
+                            <td>
+                                @if (t.HasSecret) { <span class="sk-chip sk-chip--secret-ok">Set</span> }
+                                else { <span class="sk-chip sk-chip--secret-missing">Missing</span> }
+                            </td>
+                            <td>
+                                @if (t.IsActive) { <span class="sk-chip sk-chip--active">Active</span> }
+                                else { <span class="sk-chip sk-chip--inactive">Inactive</span> }
+                            </td>
+                            <td>
+                                <div class="sk-actions">
+                                    <button class="btn btn-ghost btn-xs" @onclick="() => TestChain(t.Id)" disabled="@chainTestingId.HasValue">@(chainTestingId == t.Id ? "Testing…" : "🔌 Test")</button>
+                                    <button class="btn btn-ghost btn-xs" @onclick="() => OpenEditRio(t.Id)">Edit</button>
+                                    <button class="btn btn-ghost btn-xs" style="color:var(--red)" @onclick="() => DeleteRio(t.Id, t.Name)">Delete</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (chainResult != null)
+        {
+            <div style="margin-top:16px; border:1px solid @(chainResult.AllPassed ? "#6EE7B7" : "#FCA5A5"); background:@(chainResult.AllPassed ? "#ECFDF5" : "#FEF2F2"); border-radius:12px; padding:16px">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+                    <strong style="font-size:14px; color:@(chainResult.AllPassed ? "#065F46" : "#991B1B")">
+                        @(chainResult.AllPassed ? "✓ Full chain passed — all 3 APIs working" : "✗ Chain test — see steps below")
+                    </strong>
+                    <button class="btn btn-ghost btn-xs" @onclick="() => chainResult = null">Close</button>
+                </div>
+                @if (!string.IsNullOrEmpty(chainResult.Error))
+                {
+                    <div style="color:#991B1B; font-size:12.5px; margin-bottom:8px">@chainResult.Error</div>
+                }
+                @foreach (var s in chainResult.Steps)
+                {
+                    <div style="margin-bottom:10px; padding:10px; background:#fff; border:1px solid @(s.Success ? "#A7F3D0" : "#FECACA"); border-radius:8px">
+                        <div style="font-weight:700; font-size:13px; color:@(s.Success ? "#065F46" : "#991B1B")">
+                            @(s.Success ? "✓" : "✗") @s.Step
+                        </div>
+                        <div style="font-size:12px; margin-top:3px; color:var(--gray-700)">@s.Detail</div>
+                        @if (!string.IsNullOrWhiteSpace(s.Raw))
+                        {
+                            <pre style="background:#0F172A; color:#E2E8F0; padding:8px; border-radius:6px; font-size:10.5px; max-height:120px; overflow:auto; white-space:pre-wrap; word-break:break-all; margin:6px 0 0">@s.Raw</pre>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Valence (Edubees) — pack sync ─────────────────────────────────────────────── *@
+<div class="sk-card">
+    <div class="sk-card__head">
+        <div>
+            <div class="sk-card__title">🟣 Valence (Edubees)</div>
+            <div class="sk-card__subtitle">Sync the pack catalogue, then pick a pack per product on its serial-key config.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" disabled="@valenceSyncing" @onclick="SyncValencePacks">
+            @(valenceSyncing ? "Syncing…" : "🔄 Refresh packs")
+        </button>
+    </div>
+    <div class="sk-card__body">
+        <div class="skp-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px 16px; margin-bottom:14px">
+            <div class="form-group">
+                <label class="form-label">Base URL</label>
+                <input class="form-input" @bind="valenceBaseUrl" @bind:event="oninput" placeholder="https://edubeessecurelms.com/edubeessecurelms" />
+                <div class="form-hint">Leave blank to reuse a saved Valence product config.</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Path segment</label>
+                <input class="form-input" @bind="valencePathSegment" @bind:event="oninput" placeholder="ajsfkjsfdjsf" />
+                <div class="form-hint">The obfuscated controller segment (treated as a secret).</div>
+            </div>
+        </div>
+
+        @if (valencePacks == null)
+        {
+            <p style="color:var(--gray-400); padding:8px 0">Loading packs…</p>
+        }
+        else if (valencePacks.Count == 0)
+        {
+            <div class="sk-empty" style="padding:18px 16px">
+                No packs synced yet. Fill in the URL + path segment above (or save a Valence product config) and click <strong>Refresh packs</strong>.
+            </div>
+        }
+        else
+        {
+            <table class="data-table" style="width:100%">
+                <thead>
+                    <tr><th>Pack id</th><th>Name</th><th>Tags</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in valencePacks)
+                    {
+                        <tr>
+                            <td><code>@p.ExternalId</code></td>
+                            <td>@p.PackName</td>
+                            <td style="color:var(--gray-500); font-size:12.5px">@p.Tags</td>
+                            <td>@(p.IsActive ? "Active" : "Inactive")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="form-hint" style="margin-top:8px">@valencePacks.Count pack(s) cached. The pack id is sent as the <code>course</code> value at registration.</div>
+        }
+    </div>
+</div>
+
+@* ── Add / Edit RioPlay tenant modal ────────────────────────────────────────────── *@
+@if (rioEditing != null)
+{
+    <div class="sk-modal-overlay" @onclick="CloseRioModal">
+        <div class="sk-modal" @onclick:stopPropagation>
+            <div class="sk-modal__head">
+                <div class="sk-modal__title">@(rioEditing.Id.HasValue ? "Edit" : "Add") RioPlay Tenant</div>
+                <button class="sk-modal__close" @onclick="CloseRioModal">×</button>
+            </div>
+            <div class="sk-modal__body">
+                @if (modalErr != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@modalErr</div> }
+
+                <div class="form-group">
+                    <label class="form-label">Name *</label>
+                    <input class="form-input" @bind="rioEditing.Name" placeholder="e.g. RioCommerce Primary" />
+                    <div class="form-hint">Display label only — doesn't affect API calls.</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Tenant ID (numeric) *</label>
+                    <input type="number" class="form-input" @bind="rioEditing.TenantId" placeholder="e.g. 1001" style="font-family:ui-monospace,monospace; font-size:12.5px" min="1" />
+                    <div class="form-hint">Numeric tenant identifier provided by Antargyan. Sent as the <code>tenantId</code> request header.</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Secret @(rioEditing.Id.HasValue ? "" : "*")</label>
+                    <input type="password" class="form-input" @bind="rioEditing.Secret" autocomplete="new-password"
+                           placeholder="@(rioEditing.Id.HasValue ? "Leave blank to keep the existing secret" : "Paste the secret from Antargyan")" />
+                    <div class="form-hint">Encrypted at rest using the ASP.NET Core Data Protection key ring.</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Base URL *</label>
+                    <input class="form-input" @bind="rioEditing.BaseUrl" placeholder="https://rio24.azurewebsites.net" />
+                    <div class="form-hint">Root URL only — no trailing slash. Endpoint paths are appended automatically.</div>
+                </div>
+
+                <div class="form-group" style="display:flex; gap:24px; flex-wrap:wrap">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer">
+                        <input type="checkbox" @bind="rioEditing.IsActive" /> Active
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer">
+                        <input type="checkbox" @bind="rioEditing.IsDefault" /> Default tenant (used when product config has no explicit tenant)
+                    </label>
+                </div>
+            </div>
+            <div class="sk-modal__foot">
+                <button class="btn btn-ghost" @onclick="CloseRioModal">Cancel</button>
+                <button class="btn btn-primary" disabled="@modalSaving" @onclick="SaveRio">@(modalSaving ? "Saving…" : "Save Tenant")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<RioPlayTenantItem>? rioTenants;
+
+    private RioPlayTenantEdit? rioEditing;
+    private bool modalSaving;
+    private string? modalErr;
+
+    private Guid? chainTestingId;
+    private RioChainTestSummary? chainResult;
+
+    // ── Valence packs ──
+    private List<ValencePackItem>? valencePacks;
+    private bool valenceSyncing;
+    private string valenceBaseUrl = "";
+    private string valencePathSegment = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRio();
+        await LoadValencePacks();
+    }
+
+    private async Task LoadValencePacks()
+    {
+        try { valencePacks = await ValenceSvc.ListAsync(activeOnly: false); }
+        catch { valencePacks = new(); }
+    }
+
+    private async Task SyncValencePacks()
+    {
+        valenceSyncing = true;
+        try
+        {
+            var baseUrl = string.IsNullOrWhiteSpace(valenceBaseUrl) ? null : valenceBaseUrl.Trim();
+            var pathSeg = string.IsNullOrWhiteSpace(valencePathSegment) ? null : valencePathSegment.Trim();
+            var result = await ValenceSvc.SyncAsync(baseUrl, pathSeg);
+            if (!result.Success)
+            {
+                Toast.Error(result.ErrorMessage ?? "Pack sync failed.");
+            }
+            else
+            {
+                Toast.Success($"Synced {result.Fetched} pack(s): {result.Inserted} new, {result.Updated} updated, {result.Deactivated} deactivated.");
+                await LoadValencePacks();
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Pack sync failed: {ex.Message}");
+        }
+        finally { valenceSyncing = false; }
+    }
+
+    private async Task LoadRio()
+    {
+        rioTenants = await TenantSvc.ListAsync();
+    }
+
+    // ── Test (runs the full SignUp → Token → CreateSerialKey chain) ──
+    private async Task TestChain(Guid id)
+    {
+        chainTestingId = id;
+        chainResult = null;
+        StateHasChanged();
+        try
+        {
+            // No product config id passed — uses minimal defaults + tenant numeric id.
+            // (Extend later to let the admin pick a product config for a fully-real probe.)
+            chainResult = await TenantSvc.TestFullChainAsync(id, null);
+            if (chainResult.AllPassed) Toast.Success("All 3 Rio APIs passed.");
+            else Toast.Error("Chain test had a failing step. See details below.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Chain test threw: {ex.Message}");
+        }
+        finally { chainTestingId = null; StateHasChanged(); }
+    }
+
+    // ── Add / edit modal ──
+    private void OpenAddRio()
+    {
+        rioEditing = new RioPlayTenantEdit { IsActive = true, IsDefault = false };
+        modalErr = null;
+    }
+
+    private async Task OpenEditRio(Guid id)
+    {
+        modalErr = null;
+        var row = await TenantSvc.GetAsync(id);
+        if (row == null) { Toast.Error("Tenant not found."); return; }
+        rioEditing = row;
+    }
+
+    private void CloseRioModal()
+    {
+        rioEditing = null;
+        modalErr = null;
+        modalSaving = false;
+    }
+
+    private async Task SaveRio()
+    {
+        if (rioEditing == null) return;
+        if (rioEditing.TenantId <= 0) { modalErr = "Tenant ID must be a positive number."; return; }
+
+        modalSaving = true;
+        modalErr = null;
+        try
+        {
+            var (ok, err, _) = await TenantSvc.SaveAsync(rioEditing);
+            if (!ok) { modalErr = err ?? "Save failed."; return; }
+            Toast.Success(rioEditing.Id.HasValue ? "Tenant updated." : "Tenant added.");
+            CloseRioModal();
+            await LoadRio();
+        }
+        catch (Exception ex)
+        {
+            // Last-resort net: if anything below the service layer throws (db connectivity,
+            // data-protection key ring not loaded yet, etc.) we surface it in the inline alert
+            // instead of letting it bubble up through Blazor's circuit and SignalR — which is
+            // what was crashing the modal earlier with a useless framework-level NRE.
+            modalErr = $"Save failed: {ex.Message}";
+        }
+        finally { modalSaving = false; }
+    }
+
+    // ── Delete ──
+    private async Task DeleteRio(Guid id, string name)
+    {
+        // Native confirm is fine for an admin destructive action — matches other admin pages.
+        if (!await ConfirmJs($"Delete tenant '{name}'? Existing serial-key records keep their data; new keys for this tenant will fail until reconfigured.")) return;
+        var ok = await TenantSvc.DeleteAsync(id);
+        if (ok) { Toast.Success("Tenant deleted."); await LoadRio(); }
+        else { Toast.Error("Delete failed."); }
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    private async Task<bool> ConfirmJs(string msg) => await JS.InvokeAsync<bool>("confirm", msg);
+}

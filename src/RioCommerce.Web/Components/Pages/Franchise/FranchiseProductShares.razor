@@ -1,0 +1,152 @@
+@page "/franchise/products"
+@attribute [Authorize(Roles = "franchise_admin")]
+@using RioCommerce.Core.DTOs.Franchise
+@using RioCommerce.Core.Enums
+@inject IFranchisePortalService Portal
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>My Product Shares — RioCommerce Franchise</PageTitle>
+
+<div class="container account-page">
+    <h1 class="account-page__title">Franchise Portal</h1>
+    <FranchiseNav />
+
+    <div class="page__header" style="margin-top:8px">
+        <h1 style="margin-bottom:4px">My Product Shares</h1>
+        <p style="color:var(--gray-400);margin:0">
+            Your share on each course. Amounts update automatically when a special price is active
+            or when your assigned share changes.
+        </p>
+    </div>
+
+    @if (rows == null)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+    }
+    else
+    {
+        <div class="data-card" style="margin-bottom:16px;padding:14px 16px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+            <div><span style="color:var(--gray-400)">Products</span> &nbsp;<strong>@rows.Count</strong></div>
+            <div><span style="color:var(--gray-400)">With a share</span> &nbsp;<strong>@rows.Count(r => r.CalculatedFranchiseAmount > 0)</strong></div>
+            <div><span style="color:var(--gray-400)">On special price now</span> &nbsp;<strong style="color:var(--green)">@rows.Count(r => r.IsSpecialPriceActive)</strong></div>
+            <label style="margin-left:auto;display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" @bind="onlyWithShare" @bind:after="ReloadAsync" />
+                <span style="color:var(--gray-400)">Only products I earn on</span>
+            </label>
+        </div>
+
+        <div class="data-card">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th style="text-align:right">Regular Price</th>
+                            <th style="text-align:right">Active Price</th>
+                            <th>Special</th>
+                            <th>Share Type</th>
+                            <th style="text-align:right">Share Value</th>
+                            <th style="text-align:right">My Earning</th>
+                            <th>Share Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (rows.Count == 0)
+                        {
+                            <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No products to show.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var r in rows)
+                            {
+                                <tr>
+                                    <td>
+                                        <strong>@r.Title</strong>
+                                        <div style="font-size:12px;color:var(--gray-400)">@LevelLabel(r.Level)@(r.FacultyName != null ? " · " + r.FacultyName : "")</div>
+                                    </td>
+                                    <td style="text-align:right;white-space:nowrap">₹@r.ProductPrice.ToString("N0")</td>
+                                    <td style="text-align:right;white-space:nowrap">
+                                        <strong>₹@r.EffectivePrice.ToString("N0")</strong>
+                                    </td>
+                                    <td>
+                                        @if (r.IsSpecialPriceActive)
+                                        {
+                                            <span class="badge" style="background:var(--green);color:#fff">Active</span>
+                                        }
+                                        else if (r.SpecialPrice is > 0)
+                                        {
+                                            <span class="badge" style="background:var(--gray-200);color:var(--gray-500)">Scheduled</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:var(--gray-300)">—</span>
+                                        }
+                                    </td>
+                                    <td style="white-space:nowrap">@(r.CalculatedFranchiseAmount > 0 ? (r.ShareType == CommissionType.Percent ? "Percentage" : "Fixed") : "—")</td>
+                                    <td style="text-align:right;white-space:nowrap">
+                                        @if (r.CalculatedFranchiseAmount > 0)
+                                        {
+                                            @(r.ShareType == CommissionType.Percent ? r.ShareValue.ToString("0.##") + "%" : "₹" + r.ShareValue.ToString("N0"))
+                                        }
+                                        else { <span style="color:var(--gray-300)">—</span> }
+                                    </td>
+                                    <td style="text-align:right;white-space:nowrap">
+                                        @if (r.CalculatedFranchiseAmount > 0)
+                                        {
+                                            <strong style="color:var(--green)">₹@r.CalculatedFranchiseAmount.ToString("N2")</strong>
+                                        }
+                                        else { <span style="color:var(--gray-300)">—</span> }
+                                    </td>
+                                    <td>
+                                        @switch (r.ShareSource)
+                                        {
+                                            case ShareSource.FranchiseOverride:
+                                                <span class="badge" style="background:#2E75B6;color:#fff;white-space:nowrap">Franchise Override</span>
+                                                break;
+                                            case ShareSource.ProductDefault:
+                                                <span class="badge" style="background:var(--gray-200);color:var(--gray-600);white-space:nowrap">Default Product Share</span>
+                                                break;
+                                            default:
+                                                <span style="color:var(--gray-300)">No share</span>
+                                                break;
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<FranchiseProductShareRow>? rows;
+    private bool onlyWithShare;
+    private Guid? franchiseId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(idClaim, out var userId)) return;
+        franchiseId = await Portal.ResolveFranchiseIdAsync(userId);
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (franchiseId == null) { rows = new(); return; }
+        rows = await Portal.ProductSharesAsync(franchiseId.Value, onlyWithShare);
+    }
+
+    private static string LevelLabel(CourseLevel level) => level switch
+    {
+        CourseLevel.CaFoundation => "CA Foundation",
+        CourseLevel.CaIntermediate => "CA Intermediate",
+        CourseLevel.CaFinal => "CA Final",
+        CourseLevel.Books => "Books",
+        CourseLevel.TestSeries => "Test Series",
+        _ => level.ToString()
+    };
+}

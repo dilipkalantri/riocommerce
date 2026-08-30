@@ -1,0 +1,27 @@
+@implements IDisposable
+@inject ToastService Toasts
+
+<div class="toast-host">
+    @foreach (var t in Toasts.Toasts)
+    {
+        <div class="toast toast--@t.Type" role="status" @onclick="() => Toasts.Remove(t)">
+            <span class="toast__icon">@Icon(t.Type)</span>
+            <span>@t.Message</span>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => Toasts.OnChange += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);   // OnChange can fire from a timer thread
+    public void Dispose() => Toasts.OnChange -= Refresh;
+
+    private static string Icon(string type) => type switch
+    {
+        "success" => "✓",
+        "error" => "✕",
+        "info" => "ℹ",
+        "warning" => "⚠",
+        _ => "•"
+    };
+}

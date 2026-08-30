@@ -1,0 +1,581 @@
+@*
+    §16–§30 — the Reports section. ONE page serves all eight reports.
+
+    The route slug picks the builder; everything else on this page — the filter bar, multi-selects,
+    search, sorting, paging, Clear Filters, Excel and CSV — is shared, which is what §29 asks for.
+    Adding a ninth report needs no change here.
+*@
+@page "/admin/reports/{Slug}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@using RioCommerce.Core.DTOs.Reporting
+@using RioCommerce.Core.Enums
+@inject IReportingService Reports
+@inject NavigationManager Nav
+
+<PageTitle>@Entry.Title — RioCommerce Admin</PageTitle>
+
+@* The sidebar already lists all eight reports and marks the active one, so this page carries no
+   tab strip of its own — two navigation controls for the same set on one screen is noise. *@
+<div class="page__header rp__header">
+    <div class="rp__title">
+        <span class="rp__icon" aria-hidden="true">@Entry.Icon</span>
+        <div>
+            <h1>@Entry.Title</h1>
+            <p class="rp__desc">@Entry.Description</p>
+        </div>
+    </div>
+    <div class="rp__actions-top">
+        @if (ReportCatalog.ManageUrlFor(type) is { } manageUrl)
+        {
+            @* Contextual action: the screen that CREATES the records this report reads. Lives here
+               rather than in the sidebar so it reads as an action on this report, not a ninth report. *@
+            <a class="btn btn-secondary btn-sm" href="@manageUrl">⚙ @ReportCatalog.ManageLabelFor(type)</a>
+        }
+        <a class="btn btn-primary btn-sm" target="_blank" href="@ExportUrl("xlsx")">⬇ Excel</a>
+        <a class="btn btn-outline btn-sm" target="_blank" href="@ExportUrl("csv")">⬇ CSV</a>
+    </div>
+</div>
+
+<div class="form-card rp__filters">
+    <div class="rp__filters-head">
+        <button type="button" class="rp__filters-toggle" @onclick="() => filtersOpen = !filtersOpen">
+            <span class="rp__chev">@(filtersOpen ? "▾" : "▸")</span>
+            Filters
+            @if (ActiveFilterCount > 0)
+            {
+                <span class="rp__count">@ActiveFilterCount</span>
+            }
+        </button>
+        <button class="btn btn-ghost btn-sm" disabled="@query.IsEmpty" @onclick="ClearFilters">✕ Clear Filters</button>
+    </div>
+
+    @* Applied filters stay visible when the panel is collapsed — otherwise a report showing 12 rows
+       looks broken until you remember a franchisee filter is still on. *@
+    @if (!filtersOpen && ActiveFilterChips.Count > 0)
+    {
+        <div class="rp__chips">
+            @foreach (var chip in ActiveFilterChips)
+            {
+                <span class="rp__chip">@chip</span>
+            }
+        </div>
+    }
+
+    <div class="rp__grid @(filtersOpen ? "" : "rp__grid--hidden")">
+        <div class="form-group">
+            <label class="form-label">From Date</label>
+            <input type="date" class="form-input" @bind="query.From" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">To Date</label>
+            <input type="date" class="form-input" @bind="query.To" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Faculty</label>
+            <MultiSelect TValue="Guid" Options="facultyOpts" Selected="query.FacultyIds"
+                         SelectedChanged="v => OnDimensionChanged(() => query.FacultyIds = v)" Placeholder="All faculty" ItemNoun="faculty" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Product / Course</label>
+            <MultiSelect TValue="Guid" Options="productOpts" Selected="query.ProductIds"
+                         SelectedChanged="v => OnDimensionChanged(() => query.ProductIds = v)" Placeholder="All products" ItemNoun="products" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Subject</label>
+            <MultiSelect TValue="Guid" Options="subjectOpts" Selected="query.SubjectIds"
+                         SelectedChanged="v => OnDimensionChanged(() => query.SubjectIds = v)" Placeholder="All subjects" ItemNoun="subjects" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Franchisee</label>
+            <MultiSelect TValue="Guid" Options="franchiseOpts" Selected="query.FranchiseIds"
+                         SelectedChanged="v => query.FranchiseIds = v" Placeholder="All franchisees" ItemNoun="franchisees" />
+        </div>
+
+        @* Status filters are only rendered where they mean something for the report on screen —
+           a Payment Mode picker on the Shipping report is noise, not a feature. *@
+        @if (Shows(Filter.OrderStatus))
+        {
+            <div class="form-group">
+                <label class="form-label">Order Status</label>
+                <MultiSelect TValue="OrderStatus" Options="orderStatusOpts" Selected="query.OrderStatuses"
+                             SelectedChanged="v => query.OrderStatuses = v" Placeholder="All statuses" ItemNoun="statuses" />
+            </div>
+        }
+        @if (Shows(Filter.PaymentStatus))
+        {
+            <div class="form-group">
+                <label class="form-label">Payment Status</label>
+                <MultiSelect TValue="PaymentStatus" Options="payStatusOpts" Selected="query.PaymentStatuses"
+                             SelectedChanged="v => query.PaymentStatuses = v" Placeholder="All" ItemNoun="statuses" />
+            </div>
+        }
+        @if (Shows(Filter.PaymentMode))
+        {
+            <div class="form-group">
+                <label class="form-label">Payment Mode</label>
+                <MultiSelect TValue="PaymentMode" Options="payModeOpts" Selected="query.PaymentModes"
+                             SelectedChanged="v => query.PaymentModes = v" Placeholder="All modes" ItemNoun="modes" />
+            </div>
+        }
+        @if (Shows(Filter.Source))
+        {
+            <div class="form-group">
+                <label class="form-label">Source / Type of Order</label>
+                <MultiSelect TValue="OrderSource" Options="sourceOpts" Selected="query.Sources"
+                             SelectedChanged="v => query.Sources = v" Placeholder="All sources" ItemNoun="sources" />
+            </div>
+        }
+        @if (Shows(Filter.Shipping))
+        {
+            <div class="form-group">
+                <label class="form-label">Shipping Status</label>
+                <MultiSelect TValue="ShipmentStatus" Options="shipStatusOpts" Selected="query.ShippingStatuses"
+                             SelectedChanged="v => query.ShippingStatuses = v" Placeholder="All" ItemNoun="statuses" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Courier Partner</label>
+                <select class="form-input" @bind="query.Courier">
+                    <option value="">All couriers</option>
+                    @foreach (var c in options?.Couriers ?? new())
+                    {
+                        <option value="@c">@c</option>
+                    }
+                </select>
+            </div>
+        }
+        @if (Shows(Filter.Settlement))
+        {
+            <div class="form-group">
+                <label class="form-label">Settlement Status</label>
+                <MultiSelect TValue="TeacherSettlementStatus" Options="settlementStatusOpts" Selected="query.SettlementStatuses"
+                             SelectedChanged="v => query.SettlementStatuses = v" Placeholder="All" ItemNoun="statuses" />
+            </div>
+        }
+        @if (Shows(Filter.ReInvoice))
+        {
+            <div class="form-group">
+                <label class="form-label">Re-Invoice Status</label>
+                <MultiSelect TValue="ReInvoiceStatus" Options="reInvoiceStatusOpts" Selected="query.ReInvoiceStatuses"
+                             SelectedChanged="v => query.ReInvoiceStatuses = v" Placeholder="Issued only" ItemNoun="statuses" />
+            </div>
+        }
+
+        <div class="form-group rp__search">
+            <label class="form-label">Search</label>
+            <input class="form-input" placeholder="@SearchHint" @bind="query.Search" @bind:event="oninput"
+                   @onkeydown="OnSearchKey" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Rows per page</label>
+            <select class="form-input" @bind="query.PageSize">
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="250">250</option>
+            </select>
+        </div>
+    </div>
+
+    @if (filtersOpen)
+    {
+        <div class="form-actions rp__actions">
+            <button class="btn btn-primary" disabled="@busy" @onclick="Apply">@(busy ? "Running…" : "Apply Filters")</button>
+            <span class="form-hint rp__hint">
+                Filters combine — dates plus faculty, products and franchisees return only the records
+                matching every one. Downloads use these filters, not just the page on screen.
+            </span>
+        </div>
+    }
+</div>
+
+@if (error is not null)
+{
+    <div class="rp__error">@error</div>
+}
+
+<ReportGrid Table="table" SortBy="query.SortBy" SortDesc="query.SortDesc"
+            OnSort="Sort" OnPage="GoToPage" />
+
+<style>
+    .rp__header {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .rp__title { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+    .rp__icon {
+        font-size: 20px; line-height: 1; flex: none; margin-top: 4px;
+        width: 38px; height: 38px; border-radius: 9px; background: var(--gray-100);
+        display: flex; align-items: center; justify-content: center;
+    }
+    .rp__title h1 { margin: 0; }
+    .rp__desc { font-size: 13.5px; color: var(--gray-600); margin: 3px 0 0; max-width: 70ch; }
+    .rp__actions-top { display: flex; gap: 8px; flex: none; flex-wrap: wrap; }
+
+    .rp__filters { margin-bottom: 18px; }
+    .rp__filters-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+    /* The whole heading is the collapse control — a small chevron alone is a poor target. */
+    .rp__filters-toggle {
+        display: flex; align-items: center; gap: 8px;
+        background: none; border: 0; padding: 0; cursor: pointer;
+        font-size: 14px; font-weight: 650; color: var(--gray-800); font-family: inherit;
+    }
+    .rp__filters-toggle:hover { color: var(--orange, #e07b39); }
+    .rp__chev { font-size: 11px; color: var(--gray-500); width: 10px; }
+    .rp__count {
+        background: var(--orange, #e07b39); color: #fff; border-radius: 999px;
+        font-size: 11px; font-weight: 700; padding: 1px 7px; min-width: 18px; text-align: center;
+    }
+
+    .rp__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .rp__chip {
+        background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-200);
+        border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 550; white-space: nowrap;
+    }
+
+    .rp__grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+        gap: 12px; margin-top: 12px;
+    }
+    .rp__grid--hidden { display: none; }
+    .rp__search { grid-column: span 2; min-width: 240px; }
+    .rp__actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
+    .rp__hint { margin: 0; max-width: 70ch; }
+
+    .rp__error {
+        background: #fbe9ec; border: 1px solid #e3b3bd; color: #97243a;
+        padding: 10px 14px; border-radius: 6px; font-size: 13.5px; margin-bottom: 14px;
+    }
+
+    @@media (max-width: 640px) {
+        .rp__search { grid-column: span 1; }
+        .rp__icon { display: none; }
+    }
+</style>
+
+@code {
+    [Parameter] public string Slug { get; set; } = "sales";
+
+    private ReportType type = ReportType.Sales;
+    private ReportQuery query = NewQuery();
+    private ReportTable? table;
+    private ReportFilterOptions? options;
+    private string? error;
+    private bool busy;
+
+    /// <summary>Filters start open and STAY open across Apply — narrowing a report is rarely one
+    /// move, so folding the panel away would make every follow-up selection cost a re-open. Only the
+    /// header toggle collapses it, when the reader deliberately wants the grid to have the screen.</summary>
+    private bool filtersOpen = true;
+
+    // Which optional filters each report actually uses. Rendering the rest would imply they narrow
+    // something when the builder ignores them.
+    [Flags]
+    private enum Filter
+    {
+        None = 0,
+        OrderStatus = 1, PaymentStatus = 2, PaymentMode = 4, Source = 8,
+        Shipping = 16, Settlement = 32, ReInvoice = 64
+    }
+
+    private Filter Applicable => type switch
+    {
+        ReportType.Sales => Filter.OrderStatus | Filter.PaymentStatus | Filter.PaymentMode | Filter.Source,
+        ReportType.Gst => Filter.OrderStatus | Filter.PaymentMode | Filter.Source,
+        ReportType.Faculty => Filter.OrderStatus | Filter.PaymentStatus | Filter.Source,
+        ReportType.Franchisee => Filter.OrderStatus | Filter.PaymentStatus | Filter.PaymentMode | Filter.Source,
+        ReportType.ProductSubject => Filter.OrderStatus | Filter.PaymentStatus | Filter.Source,
+        ReportType.FranchiseeReInvoice => Filter.ReInvoice,
+        ReportType.Shipping => Filter.OrderStatus | Filter.Shipping,
+        ReportType.TeacherSettlement => Filter.Settlement,
+        _ => Filter.None
+    };
+
+    private bool Shows(Filter f) => Applicable.HasFlag(f);
+
+    private ReportCatalog.Entry Entry => ReportCatalog.Get(type);
+
+    private string SearchHint => SearchHintFor(type);
+
+    /// <summary>
+    /// How many filters are actually narrowing the result. Drives the badge on the collapsed panel
+    /// so a user can tell at a glance whether a short result set is the data or the filters.
+    /// The default date window is not counted — it is always on, so counting it would make the
+    /// badge read "1" permanently and mean nothing.
+    /// </summary>
+    private int ActiveFilterCount =>
+        (query.FacultyIds.Count > 0 ? 1 : 0)
+        + (query.ProductIds.Count > 0 ? 1 : 0)
+        + (query.SubjectIds.Count > 0 ? 1 : 0)
+        + (query.FranchiseIds.Count > 0 ? 1 : 0)
+        + (query.OrderStatuses.Count > 0 ? 1 : 0)
+        + (query.PaymentStatuses.Count > 0 ? 1 : 0)
+        + (query.PaymentModes.Count > 0 ? 1 : 0)
+        + (query.Sources.Count > 0 ? 1 : 0)
+        + (query.ShippingStatuses.Count > 0 ? 1 : 0)
+        + (query.SettlementStatuses.Count > 0 ? 1 : 0)
+        + (query.ReInvoiceStatuses.Count > 0 ? 1 : 0)
+        + (string.IsNullOrWhiteSpace(query.Courier) ? 0 : 1)
+        + (string.IsNullOrWhiteSpace(query.Search) ? 0 : 1);
+
+    /// <summary>Short labels for what is currently applied, shown when the panel is collapsed.
+    /// The date range is always included — it is the one filter that is always in force, and a
+    /// reader needs to know which window they are looking at.</summary>
+    private List<string> ActiveFilterChips
+    {
+        get
+        {
+            var chips = new List<string>();
+
+            if (query.From is { } f && query.To is { } t) chips.Add($"{f:dd MMM} – {t:dd MMM yyyy}");
+            else if (query.From is { } f2) chips.Add($"from {f2:dd MMM yyyy}");
+            else if (query.To is { } t2) chips.Add($"up to {t2:dd MMM yyyy}");
+
+            void Named(int count, string singular, string plural)
+            {
+                if (count == 1) chips.Add($"1 {singular}");
+                else if (count > 1) chips.Add($"{count} {plural}");
+            }
+
+            Named(query.FacultyIds.Count, "faculty", "faculty");
+            Named(query.ProductIds.Count, "product", "products");
+            Named(query.SubjectIds.Count, "subject", "subjects");
+            Named(query.FranchiseIds.Count, "franchisee", "franchisees");
+            Named(query.OrderStatuses.Count, "order status", "order statuses");
+            Named(query.PaymentStatuses.Count, "payment status", "payment statuses");
+            Named(query.PaymentModes.Count, "payment mode", "payment modes");
+            Named(query.Sources.Count, "source", "sources");
+            Named(query.ShippingStatuses.Count, "shipping status", "shipping statuses");
+            Named(query.SettlementStatuses.Count, "settlement status", "settlement statuses");
+            Named(query.ReInvoiceStatuses.Count, "re-invoice status", "re-invoice statuses");
+
+            if (!string.IsNullOrWhiteSpace(query.Courier)) chips.Add(query.Courier!);
+            if (!string.IsNullOrWhiteSpace(query.Search)) chips.Add($"“{query.Search.Trim()}”");
+
+            return chips;
+        }
+    }
+
+    private static string SearchHintFor(ReportType t) => t switch
+    {
+        ReportType.Gst => "Invoice no., order no., customer, GSTIN…",
+        ReportType.Faculty => "Faculty, product, order no.…",
+        ReportType.FranchiseeReInvoice => "Re-invoice no., original invoice no., franchisee…",
+        ReportType.Shipping => "Order no., student, AWB, courier…",
+        ReportType.TeacherSettlement => "Faculty, settlement no., product…",
+        _ => "Order no., student name, email, phone…"
+    };
+
+    private static ReportQuery NewQuery() => new()
+    {
+        From = DateTime.UtcNow.AddMonths(-1).Date,
+        To = DateTime.UtcNow.Date,
+        PageSize = 50
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        options = await Reports.GetFilterOptionsAsync(query);
+        BuildOptionLists();
+    }
+
+    // ── Cascading catalog filters ───────────────────────────────────────────────────────────────
+    // Faculty, Product and Subject narrow each other, so after any of the three changes the other
+    // two lists are re-fetched. Franchisee, Courier and the status filters are not part of this and
+    // keep their own SelectedChanged — they have no catalog relationship to cascade through.
+
+    /// <summary>
+    /// Applies one picker's change, then re-reads the option lists and drops any selection the new
+    /// lists no longer offer.
+    ///
+    /// <para>Only the now-impossible ids are removed. Everything else the user chose — in this
+    /// dimension and every other — is left exactly as it was, because silently clearing a filter
+    /// someone set is how a report comes to show the wrong figure without anyone noticing.</para>
+    /// </summary>
+    private async Task OnDimensionChanged(Action apply)
+    {
+        apply();
+        options = await Reports.GetFilterOptionsAsync(query);
+        PruneInvalidSelections();
+        BuildOptionLists();
+    }
+
+    private void PruneInvalidSelections()
+    {
+        if (options == null) return;
+        Keep(query.FacultyIds, options.Faculty);
+        Keep(query.ProductIds, options.Products);
+        Keep(query.SubjectIds, options.Subjects);
+
+        static void Keep(List<Guid> selected, List<ReportOption> available)
+        {
+            if (selected.Count == 0) return;
+            var ok = available.Select(o => o.Id).ToHashSet();
+            selected.RemoveAll(id => !ok.Contains(id));
+        }
+    }
+
+    /// <summary>
+    /// Re-runs when the route slug changes. Switching report resets paging and sort — a sort key
+    /// from the previous report is meaningless here, and staying on page 7 of a report that has
+    /// three pages shows an empty grid. The FILTERS deliberately survive the switch: comparing the
+    /// same window across two reports is the common reason to switch.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        var resolved = ReportCatalog.FromSlug(Slug);
+        if (resolved is null)
+        {
+            error = $"Unknown report “{Slug}”.";
+            table = null;
+            return;
+        }
+
+        if (resolved.Value != type || table is null)
+        {
+            type = resolved.Value;
+            query.Page = 1;
+            query.SortBy = null;
+            query.SortDesc = true;
+            await Run();
+        }
+    }
+
+    private void BuildOptionLists()
+    {
+        facultyOpts = (options?.Faculty ?? new()).Select(o => new MultiSelect<Guid>.Option(o.Id, o.Name)).ToList();
+        productOpts = (options?.Products ?? new()).Select(o => new MultiSelect<Guid>.Option(o.Id, o.Name)).ToList();
+        subjectOpts = (options?.Subjects ?? new()).Select(o => new MultiSelect<Guid>.Option(o.Id, o.Name)).ToList();
+        franchiseOpts = (options?.Franchises ?? new()).Select(o => new MultiSelect<Guid>.Option(o.Id, o.Name)).ToList();
+    }
+
+    private List<MultiSelect<Guid>.Option> facultyOpts = new();
+    private List<MultiSelect<Guid>.Option> productOpts = new();
+    private List<MultiSelect<Guid>.Option> subjectOpts = new();
+    private List<MultiSelect<Guid>.Option> franchiseOpts = new();
+
+    private static readonly List<MultiSelect<OrderStatus>.Option> orderStatusOpts =
+        Enum.GetValues<OrderStatus>().Select(v => new MultiSelect<OrderStatus>.Option(v, v.ToString())).ToList();
+    private static readonly List<MultiSelect<PaymentStatus>.Option> payStatusOpts =
+        Enum.GetValues<PaymentStatus>().Select(v => new MultiSelect<PaymentStatus>.Option(v, v.ToString())).ToList();
+    private static readonly List<MultiSelect<PaymentMode>.Option> payModeOpts =
+        Enum.GetValues<PaymentMode>().Select(v => new MultiSelect<PaymentMode>.Option(v, v.ToString())).ToList();
+    // WalletTopUp is filtered out of every sales figure upstream, so offering it here would be a
+    // control that always returns nothing.
+    private static readonly List<MultiSelect<OrderSource>.Option> sourceOpts =
+        Enum.GetValues<OrderSource>().Where(v => v != OrderSource.WalletTopUp)
+            .Select(v => new MultiSelect<OrderSource>.Option(v, v.ToString())).ToList();
+    private static readonly List<MultiSelect<ShipmentStatus>.Option> shipStatusOpts =
+        Enum.GetValues<ShipmentStatus>().Select(v => new MultiSelect<ShipmentStatus>.Option(v, v.ToString())).ToList();
+    private static readonly List<MultiSelect<TeacherSettlementStatus>.Option> settlementStatusOpts =
+        Enum.GetValues<TeacherSettlementStatus>()
+            .Select(v => new MultiSelect<TeacherSettlementStatus>.Option(
+                v, v == TeacherSettlementStatus.PartiallyPaid ? "Partially Paid" : v.ToString())).ToList();
+    private static readonly List<MultiSelect<ReInvoiceStatus>.Option> reInvoiceStatusOpts =
+        Enum.GetValues<ReInvoiceStatus>().Select(v => new MultiSelect<ReInvoiceStatus>.Option(v, v.ToString())).ToList();
+
+    private async Task Run()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            table = await Reports.RunAsync(type, query);
+        }
+        catch (Exception ex)
+        {
+            error = $"The report could not be generated: {ex.Message}";
+            table = null;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    /// <summary>Applying filters returns to page 1 — staying on page 5 of the previous result set
+    /// would land on an empty page more often than not. The panel is deliberately left as the reader
+    /// had it: narrowing a report is usually several passes (add a product, then a subject, then
+    /// widen the dates), and collapsing after each Apply would charge a re-open for every one.</summary>
+    private async Task Apply()
+    {
+        query.Page = 1;
+        await Run();
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Apply();
+    }
+
+    private async Task ClearFilters()
+    {
+        // Everything resets, including search, sort and paging — §23. The date range returns to the
+        // default window rather than empty, because a report with no dates is a full-table scan.
+        query = NewQuery();
+        // Reopen: clearing is almost always the prelude to setting different filters.
+        filtersOpen = true;
+        // Nothing narrows the pickers any more, so the full lists have to come back with it.
+        options = await Reports.GetFilterOptionsAsync(query);
+        BuildOptionLists();
+        await Run();
+    }
+
+    /// <summary>Clicking the active column flips direction; a different column starts descending,
+    /// which is what a reader wants first from a money or date column.</summary>
+    private async Task Sort(string key)
+    {
+        if (query.SortBy == key) query.SortDesc = !query.SortDesc;
+        else { query.SortBy = key; query.SortDesc = true; }
+        query.Page = 1;
+        await Run();
+    }
+
+    private async Task GoToPage(int page)
+    {
+        query.Page = page;
+        await Run();
+    }
+
+    /// <summary>
+    /// Builds the download link. Plain anchors rather than a JS download so the browser handles the
+    /// file natively; the endpoint accepts the auth cookie for exactly this reason.
+    /// </summary>
+    private string ExportUrl(string format)
+    {
+        var qs = new List<string>();
+
+        void Add(string k, string? v)
+        {
+            if (!string.IsNullOrWhiteSpace(v)) qs.Add($"{k}={Uri.EscapeDataString(v)}");
+        }
+        void AddMany<T>(string k, List<T> values)
+        {
+            foreach (var v in values) Add(k, v?.ToString());
+        }
+
+        if (query.From is { } f) Add("from", f.ToString("yyyy-MM-dd"));
+        if (query.To is { } t) Add("to", t.ToString("yyyy-MM-dd"));
+        AddMany("facultyIds", query.FacultyIds);
+        AddMany("productIds", query.ProductIds);
+        AddMany("subjectIds", query.SubjectIds);
+        AddMany("franchiseIds", query.FranchiseIds);
+        AddMany("orderStatuses", query.OrderStatuses);
+        AddMany("paymentStatuses", query.PaymentStatuses);
+        AddMany("paymentModes", query.PaymentModes);
+        AddMany("sources", query.Sources);
+        AddMany("shippingStatuses", query.ShippingStatuses);
+        AddMany("settlementStatuses", query.SettlementStatuses);
+        AddMany("reInvoiceStatuses", query.ReInvoiceStatuses);
+        Add("courier", query.Courier);
+        Add("search", query.Search);
+        Add("sortBy", query.SortBy);
+        Add("sortDesc", query.SortDesc.ToString().ToLowerInvariant());
+
+        var slug = ReportCatalog.SlugOf(type);
+        return $"/api/admin/reporting/{slug}/export.{format}" + (qs.Count > 0 ? "?" + string.Join("&", qs) : "");
+    }
+}

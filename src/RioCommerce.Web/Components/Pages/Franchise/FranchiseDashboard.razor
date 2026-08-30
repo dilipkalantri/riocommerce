@@ -1,0 +1,88 @@
+@page "/franchise"
+@attribute [Authorize(Roles = "franchise_admin")]
+@inject IFranchisePortalService Svc
+@inject AuthenticationStateProvider AuthProvider
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Franchise Portal — RioCommerce" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">Franchise Portal</h1>
+    <FranchiseNav />
+
+    @if (loading)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+    }
+    else if (d == null)
+    {
+        <div class="cart-empty"><p>Your account isn't linked to a franchise yet. Please contact RioCommerce.</p></div>
+    }
+    else
+    {
+        <p class="account-greeting"><strong>@d.Name</strong> · @d.City <span style="color:var(--gray-400)">(@d.Code)</span></p>
+
+        <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-card__label">Wallet Balance</div><div class="kpi-card__value" style="@(d.Wallet < 0 ? "color:var(--error)" : "")">₹@d.Wallet.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Credit Limit</div><div class="kpi-card__value">₹@d.CreditLimit.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Available to Spend</div><div class="kpi-card__value" style="color:var(--green)">₹@d.Available.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Orders (this month)</div><div class="kpi-card__value">@d.OrdersMtd</div></div>
+        </div>
+
+        <div style="margin:18px 0"><a href="/franchise/order" class="btn btn-primary">➕ Place New Order</a></div>
+
+        <div class="data-card">
+            <div class="data-card__title" style="display:flex;justify-content:space-between;align-items:center">
+                <span>Recent Orders</span><a href="/franchise/orders" class="btn btn-ghost btn-sm">View All →</a>
+            </div>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Order #</th><th>Date</th><th>Student</th><th>Course</th><th>Amount</th><th>Status</th></tr></thead>
+                <tbody>
+                    @if (recent == null || recent.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No orders yet.</td></tr> }
+                    else
+                    {
+                        @foreach (var o in recent)
+                        {
+                            <tr>
+                                <td><strong>#@o.OrderNumber</strong></td>
+                                <td>@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                <td>@o.StudentName</td>
+                                <td style="max-width:240px">@o.ProductSummary</td>
+                                <td>₹@o.TotalAmount.ToString("N0")</td>
+                                <td><span class="status @StatusClass(o.Status)"><span class="dot"></span>@o.Status</span></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table></div>
+        </div>
+    }
+</div>
+
+@code {
+    private FranchisePortalDashboard? d;
+    private List<FranchiseOrderRow>? recent;
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+        {
+            var fid = await Svc.ResolveFranchiseIdAsync(userId);
+            if (fid != null)
+            {
+                d = await Svc.GetDashboardAsync(fid.Value);
+                recent = (await Svc.MyOrdersAsync(fid.Value)).Take(5).ToList();
+            }
+        }
+        loading = false;
+    }
+
+    private static string StatusClass(OrderStatus s) => s switch
+    {
+        OrderStatus.Confirmed or OrderStatus.Activated or OrderStatus.Delivered => "status--confirmed",
+        OrderStatus.Pending or OrderStatus.Draft => "status--pending",
+        OrderStatus.Processing => "status--processing",
+        _ => "status--cancelled"
+    };
+}

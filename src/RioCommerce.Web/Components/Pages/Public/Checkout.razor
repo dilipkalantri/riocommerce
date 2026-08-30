@@ -1,0 +1,1232 @@
+@page "/checkout"
+@implements IDisposable
+@inject ICheckoutService CheckoutSvc
+@inject IReferralService ReferralSvc
+@inject IIntegrationSettingsService IntegrationSvc
+@inject AuthenticationStateProvider AuthProvider
+@inject IFranchisePortalService FranchisePortal
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Checkout — RioCommerce" })" />
+
+<div class="container cart-page checkout-v2">
+    <nav class="co-crumbs" aria-label="Breadcrumb">
+        <a href="/">Home</a>
+        <span class="co-crumbs__sep" aria-hidden="true">/</span>
+        <a href="/cart">Cart</a>
+        <span class="co-crumbs__sep" aria-hidden="true">/</span>
+        <span class="co-crumbs__current" aria-current="page">Checkout</span>
+    </nav>
+
+    @* ─── Premium compact Secure-Checkout hero ─── *@
+    <header class="co-hero">
+        <div class="co-hero__title">
+            <svg class="co-hero__lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Secure Checkout
+        </div>
+        <p class="co-hero__sub">Complete your enrollment securely and get instant access to your course.</p>
+        <div class="co-hero__trust">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> SSL Secure</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Instant Course Access</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> 100% Safe Payment</span>
+        </div>
+    </header>
+
+    @if (!authed)
+    {
+        <div class="cart-empty">
+            <p>Please log in to continue to checkout.</p>
+            <a href="/login?returnUrl=/checkout" class="btn btn-primary" style="margin-top:12px">Login</a>
+        </div>
+    }
+    else if (loading)
+    {
+        <p style="color:var(--gray-400);padding:40px 0">Loading…</p>
+    }
+    else if (summary == null || summary.Items.Count == 0)
+    {
+        <div class="cart-empty">
+            <div style="font-size:42px">🛒</div>
+            <p>Your cart is empty.</p>
+            <a href="/courses/ca-foundation" class="btn btn-primary" style="margin-top:12px">Browse Courses</a>
+        </div>
+    }
+    else
+    {
+        @* ─── 3-step premium progress strip ─── *@
+        <div class="co-steps">
+            <div class="co-step @(step >= 1 ? (step > 1 ? "done" : "active") : "")">
+                <span class="co-step__num">@(step > 1 ? "✓" : "1")</span><span class="co-step__lbl">Billing Details</span>
+            </div>
+            <div class="co-step__bar @(step > 1 ? "filled" : "")"></div>
+            <div class="co-step @(step >= 2 ? "active" : "")">
+                <span class="co-step__num">2</span><span class="co-step__lbl">Review</span>
+            </div>
+            <div class="co-step__bar"></div>
+            <div class="co-step">
+                <span class="co-step__num">3</span><span class="co-step__lbl">Payment</span>
+            </div>
+        </div>
+
+        <div class="cart-layout">
+            <div>
+                @if (!string.IsNullOrEmpty(error))
+                {
+                    <div style="background:#FEF2F2;color:#DC2626;padding:10px 14px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:14px">@error</div>
+                }
+
+                @if (step == 1)
+                {
+                    <div class="form-card co-card">
+                        <div class="co-card__title">
+                            <svg class="co-card__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                            Billing &amp; Contact Details
+                        </div>
+                        <p class="co-card__sub">Please verify your details before proceeding.</p>
+                        <div class="form-grid co-grid">
+                            <div class="form-group co-field">
+                                <label class="form-label">Full Name <span class="required">*</span></label>
+                                <span class="co-field__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+                                <input class="form-input co-input" autocapitalize="words" autocomplete="name"
+                                       @bind="billing.Name" placeholder="Student name" />
+                            </div>
+                            <div class="form-group co-field">
+                                <label class="form-label">Mobile <span class="required">*</span></label>
+                                <span class="co-field__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
+                                <input class="form-input co-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="10"
+                                       autocomplete="tel" @bind="billing.Phone" placeholder="10-digit mobile" />
+                            </div>
+                            <div class="form-group form-group--full co-field">
+                                <label class="form-label">Email</label>
+                                <span class="co-field__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/></svg></span>
+                                <input class="form-input co-input" type="email" autocomplete="email"
+                                       @bind="billing.Email" placeholder="your@email.com" />
+                            </div>
+                            <div class="form-group form-group--full co-field">
+                                <label class="form-label">Address</label>
+                                <span class="co-field__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg></span>
+                                <input class="form-input co-input" autocomplete="street-address"
+                                       @bind="billing.Address" placeholder="Flat / building / street / area / landmark (optional)" />
+                            </div>
+                            <div class="form-group co-field">
+                                <label class="form-label">City</label>
+                                <span class="co-field__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/></svg></span>
+                                <input class="form-input co-input" autocomplete="address-level2"
+                                       @bind="billing.City" placeholder="City" />
+                            </div>
+                            <div class="form-group co-field">
+                                <label class="form-label">State <span class="required">*</span></label>
+                                <span class="co-field__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+                                <select class="form-input co-input" @bind="billing.State">
+                                    @foreach (var s in States)
+                                    {
+                                        <option value="@s">@s</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="form-group co-field">
+                                <label class="form-label">Pincode</label>
+                                <span class="co-field__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/></svg></span>
+                                <input class="form-input co-input" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                                       autocomplete="postal-code" @bind="billing.Pincode" placeholder="6-digit" />
+                            </div>
+                            <div class="form-group co-field">
+                                <label class="form-label">GSTIN (Optional)</label>
+                                <span class="co-field__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v18l3-2 3 2 3-2 3 2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg></span>
+                                <input class="form-input co-input" @bind="billing.GstNumber" placeholder="For GST invoice (B2B)" />
+                                <div class="form-hint">Provide a GSTIN to receive a B2B tax invoice.</div>
+                            </div>
+                        </div>
+
+                        @if (summary.CheckoutAttributes.Any())
+                        {
+                            <div class="form-card__title" style="margin-top:20px">Additional Options</div>
+                            @foreach (var a in summary.CheckoutAttributes)
+                            {
+                                <div class="form-group form-group--full" style="margin-bottom:10px">
+                                    <label class="form-label">@(string.IsNullOrWhiteSpace(a.TextPrompt) ? a.Name : a.TextPrompt) @if (a.IsRequired) { <span class="required">*</span> }</label>
+                                    @switch (a.ControlType)
+                                    {
+                                        case "DropdownList":
+                                            <select class="form-input" value="@coSingle.GetValueOrDefault(a.Id)" @onchange="e => SetCoSingle(a.Id, e)">
+                                                <option value="">— select —</option>
+                                                @foreach (var v in a.Values) { <option value="@v.Id" selected="@(coSingle.GetValueOrDefault(a.Id) == v.Id)">@v.Name@CoPriceTag(v)</option> }
+                                            </select>
+                                            break;
+                                        case "RadioList":
+                                            <div class="attr-options">
+                                                @foreach (var v in a.Values)
+                                                {
+                                                    <label class="attr-option"><input type="radio" name="co-@a.Id" checked="@(coSingle.GetValueOrDefault(a.Id) == v.Id)" @onchange="() => SetCoSingleValue(a.Id, v.Id)" /> @v.Name@CoPriceTag(v)</label>
+                                                }
+                                            </div>
+                                            break;
+                                        case "Checkboxes":
+                                            <div class="attr-options">
+                                                @foreach (var v in a.Values)
+                                                {
+                                                    <label class="attr-option"><input type="checkbox" checked="@(coMulti.GetValueOrDefault(a.Id)?.Contains(v.Id) == true)" @onchange="e => ToggleCoMulti(a.Id, v.Id, e)" /> @v.Name@CoPriceTag(v)</label>
+                                                }
+                                            </div>
+                                            break;
+                                        case "MultilineTextBox":
+                                            <textarea class="form-input" rows="2" value="@coText.GetValueOrDefault(a.Id)" @onchange="e => SetCoText(a.Id, e)"></textarea>
+                                            break;
+                                        case "Datepicker":
+                                            <input type="date" class="form-input" value="@coText.GetValueOrDefault(a.Id)" @onchange="e => SetCoText(a.Id, e)" />
+                                            break;
+                                        default:
+                                            <input class="form-input" value="@coText.GetValueOrDefault(a.Id)" @onchange="e => SetCoText(a.Id, e)" />
+                                            break;
+                                    }
+                                </div>
+                            }
+                        }
+
+                        <div class="form-actions co-actions">
+                            <a href="/cart" class="co-back">← Continue Shopping</a>
+                            <button class="co-cta" @onclick="ToReview">
+                                Proceed To Payment <span class="co-cta__arrow">→</span>
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @* ─── Premium Review item cards ─── *@
+                    <div class="form-card co-card">
+                        <div class="co-card__title">
+                            <svg class="co-card__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                            Review Your Order
+                            <span class="co-card__count">@summary.ItemCount item@(summary.ItemCount == 1 ? "" : "s")</span>
+                        </div>
+                        <p class="co-card__sub">Verify the courses, batch info and delivery before payment.</p>
+
+                        <div class="co-review-list">
+                            @foreach (var item in summary.Items)
+                            {
+                                var savings = Math.Max(0m, (item.Mrp - item.UnitPrice) * item.Quantity);
+                                var pctOff = item.Mrp > 0 && item.Mrp > item.UnitPrice
+                                    ? (int)Math.Round((double)((item.Mrp - item.UnitPrice) / item.Mrp) * 100)
+                                    : 0;
+                                <div class="co-review">
+                                    <div class="co-review__media" aria-hidden="true">
+                                        <span class="co-review__init">@(string.IsNullOrWhiteSpace(item.Title) ? "•" : item.Title.Trim()[0].ToString().ToUpperInvariant())</span>
+                                    </div>
+                                    <div class="co-review__body">
+                                        <a href="/@item.Slug" class="co-review__title">@item.Title</a>
+                                        <div class="co-review__meta">
+                                            <span class="bs-badge bs-badge--@CoBatchClass(item.BatchStatus)">
+                                                <span class="bs-badge__dot"></span>@item.BatchStatusText
+                                            </span>
+                                            @if (!string.IsNullOrWhiteSpace(item.FacultyName))
+                                            {
+                                                <span class="co-review__chip">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                                                    @item.FacultyName
+                                                </span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(item.ModeName))
+                                            {
+                                                <span class="co-review__chip">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="14" rx="2"/><path d="M2 9h20"/></svg>
+                                                    @item.ModeName
+                                                </span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(item.Attributes))
+                                        {
+                                            <div class="co-review__attrs">@item.Attributes</div>
+                                        }
+                                        <div class="co-review__ed">
+                                            <div class="co-review__ed-row co-review__ed-row--orange">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                                                <span class="co-review__ed-lbl">Lecture Access</span>
+                                                <strong>@item.LectureAccessTiming</strong>
+                                            </div>
+                                            <div class="co-review__ed-row co-review__ed-row--blue">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.27 6.96 8.73 5.04 8.73-5.04"/><path d="M12 22.08V12"/></svg>
+                                                <span class="co-review__ed-lbl">Notes Dispatch</span>
+                                                <strong>@item.NotesDispatchTimeline</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="co-review__price">
+                                        <div class="co-review__now">₹@((item.UnitPrice * item.Quantity).ToString("N0"))</div>
+                                        @if (item.Mrp > item.UnitPrice)
+                                        {
+                                            <div class="co-review__mrp">₹@((item.Mrp * item.Quantity).ToString("N0"))</div>
+                                            @if (pctOff > 0)
+                                            {
+                                                <div class="co-review__off">@pctOff% OFF</div>
+                                            }
+                                        }
+                                        @if (savings > 0)
+                                        {
+                                            <div class="co-review__save">You save ₹@savings.ToString("N0")</div>
+                                        }
+                                        @if (isFranchisee && item.Quantity > 1)
+                                        {
+                                            <div class="co-review__qty">Qty &times; @item.Quantity</div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* ─── Profile-style Billing Details card ─── *@
+                    <div class="form-card co-card co-bill">
+                        <div class="co-card__title">
+                            <svg class="co-card__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                            Billing Details
+                            <button type="button" class="co-bill__edit" @onclick="() => step = 1" aria-label="Edit billing">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+                                Edit
+                            </button>
+                        </div>
+                        <div class="co-bill__head">
+                            <div class="co-bill__avatar" aria-hidden="true">
+                                @(string.IsNullOrWhiteSpace(billing.Name) ? "?" : new string(billing.Name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(s => s[0]).ToArray()).ToUpperInvariant())
+                            </div>
+                            <div class="co-bill__who">
+                                <div class="co-bill__name">@billing.Name</div>
+                                <div class="co-bill__sub">@billing.Phone @(string.IsNullOrWhiteSpace(billing.Email) ? "" : " · " + billing.Email)</div>
+                            </div>
+                        </div>
+                        <div class="co-bill__rows">
+                            <div class="co-bill__row">
+                                <span class="co-bill__row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg></span>
+                                <div>
+                                    <div class="co-bill__row-lbl">Address</div>
+                                    <div class="co-bill__row-val">@(string.IsNullOrWhiteSpace(billing.Address) ? "—" : billing.Address)</div>
+                                </div>
+                            </div>
+                            <div class="co-bill__row">
+                                <span class="co-bill__row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/></svg></span>
+                                <div>
+                                    <div class="co-bill__row-lbl">City</div>
+                                    <div class="co-bill__row-val">@(string.IsNullOrWhiteSpace(billing.City) ? "—" : billing.City)</div>
+                                </div>
+                            </div>
+                            <div class="co-bill__row">
+                                <span class="co-bill__row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+                                <div>
+                                    <div class="co-bill__row-lbl">State</div>
+                                    <div class="co-bill__row-val">@billing.State @(string.IsNullOrWhiteSpace(billing.Pincode) ? "" : " · " + billing.Pincode)</div>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(billing.GstNumber))
+                            {
+                                <div class="co-bill__row">
+                                    <span class="co-bill__row-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v18l3-2 3 2 3-2 3 2V8z"/><path d="M14 2v6h6"/></svg></span>
+                                    <div>
+                                        <div class="co-bill__row-lbl">GSTIN</div>
+                                        <div class="co-bill__row-val">@billing.GstNumber</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* ── Referred By (MANDATORY) — admin-managed, snapshotted onto order ── *@
+                    <div class="form-card co-card co-ref @(referralTouched && string.IsNullOrWhiteSpace(selectedReferralId) ? "co-ref--err" : "")">
+                        <div class="co-card__title">
+                            <svg class="co-card__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                            Referred By <span class="required">*</span>
+                        </div>
+                        <p class="co-card__sub">Tell us who referred you so we can thank them.</p>
+                        @if (referralOptions == null)
+                        {
+                            <p style="color:var(--co-mute);font-size:13px">Loading options…</p>
+                        }
+                        else if (referralOptions.Count == 0)
+                        {
+                            <p style="color:var(--co-mute);font-size:13px">No referral sources configured.</p>
+                        }
+                        else
+                        {
+                            <div class="co-ref__field co-field">
+                                <span class="co-field__ico">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                </span>
+                                <select class="form-input co-input" @bind="selectedReferralId" @bind:after="OnReferralChanged">
+                                    <option value="">Select referral source…</option>
+                                    @foreach (var opt in referralOptions)
+                                    {
+                                        <option value="@opt.Id">@opt.Name@(opt.Type != ReferralSourceType.Other && opt.Type != ReferralSourceType.Self ? " — " + TypeShort(opt.Type) : "")</option>
+                                    }
+                                </select>
+                            </div>
+                            @if (SelectedOption != null && SelectedOption.Type == ReferralSourceType.Self)
+                            {
+                                <div class="co-ref__ok">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                    Thanks for finding us yourself.
+                                </div>
+                            }
+                            else if (SelectedOption != null && SelectedOption.Type == ReferralSourceType.Other)
+                            {
+                                <div class="co-ref__other">
+                                    <label class="co-ref__other-lbl">Please specify</label>
+                                    <input class="co-ref__other-inp" maxlength="100" placeholder="Where did you hear about us?" @bind="customReferralText" />
+                                    <div class="co-ref__other-count">@((customReferralText ?? string.Empty).Length) / 100</div>
+                                </div>
+                            }
+                            else if (SelectedOption != null)
+                            {
+                                <div class="co-ref__hint">
+                                    Picked: <strong>@SelectedOption.Name</strong> &middot; <em>@TypeShort(SelectedOption.Type)</em>
+                                </div>
+                            }
+                            @if (referralTouched && string.IsNullOrWhiteSpace(selectedReferralId))
+                            {
+                                <div class="co-ref__err">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                                    Please select a referral source to continue.
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    @* Payment Method now lives inside the sticky sidebar (co-rail) — directly above
+                       the Pay button so users don't have to scroll back up after selecting a gateway. *@
+
+                    @* Back link only on Step 2 — Pay button lives inside the order summary on the right *@
+                    <div class="co-actions co-actions--review">
+                        <button type="button" class="co-back" @onclick="() => step = 1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            Back to Billing
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="co-rail">
+                <div class="order-summary co-summary">
+                    <div class="co-summary__header">
+                        <h3>
+                            <svg class="co-summary__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.27 6.96 8.73 5.04 8.73-5.04"/><path d="M12 22.08V12"/></svg>
+                            Order Summary
+                        </h3>
+                        <span class="co-summary__count">@summary.ItemCount item@(summary.ItemCount == 1 ? "" : "s")</span>
+                    </div>
+                    <div class="co-summary__body">
+                        <div class="co-row"><span class="label">Subtotal</span><span class="value">₹@summary.Subtotal.ToString("N0")</span></div>
+                        @if (summary.Discount > 0)
+                        {
+                            <div class="co-row co-row--save"><span class="label">Discount</span><span class="value">− ₹@summary.Discount.ToString("N0")</span></div>
+                        }
+                        @if (summary.CheckoutAttributesAmount != 0)
+                        {
+                            <div class="co-row"><span class="label">Add-ons</span><span class="value">@(summary.CheckoutAttributesAmount > 0 ? "+ " : "− ")₹@Math.Abs(summary.CheckoutAttributesAmount).ToString("N0")</span></div>
+                        }
+                        <div class="co-row co-row--gst"><span class="label">GST (18%, incl.)</span><span class="value">₹@summary.GstIncluded.ToString("N0")</span></div>
+                        <div class="co-row co-row--total"><span class="label">Grand Total</span><span class="value">₹@summary.Total.ToString("N0")</span></div>
+                    </div>
+                </div>
+
+                @* ── Shared motivational nudge — title-only variant. Lives OUTSIDE the order-summary
+                      box (which has overflow:hidden) so it always renders correctly on both steps. ── *@
+                <CheckoutMotivationCard Compact="true" />
+
+                @if (step == 2)
+                {
+                    var referralMissing = referralOptions != null && referralOptions.Count > 0 && string.IsNullOrWhiteSpace(selectedReferralId);
+                    var busy = placing || _popupOpen;
+
+                    @* ── Sidebar Payment Method — compact radio cards, visible ONLY on Step 2
+                          (Review). The user picks a gateway here and pays without scrolling. ── *@
+                    <div class="co-pay-rail co-pay-rail--card" role="radiogroup" aria-label="Payment method">
+                        <div class="co-pay-rail__head">
+                            <svg class="co-pay-rail__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                            <span>Payment Method</span>
+                        </div>
+                        @if (razorpayEnabled)
+                        {
+                            <label class="co-pay-rail__card @(selectedGateway == "razorpay" ? "is-selected" : "")">
+                                <input type="radio" name="payRail" class="co-pay-rail__radio" checked="@(selectedGateway == "razorpay")" @onchange="SelectRazorpay" />
+                                <span class="co-pay-rail__dot" aria-hidden="true"></span>
+                                <span class="co-pay-rail__body">
+                                    <span class="co-pay-rail__title">Razorpay</span>
+                                    <span class="co-pay-rail__desc">Cards • UPI • NetBanking • Wallets</span>
+                                </span>
+                                <svg class="co-pay-rail__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                            </label>
+                        }
+                        @if (easebuzzEnabled)
+                        {
+                            <label class="co-pay-rail__card @(selectedGateway == "easebuzz" ? "is-selected" : "")">
+                                <input type="radio" name="payRail" class="co-pay-rail__radio" checked="@(selectedGateway == "easebuzz")" @onchange="SelectEasebuzz" />
+                                <span class="co-pay-rail__dot" aria-hidden="true"></span>
+                                <span class="co-pay-rail__body">
+                                    <span class="co-pay-rail__title">Easebuzz</span>
+                                    <span class="co-pay-rail__desc">Cards • UPI • NetBanking • Wallets</span>
+                                </span>
+                                <svg class="co-pay-rail__check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                            </label>
+                        }
+                    </div>
+
+                    <div class="co-pay-wrap">
+                        <button class="co-cta co-cta--pay @(referralMissing ? "co-cta--locked" : "") @(busy ? "co-cta--busy" : "")"
+                                disabled="@busy" @onclick="PlaceAndPay">
+                            @if (busy)
+                            {
+                                <span class="co-spinner" aria-hidden="true"></span>
+                                <span>@(_popupOpen ? "Awaiting payment…" : "Verifying…")</span>
+                            }
+                            else
+                            {
+                                @if (referralMissing)
+                                {
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                }
+                                <span>@($"Pay ₹{summary.Total:N0}")</span>
+                                <span class="co-cta__arrow">→</span>
+                            }
+                        </button>
+                        @if (referralMissing)
+                        {
+                            <div class="co-cta__lockmsg">Select <strong>Referred By</strong> to enable payment.</div>
+                        }
+                    </div>
+                }
+
+                @* ─── Premium help / support card ─── *@
+                <aside class="co-help">
+                    <div class="co-help__title">
+                        <svg class="co-help__title-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                        Need Help?
+                    </div>
+                    <a href="tel:9975242929" class="co-help__line">
+                        <span class="co-help__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
+                        <span class="co-help__txt"><strong>Call Support</strong><small>9975242929</small></span>
+                    </a>
+                    <a href="https://wa.me/919975242929" target="_blank" rel="noopener" class="co-help__line">
+                        <span class="co-help__ico co-help__ico--wa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+                        <span class="co-help__txt"><strong>WhatsApp Support</strong><small>Chat with us instantly</small></span>
+                    </a>
+                    <div class="co-help__hours">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        10 AM – 8 PM (Mon–Sat)
+                    </div>
+                </aside>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(toast))
+    {
+        <div class="co-toast" role="alert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            <span>@toast</span>
+        </div>
+    }
+</div>
+
+@*  Premium Referred By card styles (scoped to /checkout) *@
+<style>
+    .rb-card .form-card__title{display:flex;align-items:center;gap:8px}
+    .rb-card .rb-card__title-ico{width:18px;height:18px;color:var(--orange)}
+    .rb-card__sub{font-size:13px;color:var(--gray-500);line-height:1.55;margin:0 0 12px}
+    .rb-select{position:relative;display:flex;align-items:center}
+    .rb-select__lead{position:absolute;left:14px;width:18px;height:18px;color:var(--orange);pointer-events:none}
+    .rb-select__caret{position:absolute;right:14px;width:16px;height:16px;color:var(--gray-400);pointer-events:none;transition:transform .2s}
+    .rb-select__input{flex:1;width:100%;padding:13px 42px 13px 42px;border-radius:14px;font-size:14px;font-weight:600;color:var(--navy);background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border:1.5px solid rgba(11,69,171,.25);outline:none;cursor:pointer;appearance:none;box-shadow:0 6px 14px -10px rgba(11,31,58,.35);transition:border-color .2s,box-shadow .2s,background .2s}
+    .rb-select__input:hover{border-color:rgba(11,69,171,.45)}
+    .rb-select__input:focus{border-color:var(--orange);box-shadow:0 0 0 4px rgba(10,199,229,.18),0 8px 18px -10px rgba(10,199,229,.4);background:#fff}
+    .rb-select__input:focus + .rb-select__caret{transform:rotate(180deg)}
+    .rb-hint{margin-top:10px;font-size:12.5px;color:var(--gray-500);padding:8px 12px;border-radius:10px;background:#f8fafc;border:1px solid var(--gray-100)}
+    .rb-hint--ok{display:inline-flex;align-items:center;gap:8px;color:#0B45AB;background:#E6F9FD;border-color:rgba(11,69,171,.3);font-weight:600}
+    .rb-hint--ok svg{width:14px;height:14px}
+    .rb-other{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+    .rb-other__lbl{font-size:12px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.6px}
+    .rb-other__input{padding:11px 14px;border-radius:12px;font-size:14px;border:1.5px solid var(--gray-200);outline:none;transition:border-color .2s,box-shadow .2s}
+    .rb-other__input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(10,199,229,.18)}
+    .rb-other__count{font-size:11px;color:var(--gray-400);align-self:flex-end}
+    @@media(max-width:639px){.rb-select__input{padding:14px 40px;font-size:15px}}
+
+    /* ════════════════════════════════════════════════════════════════
+       CHECKOUT V2 — Premium redesign (scoped to .checkout-v2 only)
+       Tokens (per spec):
+         primary  #163A70   accent #0AA9C4   success #0B45AB
+         bg       #F8FAFC   card   #FFFFFF
+       ════════════════════════════════════════════════════════════════ */
+    .checkout-v2{--co-primary:#163A70;--co-primary-2:#1f4d92;--co-accent:#0AA9C4;--co-accent-2:#0B45AB;--co-ink:#0F1B33;--co-mute:#64748B;--co-line:#E5ECF4;--co-bg:#F8FAFC;--co-success:#0B45AB;--co-radius:24px}
+    .checkout-v2{background:linear-gradient(180deg,#F8FAFC 0%,#FDFEFF 360px);padding-top:6px;padding-bottom:24px}
+
+    /* ── Breadcrumb ── */
+    .checkout-v2 .co-crumbs{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:20px 0;font-size:14px;font-weight:500;color:var(--co-mute);line-height:1.4}
+    .checkout-v2 .co-crumbs a{color:var(--co-mute);font-weight:500;text-decoration:none;transition:color .15s}
+    .checkout-v2 .co-crumbs a:hover{color:var(--co-primary);text-decoration:underline;text-underline-offset:3px}
+    .checkout-v2 .co-crumbs__sep{color:#cbd5e1;font-weight:500;user-select:none}
+    .checkout-v2 .co-crumbs__current{color:#163A70;font-weight:700}
+
+    /* ── Compact premium hero (soft blue gradient) ── */
+    .checkout-v2 .co-hero{position:relative;background:linear-gradient(135deg,#EFF4FB 0%,#E4ECF7 55%,#DCE6F4 100%);color:var(--co-primary);border-radius:24px;padding:22px 28px;margin:0 0 18px;overflow:hidden;border:1px solid #DBE5F2;box-shadow:0 10px 30px -22px rgba(22,58,112,.28)}
+    .checkout-v2 .co-hero::before{content:"";position:absolute;inset:0;background:radial-gradient(620px 200px at 100% -10%,rgba(22,58,112,.10),transparent 60%),radial-gradient(420px 160px at -10% 110%,rgba(10,169,196,.10),transparent 60%);pointer-events:none}
+    .checkout-v2 .co-hero__title{position:relative;font-size:22px;font-weight:800;letter-spacing:-.2px;display:flex;align-items:center;gap:10px;color:var(--co-primary)}
+    .checkout-v2 .co-hero__lock{width:22px;height:22px;color:var(--co-accent)}
+    .checkout-v2 .co-hero__sub{position:relative;margin:4px 0 14px;font-size:13.5px;color:#475569;font-weight:500;max-width:680px}
+    .checkout-v2 .co-hero__trust{position:relative;display:flex;flex-wrap:wrap;gap:8px}
+    .checkout-v2 .co-hero__trust span{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid #DBE5F2;color:var(--co-primary);font-size:12.5px;font-weight:600;padding:7px 12px;border-radius:999px;box-shadow:0 2px 6px -4px rgba(22,58,112,.18)}
+    .checkout-v2 .co-hero__trust svg{width:14px;height:14px;color:var(--co-success)}
+
+    /* ── 3-step progress ── */
+    .checkout-v2 .co-steps{display:flex;align-items:center;gap:10px;padding:4px 0 16px;max-width:760px;margin:0 auto}
+    .checkout-v2 .co-step{display:flex;align-items:center;gap:10px;color:var(--co-mute);font-size:13px;font-weight:600;white-space:nowrap}
+    .checkout-v2 .co-step__num{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#EEF2F7;color:var(--co-mute);font-weight:800;font-size:13px;border:2px solid #EEF2F7;transition:all .25s}
+    .checkout-v2 .co-step.active{color:var(--co-accent)}
+    .checkout-v2 .co-step.active .co-step__num{background:linear-gradient(135deg,#0AA9C4,#0B45AB);color:#fff;border-color:#9DC1F2;box-shadow:0 6px 14px -6px rgba(10,169,196,.55)}
+    .checkout-v2 .co-step.done{color:var(--co-success)}
+    .checkout-v2 .co-step.done .co-step__num{background:var(--co-success);color:#fff;border-color:#C9F1F9}
+    .checkout-v2 .co-step__bar{flex:1;height:3px;background:#EEF2F7;border-radius:999px}
+    .checkout-v2 .co-step__bar.filled{background:linear-gradient(90deg,#0B45AB 0%,#0AC7E5 100%)}
+
+    /* ── Layout ── */
+    .checkout-v2 .cart-layout{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:24px;align-items:start}
+    .checkout-v2 .co-rail{display:flex;flex-direction:column;gap:16px;position:sticky;top:24px;align-self:start}
+
+    /* ── Premium card base ── */
+    .checkout-v2 .form-card,.checkout-v2 .co-card{background:#fff;border:1px solid var(--co-line);border-radius:var(--co-radius);padding:32px;box-shadow:0 8px 28px -18px rgba(15,27,51,.18);animation:coFade .4s ease both}
+    .checkout-v2 .co-card__title{font-size:17px;font-weight:700;color:var(--co-ink);display:flex;align-items:center;gap:10px;letter-spacing:-.1px}
+    .checkout-v2 .co-card__ico{width:20px;height:20px;color:var(--co-accent)}
+    .checkout-v2 .co-card__sub{margin:4px 0 18px;font-size:13px;color:var(--co-mute);font-weight:500}
+
+    /* ── Grid ── */
+    .checkout-v2 .co-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 18px}
+    .checkout-v2 .co-grid .form-group--full{grid-column:1 / -1}
+
+    /* ── Premium inputs with SVG icon prefix ── */
+    .checkout-v2 .co-field{position:relative;display:flex;flex-direction:column}
+    .checkout-v2 .co-field .form-label{font-size:12.5px;font-weight:600;color:var(--co-ink);letter-spacing:.1px;margin-bottom:6px}
+    .checkout-v2 .co-field .required{color:var(--co-accent)}
+    .checkout-v2 .co-field__ico{position:absolute;left:18px;bottom:20px;width:18px;height:18px;color:var(--co-mute);pointer-events:none;display:inline-flex;align-items:center;justify-content:center;transition:color .2s}
+    .checkout-v2 .co-field__ico svg{width:18px;height:18px;display:block}
+    .checkout-v2 .co-input{height:58px;width:100%;padding:0 16px 0 48px;border-radius:14px;border:1.5px solid #E5ECF4;background:#fff;font-size:14.5px;font-weight:500;color:var(--co-ink);outline:none;transition:border-color .18s,box-shadow .18s,background .18s}
+    .checkout-v2 .co-input::placeholder{color:#94A3B8;font-weight:500}
+    .checkout-v2 .co-input:hover{border-color:#cad6e6}
+    .checkout-v2 .co-input:focus{border-color:var(--co-accent);box-shadow:0 0 0 4px rgba(10,169,196,.15);background:#FBFEFF}
+    .checkout-v2 .co-input:focus ~ .co-field__ico,.checkout-v2 .co-field:focus-within .co-field__ico{color:var(--co-accent)}
+    .checkout-v2 select.co-input{appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%2364748B' d='M6 7.5L0 1.5l1.5-1.5L6 4.5 10.5 0 12 1.5z'/></svg>") right 18px center/12px 8px no-repeat;padding-right:42px;cursor:pointer}
+    .checkout-v2 .form-hint{font-size:12px;color:var(--co-mute);margin-top:6px;font-weight:500}
+
+    /* ── Action row ── */
+    .checkout-v2 .co-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px;padding-top:22px;border-top:1px dashed #E6ECF3}
+    .checkout-v2 .co-back{display:inline-flex;align-items:center;gap:6px;color:var(--co-mute);font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:12px;border:1.5px solid #E5ECF4;background:#fff;transition:color .2s,border-color .2s,background .2s}
+    .checkout-v2 .co-back:hover{color:var(--co-primary);border-color:#cad6e6;background:#F8FAFC}
+    .checkout-v2 .co-cta{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:58px;min-width:240px;padding:0 28px;border:0;border-radius:14px;background:linear-gradient(135deg,#0AA9C4 0%,#0B45AB 100%);color:#fff;font-size:15px;font-weight:700;letter-spacing:.2px;cursor:pointer;box-shadow:0 14px 28px -12px rgba(10,169,196,.55);transition:transform .15s,box-shadow .2s,filter .2s}
+    .checkout-v2 .co-cta:hover{transform:translateY(-1px);box-shadow:0 18px 34px -12px rgba(10,169,196,.6);filter:brightness(1.03)}
+    .checkout-v2 .co-cta:active{transform:translateY(0)}
+    .checkout-v2 .co-cta[disabled]{opacity:.7;cursor:wait;filter:grayscale(.2)}
+    .checkout-v2 .co-cta__arrow{transition:transform .2s}
+    .checkout-v2 .co-cta:hover .co-cta__arrow{transform:translateX(3px)}
+
+    /* ── Order Summary ── */
+    .checkout-v2 .co-summary{background:#fff;border:1px solid var(--co-line);border-radius:var(--co-radius);overflow:hidden;box-shadow:0 14px 32px -22px rgba(15,27,51,.22);animation:coFade .45s ease both}
+    .checkout-v2 .co-summary__header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:18px 22px;background:linear-gradient(135deg,#163A70 0%,#1f4d92 100%);color:#fff}
+    .checkout-v2 .co-summary__header h3{margin:0;font-size:16px;font-weight:700;letter-spacing:-.1px;display:flex;align-items:center;gap:8px}
+    .checkout-v2 .co-summary__ico{width:18px;height:18px;color:#FFB76E}
+    .checkout-v2 .co-summary__count{font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2)}
+    .checkout-v2 .co-summary__body{padding:18px 22px 22px}
+    .checkout-v2 .co-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;font-size:14px;color:var(--co-ink)}
+    .checkout-v2 .co-row .label{color:var(--co-mute);font-weight:500}
+    .checkout-v2 .co-row .value{font-weight:700;color:var(--co-ink)}
+    .checkout-v2 .co-row--save .label,.checkout-v2 .co-row--save .value{color:var(--co-success);font-weight:700}
+    .checkout-v2 .co-row--gst{border-top:1px dashed #E6ECF3;margin-top:4px;padding-top:12px}
+    .checkout-v2 .co-row--total{margin-top:10px;padding:14px 16px;background:linear-gradient(135deg,#F2FBFE,#E6F9FD);border-radius:14px;border:1px solid #B8E7F2}
+    .checkout-v2 .co-row--total .label{color:var(--co-ink);font-weight:700;font-size:15px}
+    .checkout-v2 .co-row--total .value{color:var(--co-accent);font-weight:800;font-size:20px;letter-spacing:-.3px}
+
+    /* ── Pay CTA inside summary ── */
+    .checkout-v2 .co-cta--pay{display:flex;width:100%;margin-top:16px;height:58px}
+
+    /* ── Trust strip ── */
+    .checkout-v2 .co-trust{list-style:none;margin:16px 0 8px;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .checkout-v2 .co-trust li{font-size:12px;color:var(--co-ink);font-weight:600;background:#F8FAFC;border:1px solid var(--co-line);padding:9px 11px;border-radius:12px;display:flex;align-items:center;gap:8px}
+    .checkout-v2 .co-trust li svg{width:14px;height:14px;color:var(--co-success);flex:0 0 auto}
+    .checkout-v2 .co-pay-logos{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+    .checkout-v2 .co-pay-logos span{font-size:11px;font-weight:600;color:var(--co-mute);background:#F1F5F9;padding:5px 10px;border-radius:8px;border:1px solid var(--co-line);letter-spacing:.4px;text-transform:uppercase}
+
+    /* ── Premium Help card ── */
+    .checkout-v2 .co-help{padding:22px;border-radius:var(--co-radius);background:#fff;border:1px solid var(--co-line);box-shadow:0 10px 24px -20px rgba(15,27,51,.22);animation:coFade .5s ease both}
+    .checkout-v2 .co-help__title{font-size:15px;font-weight:700;color:var(--co-ink);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+    .checkout-v2 .co-help__title-ico{width:18px;height:18px;color:var(--co-accent)}
+    .checkout-v2 .co-help__line{display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:10px;border-radius:14px;background:#F8FAFC;border:1px solid var(--co-line);text-decoration:none;color:var(--co-ink);transition:transform .15s,background .2s,border-color .2s,box-shadow .2s}
+    .checkout-v2 .co-help__line:hover{transform:translateY(-1px);background:#F2FBFE;border-color:#B8E7F2;box-shadow:0 8px 18px -14px rgba(10,169,196,.45)}
+    .checkout-v2 .co-help__ico{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#FFF1E0,#FFE3C7);color:var(--co-accent);display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+    .checkout-v2 .co-help__ico--wa{background:linear-gradient(135deg,#E6F9FD,#C9F1F9);color:#0B45AB}
+    .checkout-v2 .co-help__ico svg{width:18px;height:18px}
+    .checkout-v2 .co-help__txt{display:flex;flex-direction:column;line-height:1.3}
+    .checkout-v2 .co-help__txt strong{font-size:13.5px;font-weight:700;color:var(--co-ink)}
+    .checkout-v2 .co-help__txt small{font-size:12px;color:var(--co-mute);font-weight:500;margin-top:2px}
+    .checkout-v2 .co-help__hours{margin-top:6px;font-size:12.5px;color:var(--co-mute);font-weight:500;display:flex;align-items:center;gap:6px;padding-top:10px;border-top:1px dashed var(--co-line)}
+    .checkout-v2 .co-help__hours svg{width:14px;height:14px;color:var(--co-primary)}
+
+    /* ── Animations ── */
+    @@keyframes coFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+    /* ════════════════════════════════════════════════════════════════
+       Responsive — tablet & mobile
+       ════════════════════════════════════════════════════════════════ */
+    @@media(max-width:1024px){
+        .checkout-v2 .cart-layout{grid-template-columns:minmax(0,1fr) 340px;gap:18px}
+        .checkout-v2 .form-card,.checkout-v2 .co-card{padding:26px}
+        .checkout-v2 .co-hero{padding:20px 22px}
+    }
+    @@media(max-width:860px){
+        .checkout-v2 .cart-layout{grid-template-columns:1fr}
+        .checkout-v2 .co-rail{position:static}
+    }
+    @@media(max-width:640px){
+        .checkout-v2{padding-top:0;padding-bottom:88px}
+        .checkout-v2 .co-crumbs{margin:14px 0;font-size:13px;gap:8px}
+        .checkout-v2 .co-hero{padding:18px;border-radius:18px;margin:0 0 14px}
+        .checkout-v2 .co-hero__title{font-size:18px}
+        .checkout-v2 .co-hero__lock{width:20px;height:20px}
+        .checkout-v2 .co-hero__sub{font-size:13px}
+        .checkout-v2 .co-hero__trust span{font-size:11.5px;padding:6px 10px}
+        .checkout-v2 .co-steps{gap:6px;padding-bottom:14px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+        .checkout-v2 .co-step__num{width:28px;height:28px;font-size:12.5px}
+        .checkout-v2 .co-step__lbl{display:none}
+        .checkout-v2 .co-step.active .co-step__lbl{display:inline}
+        .checkout-v2 .form-card,.checkout-v2 .co-card{padding:20px;border-radius:18px}
+        .checkout-v2 .co-grid{grid-template-columns:1fr;gap:14px}
+        .checkout-v2 .co-input{height:54px;font-size:14px;padding-left:46px}
+        .checkout-v2 .co-field__ico{bottom:18px;left:16px}
+        .checkout-v2 .co-actions{flex-direction:column-reverse;align-items:stretch;gap:12px}
+        .checkout-v2 .co-cta{width:100%;min-width:0;height:54px;font-size:14.5px}
+        .checkout-v2 .co-back{justify-content:center}
+        .checkout-v2 .co-trust{grid-template-columns:1fr 1fr}
+        .checkout-v2 .co-row--total .value{font-size:18px}
+        .checkout-v2 .co-help{padding:18px;border-radius:18px}
+    }
+
+    /* ── Mobile sticky Proceed bar (Step 1 only) ── */
+    @@media(max-width:640px){
+        .checkout-v2 .co-actions{position:sticky;bottom:0;background:#fff;margin-left:-20px;margin-right:-20px;margin-bottom:-20px;padding:14px 16px;border-top:1px solid var(--co-line);box-shadow:0 -10px 24px -16px rgba(15,27,51,.18);z-index:20;border-radius:0 0 18px 18px}
+    }
+
+    /* ════════════════════════════════════════════════════════════════
+       STEP 2 — Review & Payment
+       ════════════════════════════════════════════════════════════════ */
+    .checkout-v2 .co-card__count{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--co-primary);background:#EFF4FB;border:1px solid #DBE5F2;padding:4px 10px;border-radius:999px}
+
+    /* ── Review item card ── */
+    .checkout-v2 .co-review-list{display:flex;flex-direction:column;gap:14px}
+    .checkout-v2 .co-review{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:18px;align-items:flex-start;padding:16px;border-radius:20px;background:#fff;border:1px solid var(--co-line);box-shadow:0 6px 18px -14px rgba(15,27,51,.18);transition:transform .15s,box-shadow .2s,border-color .2s}
+    .checkout-v2 .co-review:hover{transform:translateY(-1px);box-shadow:0 12px 26px -16px rgba(15,27,51,.25);border-color:#cbd5e1}
+    .checkout-v2 .co-review__media{position:relative;width:120px;height:120px;border-radius:16px;background:linear-gradient(135deg,#163A70 0%,#1f4d92 60%,#2a5fb0 100%);color:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:0 0 auto}
+    .checkout-v2 .co-review__media::after{content:"";position:absolute;inset:0;background:radial-gradient(180px 80px at 100% 0,rgba(10,169,196,.35),transparent 60%),radial-gradient(140px 60px at 0 100%,rgba(255,255,255,.12),transparent 60%)}
+    .checkout-v2 .co-review__init{position:relative;font-size:42px;font-weight:800;letter-spacing:-1px;text-shadow:0 2px 6px rgba(0,0,0,.18);z-index:1}
+    .checkout-v2 .co-review__lvl{position:absolute;left:8px;bottom:8px;z-index:1;font-size:10.5px;font-weight:700;color:#fff;background:rgba(0,0,0,.32);backdrop-filter:blur(4px);padding:3px 8px;border-radius:999px;letter-spacing:.5px;text-transform:uppercase}
+    .checkout-v2 .co-review__body{min-width:0;display:flex;flex-direction:column;gap:8px}
+    .checkout-v2 .co-review__title{font-size:15px;font-weight:700;color:var(--co-ink);text-decoration:none;line-height:1.35;transition:color .2s}
+    .checkout-v2 .co-review__title:hover{color:var(--co-accent)}
+    .checkout-v2 .co-review__meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+    .checkout-v2 .co-review__chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--co-mute);background:#F8FAFC;border:1px solid var(--co-line);padding:4px 9px;border-radius:999px}
+    .checkout-v2 .co-review__chip svg{width:12px;height:12px;color:var(--co-primary)}
+    .checkout-v2 .co-review__attrs{font-size:12px;color:var(--co-mute);font-weight:500}
+    .checkout-v2 .co-review__ed{display:flex;flex-direction:column;gap:6px;margin-top:2px}
+    .checkout-v2 .co-review__ed-row{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 10px;border-radius:10px;font-weight:500}
+    .checkout-v2 .co-review__ed-row strong{margin-left:auto;font-weight:700;color:var(--co-ink)}
+    .checkout-v2 .co-review__ed-row svg{width:14px;height:14px;flex:0 0 auto}
+    .checkout-v2 .co-review__ed-row--orange{background:#E6F9FD;color:#0B45AB;border:1px solid rgba(11,69,171,.24)}
+    .checkout-v2 .co-review__ed-row--orange svg{color:var(--co-accent)}
+    .checkout-v2 .co-review__ed-row--blue{background:#E6F9FD;color:#0B45AB;border:1px solid rgba(11,69,171,.24)}
+    .checkout-v2 .co-review__ed-row--blue svg{color:var(--co-primary)}
+    .checkout-v2 .co-review__price{display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:120px;text-align:right}
+    .checkout-v2 .co-review__now{font-size:20px;font-weight:800;color:var(--co-ink);letter-spacing:-.3px}
+    .checkout-v2 .co-review__mrp{font-size:13px;font-weight:600;color:#94A3B8;text-decoration:line-through}
+    .checkout-v2 .co-review__off{display:inline-block;font-size:11px;font-weight:800;color:#fff;background:linear-gradient(135deg,#0B45AB,#0AC7E5);padding:3px 8px;border-radius:999px;letter-spacing:.4px}
+    .checkout-v2 .co-review__save{font-size:11.5px;font-weight:700;color:#0B45AB}
+    .checkout-v2 .co-review__qty{font-size:11px;font-weight:600;color:var(--co-mute);background:#F1F5F9;padding:3px 8px;border-radius:6px;border:1px solid var(--co-line)}
+
+    /* ── Profile-style Billing card ── */
+    .checkout-v2 .co-bill .co-card__title{align-items:center}
+    .checkout-v2 .co-bill__edit{margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:999px;background:#fff;color:var(--co-primary);font-size:12.5px;font-weight:700;border:1.5px solid #DBE5F2;cursor:pointer;transition:background .2s,border-color .2s,transform .15s,box-shadow .2s}
+    .checkout-v2 .co-bill__edit:hover{background:#EFF4FB;border-color:var(--co-primary);transform:translateY(-1px);box-shadow:0 6px 14px -8px rgba(22,58,112,.4)}
+    .checkout-v2 .co-bill__edit svg{width:13px;height:13px}
+    .checkout-v2 .co-bill__head{display:flex;align-items:center;gap:14px;margin:4px 0 16px;padding:14px;border-radius:16px;background:linear-gradient(135deg,#F8FAFC,#FFF)}
+    .checkout-v2 .co-bill__avatar{width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#163A70,#1f4d92);color:#fff;font-weight:800;font-size:19px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:.5px;flex:0 0 auto;box-shadow:0 6px 14px -8px rgba(22,58,112,.55)}
+    .checkout-v2 .co-bill__who{min-width:0;display:flex;flex-direction:column;line-height:1.35}
+    .checkout-v2 .co-bill__name{font-size:15.5px;font-weight:700;color:var(--co-ink)}
+    .checkout-v2 .co-bill__sub{font-size:12.5px;color:var(--co-mute);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .checkout-v2 .co-bill__rows{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+    .checkout-v2 .co-bill__row{display:flex;align-items:flex-start;gap:10px;padding:10px;border-radius:12px;background:#F8FAFC;border:1px solid var(--co-line)}
+    .checkout-v2 .co-bill__row-ico{width:30px;height:30px;border-radius:8px;background:#fff;border:1px solid var(--co-line);color:var(--co-primary);display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+    .checkout-v2 .co-bill__row-ico svg{width:15px;height:15px}
+    .checkout-v2 .co-bill__row-lbl{font-size:11px;font-weight:700;color:var(--co-mute);text-transform:uppercase;letter-spacing:.5px}
+    .checkout-v2 .co-bill__row-val{font-size:13.5px;font-weight:600;color:var(--co-ink);margin-top:1px;word-break:break-word}
+
+    /* ── Mandatory Referred By card ── */
+    .checkout-v2 .co-ref .required{color:#DC2626;font-weight:800;margin-left:2px}
+    .checkout-v2 .co-ref__field{margin-top:4px}
+    .checkout-v2 .co-ref--err .co-input{border-color:#DC2626;background:#FEF2F2;animation:coShake .35s ease}
+    .checkout-v2 .co-ref--err .co-input:focus{box-shadow:0 0 0 4px rgba(220,38,38,.15)}
+    .checkout-v2 .co-ref--err .co-field__ico{color:#DC2626}
+    .checkout-v2 .co-ref__err{margin-top:10px;display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#B91C1C;background:#FEF2F2;border:1px solid #FECACA;padding:9px 12px;border-radius:10px;animation:coFade .25s ease}
+    .checkout-v2 .co-ref__err svg{width:14px;height:14px;flex:0 0 auto}
+    .checkout-v2 .co-ref__ok{margin-top:10px;display:inline-flex;align-items:center;gap:8px;color:#0B45AB;background:#E6F9FD;border:1px solid #C9F1F9;font-size:12.5px;font-weight:700;padding:8px 12px;border-radius:10px}
+    .checkout-v2 .co-ref__ok svg{width:14px;height:14px}
+    .checkout-v2 .co-ref__hint{margin-top:10px;font-size:12.5px;color:var(--co-mute);background:#F8FAFC;border:1px solid var(--co-line);padding:8px 12px;border-radius:10px}
+    .checkout-v2 .co-ref__other{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+    .checkout-v2 .co-ref__other-lbl{font-size:11.5px;font-weight:700;color:var(--co-mute);text-transform:uppercase;letter-spacing:.5px}
+    .checkout-v2 .co-ref__other-inp{padding:12px 14px;border-radius:12px;font-size:14px;border:1.5px solid var(--co-line);outline:none;transition:border-color .2s,box-shadow .2s}
+    .checkout-v2 .co-ref__other-inp:focus{border-color:var(--co-accent);box-shadow:0 0 0 3px rgba(10,169,196,.18)}
+    .checkout-v2 .co-ref__other-count{font-size:11px;color:#94A3B8;align-self:flex-end}
+
+    /* ── Premium Payment Method cards ── */
+    .checkout-v2 .co-pay{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .checkout-v2 .co-pay__card{position:relative;display:grid;grid-template-columns:48px 1fr 26px;gap:14px;align-items:flex-start;padding:18px;border-radius:18px;border:1.5px solid var(--co-line);background:#fff;cursor:pointer;transition:border-color .2s,box-shadow .2s,transform .15s,background .25s}
+    .checkout-v2 .co-pay__card:hover{border-color:#cad6e6;transform:translateY(-1px);box-shadow:0 10px 22px -16px rgba(15,27,51,.25)}
+    .checkout-v2 .co-pay__card.is-selected{border-color:var(--co-primary);background:linear-gradient(135deg,#FBFEFF,#F2FBFE);box-shadow:0 0 0 4px rgba(10,169,196,.18),0 14px 28px -18px rgba(22,58,112,.4)}
+    .checkout-v2 .co-pay__radio{position:absolute;opacity:0;pointer-events:none}
+    .checkout-v2 .co-pay__ico{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#EFF4FB,#DCE6F4);color:var(--co-primary);display:inline-flex;align-items:center;justify-content:center}
+    .checkout-v2 .co-pay__ico svg{width:22px;height:22px}
+    .checkout-v2 .co-pay__ico--alt{background:linear-gradient(135deg,#FFF1E0,#FFE3C7);color:var(--co-accent)}
+    .checkout-v2 .co-pay__body{display:flex;flex-direction:column;gap:4px;min-width:0}
+    .checkout-v2 .co-pay__title{font-size:15px;font-weight:700;color:var(--co-ink)}
+    .checkout-v2 .co-pay__desc{font-size:12.5px;color:var(--co-mute);font-weight:500;line-height:1.4}
+    .checkout-v2 .co-pay__perks{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+    .checkout-v2 .co-pay__perks span{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--co-primary);background:#F8FAFC;border:1px solid var(--co-line);padding:4px 8px;border-radius:999px}
+    .checkout-v2 .co-pay__perks svg{width:12px;height:12px;color:var(--co-success)}
+    .checkout-v2 .co-pay__check{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--co-line);display:inline-flex;align-items:center;justify-content:center;color:transparent;background:#fff;transition:all .2s}
+    .checkout-v2 .co-pay__check svg{width:14px;height:14px}
+    .checkout-v2 .co-pay__card.is-selected .co-pay__check{background:linear-gradient(135deg,#0AA9C4,#0B45AB);border-color:transparent;color:#fff;box-shadow:0 4px 10px -4px rgba(10,169,196,.6)}
+
+    /* ── Step-2 actions row ── */
+    .checkout-v2 .co-actions--review{justify-content:flex-start;border-top:0;margin-top:6px;padding-top:0}
+
+    /* ── Locked Pay CTA when referral missing ── */
+    .checkout-v2 .co-cta--locked{background:linear-gradient(135deg,#94A3B8,#cbd5e1)!important;cursor:not-allowed;box-shadow:0 6px 14px -8px rgba(100,116,139,.5)!important;filter:none!important}
+    .checkout-v2 .co-cta--locked:hover{transform:none!important;filter:none!important;box-shadow:0 6px 14px -8px rgba(100,116,139,.5)!important}
+    .checkout-v2 .co-cta--locked svg{width:16px;height:16px}
+    .checkout-v2 .co-cta__lockmsg{margin-top:8px;font-size:12px;color:#B91C1C;font-weight:600;text-align:center}
+    .checkout-v2 .co-cta__lockmsg strong{color:#B91C1C}
+
+    /* Pay button card — wraps the CTA + lock message as its own surface
+       inside the rail, sitting between Payment Method and Need Help. */
+    .checkout-v2 .co-pay-wrap{background:#fff;border:1px solid var(--co-line);border-radius:var(--co-radius);padding:14px 16px;box-shadow:0 14px 32px -22px rgba(15,27,51,.22);animation:coFade .45s ease both}
+
+    /* ════════════════════════════════════════════════════════════════
+       Sidebar Payment Method — compact radio cards that live inside the
+       sticky order-summary rail so the user can pick a gateway and pay
+       without scrolling back up to a separate Payment Method section.
+       ════════════════════════════════════════════════════════════════ */
+    .checkout-v2 .co-pay-rail{display:flex;flex-direction:column;gap:10px}
+    .checkout-v2 .co-pay-rail--card{background:#fff;border:1px solid var(--co-line);border-radius:var(--co-radius);padding:16px 18px;box-shadow:0 14px 32px -22px rgba(15,27,51,.22);animation:coFade .45s ease both}
+    .checkout-v2 .co-pay-rail__head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#0F2D52;letter-spacing:.2px;text-transform:uppercase;margin-bottom:4px}
+    .checkout-v2 .co-pay-rail__ico{width:16px;height:16px;color:#0AA9C4}
+
+    .checkout-v2 .co-pay-rail__card{position:relative;display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid #E5E7EB;border-radius:12px;background:#fff;cursor:pointer;transition:border-color .2s ease,box-shadow .2s ease,transform .2s ease}
+    .checkout-v2 .co-pay-rail__card:hover{border-color:#bfdbfe;box-shadow:0 6px 18px -12px rgba(11,31,58,.25);transform:translateY(-1px)}
+    .checkout-v2 .co-pay-rail__card.is-selected{border-color:#2563eb;background:linear-gradient(135deg,#EFF6FF 0%,#fff 60%);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+
+    .checkout-v2 .co-pay-rail__radio{position:absolute;opacity:0;pointer-events:none}
+    .checkout-v2 .co-pay-rail__dot{flex:0 0 auto;width:18px;height:18px;border-radius:50%;border:2px solid #CBD5E1;background:#fff;display:inline-flex;align-items:center;justify-content:center;transition:border-color .2s ease,background .2s ease}
+    .checkout-v2 .co-pay-rail__dot::after{content:"";width:8px;height:8px;border-radius:50%;background:transparent;transition:background .2s ease}
+    .checkout-v2 .co-pay-rail__card.is-selected .co-pay-rail__dot{border-color:#2563eb}
+    .checkout-v2 .co-pay-rail__card.is-selected .co-pay-rail__dot::after{background:#2563eb}
+
+    .checkout-v2 .co-pay-rail__body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+    .checkout-v2 .co-pay-rail__title{font-size:14.5px;font-weight:700;color:#0F2D52;line-height:1.2}
+    .checkout-v2 .co-pay-rail__desc{font-size:12px;color:#6B7280;line-height:1.4}
+
+    .checkout-v2 .co-pay-rail__check{width:18px;height:18px;color:#2563eb;flex:0 0 auto;opacity:0;transform:scale(.6);transition:opacity .2s ease,transform .2s ease}
+    .checkout-v2 .co-pay-rail__card.is-selected .co-pay-rail__check{opacity:1;transform:scale(1)}
+
+    /* ── Pay button busy state (popup open / verifying) + spinner ── */
+    .checkout-v2 .co-cta--busy{filter:none!important;cursor:progress}
+    .checkout-v2 .co-spinner{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:coSpin .8s linear infinite;flex:0 0 auto}
+    @@keyframes coSpin{to{transform:rotate(360deg)}}
+
+    /* ── Toast ── */
+    .checkout-v2 .co-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9999;display:inline-flex;align-items:center;gap:10px;padding:12px 18px;border-radius:14px;background:#0F172A;color:#fff;font-size:13.5px;font-weight:600;box-shadow:0 18px 40px -16px rgba(0,0,0,.55);animation:coToast .25s ease both;max-width:92vw}
+    .checkout-v2 .co-toast svg{width:18px;height:18px;color:#FBBF24;flex:0 0 auto}
+
+    /* ── Animations ── */
+    @@keyframes coShake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(2px)}30%,50%,70%{transform:translateX(-4px)}40%,60%{transform:translateX(4px)}}
+    @@keyframes coToast{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+
+    /* ════════════════════════════════════════════════════════════════
+       Step-2 Responsive
+       ════════════════════════════════════════════════════════════════ */
+    @@media(max-width:1024px){
+        .checkout-v2 .co-bill__rows{grid-template-columns:1fr}
+    }
+    @@media(max-width:640px){
+        .checkout-v2 .co-review{grid-template-columns:80px minmax(0,1fr);grid-template-rows:auto auto;gap:12px;padding:12px;border-radius:16px}
+        .checkout-v2 .co-review__media{width:80px;height:80px;border-radius:12px}
+        .checkout-v2 .co-review__init{font-size:30px}
+        .checkout-v2 .co-review__price{grid-column:1 / -1;align-items:flex-start;flex-direction:row;flex-wrap:wrap;gap:8px;border-top:1px dashed var(--co-line);padding-top:10px;width:100%;text-align:left}
+        .checkout-v2 .co-review__now{font-size:18px}
+        .checkout-v2 .co-bill__head{padding:12px;gap:12px}
+        .checkout-v2 .co-bill__avatar{width:46px;height:46px;font-size:17px}
+        .checkout-v2 .co-bill__edit{height:30px;padding:0 12px;font-size:12px}
+        .checkout-v2 .co-pay{grid-template-columns:1fr}
+        .checkout-v2 .co-pay__card{padding:14px;border-radius:14px}
+        .checkout-v2 .co-card__count{font-size:11px;padding:3px 8px}
+        .checkout-v2 .co-toast{bottom:88px;font-size:13px;padding:10px 14px}
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery] public string? Coupon { get; set; }
+
+    private CheckoutSummary? summary;
+    private BillingInfo billing = new();
+    private bool authed, loading = true, placing;
+    // Gateway picker: "razorpay" | "easebuzz" | "cash". Defaults to whichever online gateway
+    // is enabled (Razorpay first), or "cash" if none are.
+    private string selectedGateway = "razorpay";
+    private bool razorpayEnabled, easebuzzEnabled;
+    private int step = 1;
+    private Guid userId;
+    private bool isFranchisee;
+    private List<ReferralSourceOption>? referralOptions;
+    private string selectedReferralId = "";        // bound to the <select>; empty = none picked
+    private string? customReferralText;
+    private bool referralTouched;                  // true once user has attempted to proceed without picking
+    private string? toast;                          // transient toast message (auto-clears)
+    private int toastTick;                          // monotonic id so a newer toast cancels older auto-clear
+    private ReferralSourceOption? SelectedOption =>
+        Guid.TryParse(selectedReferralId, out var g) ? referralOptions?.FirstOrDefault(o => o.Id == g) : null;
+
+    private static string TypeShort(ReferralSourceType t) => t switch
+    {
+        ReferralSourceType.Counsellor => "Counsellor",
+        ReferralSourceType.Faculty => "Faculty",
+        ReferralSourceType.Franchise => "Franchise",
+        ReferralSourceType.Affiliate => "Affiliate",
+        ReferralSourceType.MarketingCampaign => "Campaign",
+        ReferralSourceType.Friend => "Friend",
+        ReferralSourceType.Self => "Self",
+        ReferralSourceType.Other => "Other",
+        _ => t.ToString()
+    };
+    private string couponInput = "";
+    private string? appliedCoupon;
+    private string? affiliateCode;
+    private string? error;
+
+    // Checkout attribute selection state, keyed by attribute id.
+    private readonly Dictionary<Guid, Guid?> coSingle = new();
+    private readonly Dictionary<Guid, HashSet<Guid>> coMulti = new();
+    private readonly Dictionary<Guid, string?> coText = new();
+
+    private static readonly string[] States =
+    {
+        "Maharashtra", "Andhra Pradesh", "Assam", "Bihar", "Chhattisgarh", "Delhi", "Goa", "Gujarat",
+        "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Manipur",
+        "Meghalaya", "Odisha", "Punjab", "Rajasthan", "Tamil Nadu", "Telangana", "Uttar Pradesh",
+        "Uttarakhand", "West Bengal", "Other"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var id = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        isFranchisee = state.User.IsInRole("franchise_admin");
+        if (Guid.TryParse(id, out userId))
+        {
+            // Franchise accounts must use the Franchise Portal, not the customer checkout.
+            if (await FranchisePortal.ResolveFranchiseIdAsync(userId) != null)
+            {
+                Nav.NavigateTo("/franchise/order", forceLoad: false);
+                return;
+            }
+            authed = true;
+            if (!string.IsNullOrWhiteSpace(Coupon)) { appliedCoupon = Coupon.Trim(); couponInput = appliedCoupon; }
+            await Reload();
+            if (summary != null)
+            {
+                billing = summary.Billing;
+                InitCheckoutAttrs();
+                await Reload();   // fold any pre-selected checkout-attribute adjustments into the totals
+            }
+        }
+        // Active referred-by options for the dropdown — non-blocking failure (the dropdown just won't render).
+        try { referralOptions = await ReferralSvc.ListActiveAsync(); } catch { referralOptions = new(); }
+
+        // Which gateways the admin has enabled drives the payment-method cards.
+        try
+        {
+            var rzp = await IntegrationSvc.GetRazorpayAsync();
+            razorpayEnabled = rzp.Enabled && !string.IsNullOrWhiteSpace(rzp.KeyId) && !string.IsNullOrWhiteSpace(rzp.KeySecret);
+            var esb = await IntegrationSvc.GetEasebuzzAsync();
+            easebuzzEnabled = esb.Enabled && !string.IsNullOrWhiteSpace(esb.MerchantKey) && !string.IsNullOrWhiteSpace(esb.Salt);
+        }
+        catch { /* fall through with both disabled — cash remains an option */ }
+
+        // Default selection: first enabled gateway, else cash.
+        selectedGateway = razorpayEnabled ? "razorpay" : easebuzzEnabled ? "easebuzz" : "cash";
+
+        loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !authed) return;
+        try
+        {
+            var refCode = await JS.InvokeAsync<string>("hjc.getCookie", "rc_ref");
+            if (!string.IsNullOrWhiteSpace(refCode) && refCode != affiliateCode)
+            {
+                affiliateCode = refCode;
+                await Reload();                       // re-price so an affiliate-linked discount auto-applies
+                if (summary != null) billing = summary.Billing;
+                StateHasChanged();
+            }
+        }
+        catch { }
+    }
+
+    private async Task Reload() => summary = await CheckoutSvc.GetSummaryAsync(userId, appliedCoupon, affiliateCode, BuildCheckoutSelections());
+
+    // ── Checkout attribute helpers ──
+    private MarkupString CoPriceTag(CheckoutAttributeValueView v)
+    {
+        if (v.PriceAdjustment == 0) return (MarkupString)"";
+        var amount = v.PriceAdjustmentUsePercentage ? $"{v.PriceAdjustment:0.##}%" : $"₹{Math.Abs(v.PriceAdjustment):N0}";
+        return (MarkupString)$" ({(v.PriceAdjustment > 0 ? "+" : "−")}{amount})";
+    }
+
+    private async Task SetCoSingle(Guid id, ChangeEventArgs e)
+    {
+        coSingle[id] = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        await OnCheckoutAttrChanged();
+    }
+
+    private async Task SetCoSingleValue(Guid id, Guid valueId)
+    {
+        coSingle[id] = valueId;
+        await OnCheckoutAttrChanged();
+    }
+
+    private async Task ToggleCoMulti(Guid id, Guid valueId, ChangeEventArgs e)
+    {
+        var set = coMulti.TryGetValue(id, out var s) ? s : (coMulti[id] = new HashSet<Guid>());
+        if (e.Value is true) set.Add(valueId); else set.Remove(valueId);
+        await OnCheckoutAttrChanged();
+    }
+
+    private async Task SetCoText(Guid id, ChangeEventArgs e)
+    {
+        coText[id] = e.Value?.ToString();
+        await OnCheckoutAttrChanged();
+    }
+
+    private async Task OnCheckoutAttrChanged()
+    {
+        var keep = billing;            // a summary refresh must not wipe entered billing
+        await Reload();
+        billing = keep;
+    }
+
+    private void InitCheckoutAttrs()
+    {
+        if (summary == null) return;
+        foreach (var a in summary.CheckoutAttributes)
+        {
+            if (coSingle.ContainsKey(a.Id) || coMulti.ContainsKey(a.Id) || coText.ContainsKey(a.Id)) continue;
+            switch (a.ControlType)
+            {
+                case "DropdownList":
+                case "RadioList":
+                    coSingle[a.Id] = a.Values.FirstOrDefault(v => v.IsPreSelected)?.Id;
+                    break;
+                case "Checkboxes":
+                    coMulti[a.Id] = a.Values.Where(v => v.IsPreSelected).Select(v => v.Id).ToHashSet();
+                    break;
+                default:
+                    coText[a.Id] = null;
+                    break;
+            }
+        }
+    }
+
+    private List<CheckoutAttributeSelection> BuildCheckoutSelections()
+    {
+        var list = new List<CheckoutAttributeSelection>();
+        if (summary == null) return list;
+        foreach (var a in summary.CheckoutAttributes)
+        {
+            switch (a.ControlType)
+            {
+                case "DropdownList":
+                case "RadioList":
+                    if (coSingle.GetValueOrDefault(a.Id) is Guid g) list.Add(new CheckoutAttributeSelection(a.Id, g));
+                    break;
+                case "Checkboxes":
+                    if (coMulti.TryGetValue(a.Id, out var set))
+                        foreach (var vid in set) list.Add(new CheckoutAttributeSelection(a.Id, vid));
+                    break;
+                default:
+                    if (coText.GetValueOrDefault(a.Id) is { } t && !string.IsNullOrWhiteSpace(t))
+                        list.Add(new CheckoutAttributeSelection(a.Id, null, t));
+                    break;
+            }
+        }
+        return list;
+    }
+
+    private bool ValidateCheckoutAttrs()
+    {
+        if (summary == null) return true;
+        foreach (var a in summary.CheckoutAttributes.Where(x => x.IsRequired))
+        {
+            var has = a.ControlType switch
+            {
+                "DropdownList" or "RadioList" => coSingle.GetValueOrDefault(a.Id).HasValue,
+                "Checkboxes" => coMulti.GetValueOrDefault(a.Id)?.Count > 0,
+                _ => !string.IsNullOrWhiteSpace(coText.GetValueOrDefault(a.Id))
+            };
+            if (!has) { error = $"Please complete: {a.Name}."; return false; }
+        }
+        return true;
+    }
+
+    private async Task ApplyCoupon()
+    {
+        appliedCoupon = string.IsNullOrWhiteSpace(couponInput) ? null : couponInput.Trim();
+        var keepBilling = billing;
+        await Reload();
+        billing = keepBilling;   // don't let a summary refresh wipe entered billing
+    }
+
+    private void ToReview()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(billing.Name)) { error = "Please enter the student's full name."; return; }
+        if (string.IsNullOrWhiteSpace(billing.Phone) || billing.Phone.Trim().Length < 10) { error = "Please enter a valid 10-digit phone number."; return; }
+        if (string.IsNullOrWhiteSpace(billing.State)) { error = "Please select a state."; return; }
+        if (!ValidateCheckoutAttrs()) return;
+        step = 2;
+    }
+
+    private void OnReferralChanged()
+    {
+        // First selection clears the touched-error highlight. A subsequent clear re-arms it.
+        if (!string.IsNullOrWhiteSpace(selectedReferralId)) referralTouched = false;
+    }
+
+    private async Task ShowToastAsync(string message)
+    {
+        toast = message;
+        var tick = ++toastTick;
+        StateHasChanged();
+        await Task.Delay(3500);
+        if (toastTick == tick)   // a newer toast hasn't replaced us
+        {
+            toast = null;
+            StateHasChanged();
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Razorpay flow (REST-driven). The Blazor page just builds the CheckoutRequest
+    // and hands it to window.hjc.payRazorpay. JS handles create-order, popup, verify,
+    // and the terminal redirect — the SignalR circuit isn't on the hot path.
+    // ──────────────────────────────────────────────────────────────────────
+    private bool _popupOpen;                          // disable Pay button while popup is up
+
+    public void Dispose() { }                         // (kept for compatibility with @implements IDisposable)
+
+    private void SelectRazorpay() => selectedGateway = "razorpay";
+    private void SelectEasebuzz() => selectedGateway = "easebuzz";
+    private void SelectCash() => selectedGateway = "cash";
+
+    private async Task PlaceAndPay()
+    {
+        error = null;
+
+        // Referred By is mandatory at Step 2 — block payment and surface inline + toast feedback.
+        if (referralOptions != null && referralOptions.Count > 0 && string.IsNullOrWhiteSpace(selectedReferralId))
+        {
+            referralTouched = true;
+            _ = ShowToastAsync("Please select 'Referred By' before continuing.");
+            return;
+        }
+
+        if (placing || _popupOpen) return;            // guard against duplicate clicks
+        placing = true;
+
+        // Pay-at-center path is offline only — no popup, no redirect. Create a Pending
+        // order with PaymentMode=Cash and send the user to the receipt page.
+        if (selectedGateway == "cash")
+        {
+            try
+            {
+                var cashReq = await BuildCheckoutRequestAsync();
+                cashReq.PayOnline = false;
+                cashReq.PaymentMode = PaymentMode.Cash;
+                var r = await CheckoutSvc.PlaceOrderAsync(userId, cashReq);
+                Nav.NavigateTo($"/checkout/complete/{r.OrderNumber}");
+            }
+            catch (Exception ex)
+            {
+                placing = false;
+                Nav.NavigateTo($"/checkout/payment-failed?o=&r={Uri.EscapeDataString(ex.Message ?? "Could not place order")}", forceLoad: true);
+            }
+            return;
+        }
+
+        // Online path — hand off to the REST-driven JS flow. The browser owns navigation
+        // from here: create-order → (popup OR redirect) → verify/callback → success/failed page.
+        _popupOpen = true;
+        try
+        {
+            var req = await BuildCheckoutRequestAsync();
+            if (selectedGateway == "easebuzz")
+            {
+                req.PaymentMode = PaymentMode.Easebuzz;
+                await JS.InvokeVoidAsync("hjc.payEasebuzz", req);
+            }
+            else
+            {
+                req.PaymentMode = PaymentMode.Razorpay;
+                var prefill = new { name = billing.Name, email = billing.Email, contact = billing.Phone };
+                await JS.InvokeVoidAsync("hjc.payRazorpay", req, prefill);
+            }
+        }
+        catch (Exception ex)
+        {
+            _popupOpen = false;
+            placing = false;
+            Nav.NavigateTo($"/checkout/payment-failed?o=&r={Uri.EscapeDataString(ex.Message ?? "Could not start payment")}", forceLoad: true);
+        }
+    }
+
+    private async Task<CheckoutRequest> BuildCheckoutRequestAsync()
+    {
+        string? refCode = null;
+        try { refCode = await JS.InvokeAsync<string>("hjc.getCookie", "rc_ref"); } catch { }
+
+        return new CheckoutRequest
+        {
+            Billing = billing,
+            CouponCode = appliedCoupon,
+            PayOnline = true,
+            PaymentMode = PaymentMode.Razorpay,
+            AffiliateCode = string.IsNullOrWhiteSpace(refCode) ? null : refCode,
+            CheckoutSelections = BuildCheckoutSelections(),
+            ReferralSourceId = Guid.TryParse(selectedReferralId, out var rsg) ? rsg : (Guid?)null,
+            ReferralCustomText = SelectedOption?.Type == ReferralSourceType.Other && !string.IsNullOrWhiteSpace(customReferralText)
+                ? customReferralText.Trim() : null
+        };
+    }
+
+    // Enum -> CSS variant. Display text reads from CartItemView.BatchStatusText (single source of truth).
+    private static string CoBatchClass(RioCommerce.Core.Enums.BatchStatus s) => s switch
+    {
+        RioCommerce.Core.Enums.BatchStatus.Upcoming => "upcoming",
+        RioCommerce.Core.Enums.BatchStatus.Ongoing => "ongoing",
+        RioCommerce.Core.Enums.BatchStatus.PreRecorded => "prerec",
+        RioCommerce.Core.Enums.BatchStatus.OutOfStock => "oos",
+        RioCommerce.Core.Enums.BatchStatus.ComingSoon => "soon",
+        _ => "upcoming"
+    };
+}

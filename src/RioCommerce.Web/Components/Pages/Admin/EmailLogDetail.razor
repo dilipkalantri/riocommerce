@@ -1,0 +1,152 @@
+@page "/admin/email-logs/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IEmailLogService LogSvc
+@inject NavigationManager Nav
+@inject ToastService Toast
+<PageTitle>Email Log — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>📧 Email Log</h1>
+    <div style="display:flex;gap:8px">
+        <a href="/admin/email-logs" class="btn btn-ghost btn-sm">← Back to list</a>
+        @if (log != null && (log.Status == "Failed" || log.Status == "Rejected"))
+        {
+            <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="Resend">@(busy ? "Resending…" : "↻ Resend Email")</button>
+        }
+    </div>
+</div>
+
+@if (log == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">@(notFound ? "Log not found." : "Loading…")</p>
+}
+else
+{
+    @if (resendMsg != null) { <div class="inline-alert @(resendOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:14px">@resendMsg</div> }
+
+    @* ── Header summary card ── *@
+    <div class="form-card" style="margin-bottom:14px">
+        <div class="form-grid">
+            <div class="form-group"><div class="el-lbl">Status</div><div><span class="@StatusClass(log.Status)">@log.Status</span></div></div>
+            <div class="form-group"><div class="el-lbl">Sent</div><div>@log.SentAt.ToLocalTime().ToString("dd-MMM-yyyy HH:mm:ss")</div></div>
+            <div class="form-group"><div class="el-lbl">Provider</div><div>@(string.IsNullOrEmpty(log.Provider) ? "—" : log.Provider!.ToUpper())</div></div>
+            <div class="form-group"><div class="el-lbl">Duration</div><div>@(log.DurationMs.HasValue ? $"{log.DurationMs} ms" : "—")</div></div>
+            <div class="form-group"><div class="el-lbl">Channel</div><div>@log.Channel</div></div>
+            <div class="form-group"><div class="el-lbl">Triggered by</div><div>@(log.TriggeredBy ?? "—")</div></div>
+            <div class="form-group"><div class="el-lbl">Template</div><div>@(log.TemplateKey ?? "—")</div></div>
+            <div class="form-group"><div class="el-lbl">Retry count</div><div>@log.RetryCount</div></div>
+            <div class="form-group form-group--full"><div class="el-lbl">Recipient</div><div>@log.Recipient</div></div>
+            <div class="form-group form-group--full"><div class="el-lbl">Subject</div><div>@(log.Subject ?? "—")</div></div>
+        </div>
+    </div>
+
+    @* ── Provider response + error ── *@
+    @if (!string.IsNullOrWhiteSpace(log.Error) || !string.IsNullOrWhiteSpace(log.Response))
+    {
+        <div class="form-card" style="margin-bottom:14px">
+            <div class="form-card__title">Provider response</div>
+            @if (!string.IsNullOrWhiteSpace(log.Error))
+            {
+                <div class="el-lbl">Error</div>
+                <pre class="el-pre el-pre--err">@log.Error</pre>
+            }
+            @if (!string.IsNullOrWhiteSpace(log.Response))
+            {
+                <div class="el-lbl" style="margin-top:10px">Raw response</div>
+                <pre class="el-pre">@log.Response</pre>
+            }
+        </div>
+    }
+
+    @* ── Request payload (the EmailMessage that was sent) ── *@
+    @if (!string.IsNullOrWhiteSpace(log.RequestPayload))
+    {
+        <div class="form-card" style="margin-bottom:14px">
+            <div class="form-card__title">Request payload</div>
+            <pre class="el-pre">@log.RequestPayload</pre>
+        </div>
+    }
+
+    @* ── Rendered body — preview as HTML when IsHtml else plain ── *@
+    @if (!string.IsNullOrEmpty(log.Body))
+    {
+        <div class="form-card">
+            <div class="form-card__title">Rendered body @(log.IsHtml ? "(HTML)" : "(plain text)")</div>
+            @if (log.IsHtml)
+            {
+                <iframe class="el-frame" sandbox="" srcdoc="@log.Body" title="Rendered email body"></iframe>
+            }
+            else
+            {
+                <pre class="el-pre">@log.Body</pre>
+            }
+        </div>
+    }
+
+    @if (log.OriginalLogId.HasValue)
+    {
+        <p style="margin-top:14px;font-size:13px;color:var(--gray-500)">
+            🔁 This row was created by a <strong>Resend</strong> of
+            <a href="/admin/email-logs/@log.OriginalLogId">original log @log.OriginalLogId.Value.ToString()[..8]</a>.
+        </p>
+    }
+}
+
+<style>
+    .el-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-500);margin-bottom:3px}
+    .el-pre{background:#0F172A;color:#E2E8F0;padding:12px 14px;border-radius:10px;font-size:12.5px;line-height:1.5;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+    .el-pre--err{background:#7F1D1D;color:#FECACA}
+    .el-frame{width:100%;height:520px;border:1px solid var(--gray-200);border-radius:10px;background:#fff}
+    .el-status{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:5px 12px;border-radius:999px}
+    .el-status--ok{background:#DCFCE7;color:#15803D}
+    .el-status--warn{background:#FEF3C7;color:#B45309}
+    .el-status--err{background:#FEE2E2;color:#B91C1C}
+    .el-status--mute{background:var(--gray-100);color:var(--gray-500)}
+</style>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    // Fully qualified — the *page class* is also called EmailLogDetail and would shadow the DTO.
+    private RioCommerce.Core.DTOs.Admin.EmailLogDetail? log;
+    private bool notFound;
+    private bool busy;
+    private bool resendOk;
+    private string? resendMsg;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        log = await LogSvc.GetAsync(Id);
+        notFound = log == null;
+        resendMsg = null;
+    }
+
+    private async Task Resend()
+    {
+        if (log == null) return;
+        busy = true; resendMsg = null;
+        var result = await LogSvc.ResendAsync(log.Id);
+        busy = false;
+        if (result.Ok)
+        {
+            resendOk = true;
+            resendMsg = "Email resent successfully.";
+            Toast.Success("Email resent successfully.");
+            if (result.NewLogId.HasValue) Nav.NavigateTo($"/admin/email-logs/{result.NewLogId.Value}");
+        }
+        else
+        {
+            resendOk = false;
+            resendMsg = result.Error ?? "Resend failed.";
+            Toast.Error(resendMsg);
+        }
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "Sent" or "Delivered" or "Resent"        => "el-status el-status--ok",
+        "Queued" or "Sending" or "Retry Pending" => "el-status el-status--warn",
+        "Failed" or "Rejected"                   => "el-status el-status--err",
+        _                                         => "el-status el-status--mute"
+    };
+}

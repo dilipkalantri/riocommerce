@@ -1,0 +1,81 @@
+@page "/admin/reviews"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IReviewService Svc
+<PageTitle>Reviews — RioCommerce Admin</PageTitle>
+
+<div class="page__header"><h1>Reviews &amp; Ratings</h1></div>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-card__label">Pending</div><div class="kpi-card__value" style="color:var(--warning)">@(stats?.Pending ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Approved</div><div class="kpi-card__value" style="color:var(--green)">@(stats?.Approved ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Rejected</div><div class="kpi-card__value" style="color:var(--error)">@(stats?.Rejected ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Total</div><div class="kpi-card__value">@((stats?.Pending ?? 0) + (stats?.Approved ?? 0) + (stats?.Rejected ?? 0))</div></div>
+</div>
+
+<div class="tab-group" style="margin-top:20px">
+    <button class="tab-group__btn @(filter == null ? "active" : "")" @onclick="() => SetFilter(null)">All</button>
+    <button class="tab-group__btn @(filter == ReviewStatus.Pending ? "active" : "")" @onclick="() => SetFilter(ReviewStatus.Pending)">Pending</button>
+    <button class="tab-group__btn @(filter == ReviewStatus.Approved ? "active" : "")" @onclick="() => SetFilter(ReviewStatus.Approved)">Approved</button>
+    <button class="tab-group__btn @(filter == ReviewStatus.Rejected ? "active" : "")" @onclick="() => SetFilter(ReviewStatus.Rejected)">Rejected</button>
+</div>
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Course</th><th>Author</th><th>Rating</th><th>Review</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (data == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (data.Items.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No reviews here.</td></tr> }
+            else
+            {
+                @foreach (var r in data.Items)
+                {
+                    <tr>
+                        <td style="max-width:200px">@r.ProductTitle</td>
+                        <td>@r.AuthorName @if (r.IsVerifiedPurchase) { <span class="verified-badge">✓</span> }</td>
+                        <td><span class="stars stars--sm">@Stars(r.Rating)</span></td>
+                        <td style="max-width:320px">@(string.IsNullOrEmpty(r.Title) ? "" : $"{r.Title} — ")@r.Comment</td>
+                        <td><span class="status @StatusClass(r.Status)"><span class="dot"></span>@r.Status</span></td>
+                        <td>@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                @if (r.Status != ReviewStatus.Approved) { <button class="btn btn-success btn-sm" @onclick="() => Moderate(r.Id, true)">Approve</button> }
+                                @if (r.Status != ReviewStatus.Rejected) { <button class="btn btn-danger btn-sm" @onclick="() => Moderate(r.Id, false)">Reject</button> }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private PagedResult<AdminReviewItem>? data;
+    private ReviewStats? stats;
+    private ReviewStatus? filter;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        stats = await Svc.AdminStatsAsync();
+        data = await Svc.AdminListAsync(filter, 1, 50);
+    }
+
+    private async Task SetFilter(ReviewStatus? f) { filter = f; await Reload(); }
+    private async Task Moderate(Guid id, bool approve) { await Svc.ModerateAsync(id, approve); await Reload(); }
+
+    private static string Stars(int rating)
+    {
+        var f = Math.Clamp(rating, 0, 5);
+        return new string('★', f) + new string('☆', 5 - f);
+    }
+
+    private static string StatusClass(ReviewStatus s) => s switch
+    {
+        ReviewStatus.Approved => "status--confirmed",
+        ReviewStatus.Pending => "status--pending",
+        _ => "status--cancelled"
+    };
+}

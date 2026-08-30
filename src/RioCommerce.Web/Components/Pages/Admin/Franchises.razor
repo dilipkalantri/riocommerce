@@ -1,0 +1,619 @@
+@page "/admin/franchises"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IFranchiseService Svc
+<PageTitle>Franchises — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Franchises</h1>
+    <a href="/franchisee/register" target="_blank" class="btn btn-outline">Open public registration ↗</a>
+</div>
+
+<div class="data-card">
+    <div class="data-card__filters">
+        <input type="text" class="filter-input" placeholder="Search name, business, phone, email…" style="flex:1;min-width:200px" @bind="search" @bind:event="oninput" @onkeydown="OnKey" />
+        <select class="filter-select" @onchange="OnStatus">
+            <option value="">All Status</option>
+            <option value="3" selected="@(status == FranchiseStatus.Unverified)">Unverified (new registrations)</option>
+            <option value="0" selected="@(status == FranchiseStatus.Pending)">Pending</option>
+            <option value="1" selected="@(status == FranchiseStatus.Approved)">Approved</option>
+            <option value="2" selected="@(status == FranchiseStatus.Rejected)">Rejected</option>
+        </select>
+    </div>
+
+    @if (msg != null) { <div class="inline-alert inline-alert--ok" style="margin:0 16px 12px">@msg</div> }
+    @if (err != null) { <div class="inline-alert inline-alert--err" style="margin:0 16px 12px">@err</div> }
+
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Date</th><th>Name / Business</th><th>City</th><th>Contact</th><th>Status</th><th>Wallet</th><th>Actions</th></tr></thead>
+            <tbody>
+                @if (items == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+                else if (items.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No franchises found.</td></tr> }
+                else
+                {
+                    @foreach (var f in items)
+                    {
+                        <tr>
+                            <td>@f.RegisteredAt.ToLocalTime().ToString("dd MMM, HH:mm")</td>
+                            <td><strong>@f.Name</strong>@if (!string.IsNullOrWhiteSpace(f.BusinessName)) { <br /><span style="font-size:11px;color:var(--gray-500)">@f.BusinessName</span> }</td>
+                            <td>@f.City</td>
+                            <td><span style="font-size:12px">@f.ContactPhone</span><br /><span style="font-size:11px;color:var(--gray-500)">@f.ContactEmail</span></td>
+                            <td>@StatusBadge(f)</td>
+                            <td>₹@f.WalletBalance.ToString("N0")</td>
+                            <td>
+                                @if (f.Status == FranchiseStatus.Unverified)
+                                {
+                                    <button class="btn btn-sm btn-primary" disabled="@busy" @onclick="() => VerifyApp(f.Id)">✓ Verify</button>
+                                    <button class="btn btn-sm btn-outline" @onclick="() => OpenReject(f.Id)">Reject</button>
+                                }
+                                else if (f.Status == FranchiseStatus.Pending)
+                                {
+                                    <button class="btn btn-sm btn-primary" @onclick="() => OpenApprove(f.Id)">Approve</button>
+                                    <button class="btn btn-sm btn-outline" @onclick="() => OpenReject(f.Id)">Reject</button>
+                                }
+                                else if (f.Status == FranchiseStatus.Approved)
+                                {
+                                    <a href="@($"/admin/franchises/{f.Id}/commissions")" class="btn btn-sm btn-outline">💰 Commissions</a>
+                                    <a href="@($"/admin/franchises/{f.Id}/wallet")" class="btn btn-sm btn-outline">👛 Wallet</a>
+                                    <button class="btn btn-sm btn-outline" @onclick="() => OpenAdjust(f.Id)">💵 Adjust</button>
+                                    @if (f.IsActive)
+                                    { <button class="btn btn-sm btn-outline" @onclick="() => Toggle(f.Id, false)">Deactivate</button> }
+                                    else
+                                    { <button class="btn btn-sm btn-primary" @onclick="() => Toggle(f.Id, true)">Activate</button> }
+                                    <button class="btn btn-sm btn-outline" @onclick="() => OpenEdit(f.Id)">✎ Edit</button>
+                                    <button class="btn btn-sm btn-ghost" @onclick="() => ResetPw(f.Id)">Reset PW</button>
+                                }
+                            </td>
+                        </tr>
+                        @* Particulars only — no wallet, credit limit, commission, status or login
+                           email here, so editing a franchisee's GSTIN can never move their money. *@
+                        @if (editId == f.Id && edit != null)
+                        {
+                            <tr><td colspan="7" style="background:var(--orange-light)">
+                                <div class="form-grid form-grid--3col" style="padding:8px 4px">
+                                    <div class="form-group"><label class="form-label">Franchisee name <span class="required">*</span></label><input class="form-input" @bind="edit.Name" /></div>
+                                    <div class="form-group"><label class="form-label">Business name</label><input class="form-input" @bind="edit.BusinessName" /></div>
+                                    <div class="form-group"><label class="form-label">Contact person</label><input class="form-input" @bind="edit.ContactPerson" /></div>
+                                    <div class="form-group"><label class="form-label">Contact phone</label><input class="form-input" @bind="edit.ContactPhone" placeholder="10 digits" /></div>
+                                    <div class="form-group"><label class="form-label">GSTIN</label><input class="form-input" @bind="edit.Gstin" placeholder="15 chars · e.g. 08ABCDE1234F1Z5" /></div>
+                                    <div class="form-group"><label class="form-label">PAN</label><input class="form-input" @bind="edit.Pan" placeholder="10 chars · e.g. ABCDE1234F" /></div>
+                                    <div class="form-group form-group--full"><label class="form-label">Address</label><input class="form-input" @bind="edit.AddressLine" /></div>
+                                    <div class="form-group"><label class="form-label">City <span class="required">*</span></label><input class="form-input" @bind="edit.City" /></div>
+                                    <div class="form-group"><label class="form-label">State</label><input class="form-input" @bind="edit.State" /></div>
+                                    <div class="form-group"><label class="form-label">PIN code</label><input class="form-input" @bind="edit.PinCode" placeholder="6 digits" /></div>
+                                </div>
+                                <div class="form-actions" style="padding:0 4px 8px">
+                                    <button class="btn btn-primary" disabled="@busy" @onclick="DoSaveProfile">@(busy ? "Saving…" : "💾 Save details")</button>
+                                    <button class="btn btn-ghost" @onclick="CloseInline">Cancel</button>
+                                    <span style="margin-left:auto;font-size:12px;color:var(--gray-500)">
+                                        Wallet, credit limit, commissions and login email are not changed here.
+                                    </span>
+                                </div>
+                            </td></tr>
+                        }
+                        else if (approveId == f.Id)
+                        {
+                            <tr><td colspan="7" style="background:var(--orange-light)">
+                                <div class="form-grid form-grid--3col" style="padding:8px 4px">
+                                    <div class="form-group"><label class="form-label">Code (auto if blank)</label><input class="form-input" @bind="approveCode" placeholder="e.g. PUN" /></div>
+                                    <div class="form-group"><label class="form-label">Credit Limit (₹)</label><input type="number" class="form-input" @bind="approveCredit" /></div>
+                                    <div class="form-group"><label class="form-label">Opening Balance (₹)</label><input type="number" class="form-input" @bind="approveOpening" /></div>
+                                    <div class="form-group form-group--full"><label class="form-label">Remarks (optional)</label><input class="form-input" @bind="approveRemarks" /></div>
+                                </div>
+                                <div class="form-actions" style="padding:0 4px 8px">
+                                    <button class="btn btn-primary" disabled="@busy" @onclick="DoApprove">@(busy ? "Approving…" : "✓ Approve & Email Credentials")</button>
+                                    <button class="btn btn-ghost" @onclick="CloseInline">Cancel</button>
+                                </div>
+                            </td></tr>
+                        }
+                        else if (rejectId == f.Id)
+                        {
+                            <tr><td colspan="7" style="background:var(--orange-light)">
+                                <div class="form-group" style="padding:8px 4px"><label class="form-label">Rejection Remarks <span class="required">*</span></label><textarea class="form-input" rows="2" @bind="rejectRemarks" placeholder="Reason shown to the applicant by email"></textarea></div>
+                                <div class="form-actions" style="padding:0 4px 8px">
+                                    <button class="btn btn-primary" disabled="@busy" @onclick="DoReject">@(busy ? "Rejecting…" : "Reject Application")</button>
+                                    <button class="btn btn-ghost" @onclick="CloseInline">Cancel</button>
+                                </div>
+                            </td></tr>
+                        }
+                        else if (adjustId == f.Id)
+                        {
+                            <tr><td colspan="7" style="background:var(--orange-light)">
+                                <div class="form-grid form-grid--3col" style="padding:8px 4px">
+                                    <div class="form-group">
+                                        <label class="form-label">Type</label>
+                                        <select class="form-input" @bind="adjustIsCredit">
+                                            <option value="true">Credit (top-up / refund)</option>
+                                            <option value="false">Debit (correction)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group"><label class="form-label">Amount (₹) <span class="required">*</span></label><input type="number" step="1" class="form-input" @bind="adjustAmount" /></div>
+                                    <div class="form-group form-group--full"><label class="form-label">Reason <span class="required">*</span></label><input class="form-input" @bind="adjustReason" placeholder="e.g. Cash deposit / Refund: order FRN-1005" /></div>
+                                    @if (adjustIsCredit)
+                                    {
+                                        @* Money in raises a tax invoice; a refund or correction must not. *@
+                                        <div class="form-group form-group--full">
+                                            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px">
+                                                <input type="checkbox" @bind="adjustMoneyReceived" />
+                                                <span>Money received — raise a tax invoice <span style="color:var(--gray-500)">(untick for a refund or correction)</span></span>
+                                            </label>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="form-actions" style="padding:0 4px 8px">
+                                    <button class="btn btn-primary" disabled="@busy" @onclick="DoAdjust">@(busy ? "Saving…" : "Apply Adjustment")</button>
+                                    <button class="btn btn-ghost" @onclick="CloseInline">Cancel</button>
+                                </div>
+                            </td></tr>
+                        }
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (total > pageSize)
+    {
+        <div class="table-footer">
+            <span>Showing @items?.Count of @total</span>
+            <div class="table-pagination">
+                <button disabled="@(page <= 1)" @onclick="() => Go(page - 1)">‹</button>
+                <span style="padding:0 10px">@(page) / @TotalPages</span>
+                <button disabled="@(page >= TotalPages)" @onclick="() => Go(page + 1)">›</button>
+            </div>
+        </div>
+    }
+</div>
+
+
+@* ── Existing-account conflict ────────────────────────────────────────────────────────────────
+   Approval provisions a login, and a franchisee usually already has an account here from buying as
+   a student. Rather than guessing — or failing on a unique-index violation the way this screen used
+   to — the decision is put in front of the admin with both records side by side. Nothing has been
+   written to the database at the point this appears. *@
+@if (conflict is { HasConflict: true })
+{
+    <div class="fc-backdrop" @onclick="CancelConflict">
+        <div class="fc-modal" @onclick:stopPropagation="true" role="dialog" aria-modal="true">
+            <div class="fc-modal__head">
+                <span class="fc-modal__icon">⚠️</span>
+                <div>
+                    <h2 class="fc-modal__title">
+                        @(conflict.Kind switch
+                        {
+                            FranchiseApprovalConflictKind.MultipleAccounts    => "Multiple Account Conflict",
+                            FranchiseApprovalConflictKind.DuplicateFranchise  => "Franchise Already Exists",
+                            _                                                => "Existing Account Found"
+                        })
+                    </h2>
+                    <p class="fc-modal__sub">@conflict.Message</p>
+                </div>
+            </div>
+
+            <div class="fc-modal__body">
+                @if (conflict.Kind == FranchiseApprovalConflictKind.DuplicateFranchise)
+                {
+                    var d = conflict.DuplicateFranchise!;
+                    <div class="fc-card fc-card--warn">
+                        <div class="fc-card__title">Existing Franchise</div>
+                        <dl class="fc-dl">
+                            <dt>Name</dt><dd>@d.Name</dd>
+                            <dt>Code</dt><dd>@(d.Code ?? "—")</dd>
+                            <dt>Phone</dt><dd>@(d.ContactPhone ?? "—")</dd>
+                            <dt>Email</dt><dd>@(d.ContactEmail ?? "—")</dd>
+                            <dt>Status</dt><dd>@d.Status</dd>
+                        </dl>
+                    </div>
+                    <p class="fc-note">
+                        @(d.IsPending
+                            ? "That application is still pending — approve it instead of creating a second franchise."
+                            : "A duplicate franchise would split this partner's orders and commission across two records.")
+                    </p>
+                }
+                else
+                {
+                    <div class="fc-compare">
+                        @if (conflict.Kind == FranchiseApprovalConflictKind.MultipleAccounts)
+                        {
+                            <div class="fc-card fc-card--warn">
+                                <div class="fc-card__title">Phone belongs to</div>
+                                @AccountCard(conflict.PhoneOwner!)
+                            </div>
+                            <div class="fc-card fc-card--warn">
+                                <div class="fc-card__title">Email belongs to</div>
+                                @AccountCard(conflict.EmailOwner!)
+                            </div>
+                        }
+                        else
+                        {
+                            var acct = conflict.EmailOwner ?? conflict.PhoneOwner!;
+                            <div class="fc-card fc-card--warn">
+                                <div class="fc-card__title">Existing Account</div>
+                                @AccountCard(acct)
+                            </div>
+                            <div class="fc-card">
+                                <div class="fc-card__title">New Franchise</div>
+                                <dl class="fc-dl">
+                                    <dt>Name</dt><dd>@conflict.FranchiseName</dd>
+                                    <dt>Phone</dt><dd>@(conflict.FranchisePhone ?? "—")</dd>
+                                    <dt>Email</dt><dd>@(conflict.FranchiseEmail ?? "—")</dd>
+                                </dl>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* The destructive path stays folded away until it is deliberately opened. *@
+                @if (showReplacePanel && conflict.Kind == FranchiseApprovalConflictKind.ExistingAccount)
+                {
+                    var acct = conflict.EmailOwner ?? conflict.PhoneOwner!;
+                    <div class="fc-danger">
+                        <div class="fc-danger__title">⚠️ Replace Existing Contact Details</div>
+                        <p class="fc-danger__text">
+                            This changes the contact information on an account that already exists. The account,
+                            its orders, wallet, course access, serial keys and history are all kept — only the
+                            fields you tick below are overwritten.
+                        </p>
+                        <label class="fc-check">
+                            <input type="checkbox" @bind="replaceEmail"
+                                   disabled="@(string.Equals(acct.Email, conflict.FranchiseEmail, StringComparison.OrdinalIgnoreCase))" />
+                            <span>Email &nbsp;<code>@(acct.Email ?? "—")</code> → <code>@(conflict.FranchiseEmail ?? "—")</code></span>
+                        </label>
+                        <label class="fc-check">
+                            <input type="checkbox" @bind="replacePhone"
+                                   disabled="@(string.Equals(acct.Phone, conflict.FranchisePhone, StringComparison.Ordinal))" />
+                            <span>Phone &nbsp;<code>@(acct.Phone ?? "—")</code> → <code>@(conflict.FranchisePhone ?? "—")</code></span>
+                        </label>
+                        <label class="fc-check fc-check--confirm">
+                            <input type="checkbox" @bind="confirmReplace" />
+                            <span>I understand that the existing account contact information may be changed.</span>
+                        </label>
+                    </div>
+                }
+
+                @if (conflictErr != null)
+                {
+                    <div class="fc-err">@conflictErr</div>
+                }
+            </div>
+
+            <div class="fc-modal__foot">
+                @if (conflict.Kind == FranchiseApprovalConflictKind.ExistingAccount)
+                {
+                    @if (!showReplacePanel)
+                    {
+                        <button class="btn btn-primary" disabled="@busy" @onclick="UseExistingAccount">
+                            @(busy ? "Approving…" : "Use Existing Account")
+                        </button>
+                        <button class="btn btn-outline fc-btn-danger" disabled="@busy" @onclick="() => showReplacePanel = true">
+                            Replace Contact Details…
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn fc-btn-danger--solid" disabled="@(busy || !confirmReplace || (!replaceEmail && !replacePhone))"
+                                @onclick="ReplaceContactAndApprove">
+                            @(busy ? "Approving…" : "Replace & Continue")
+                        </button>
+                        <button class="btn btn-ghost" disabled="@busy" @onclick="() => showReplacePanel = false">Back</button>
+                    }
+                    <button class="btn btn-outline" disabled="@busy" @onclick="ChangeContactDetails">Change Contact Details</button>
+                }
+                else if (conflict.Kind == FranchiseApprovalConflictKind.DuplicateFranchise && conflict.DuplicateFranchise is { } dup)
+                {
+                    <a class="btn btn-primary" href="@($"/admin/franchises?focus={dup.FranchiseId}")">Open Existing Franchise</a>
+                }
+                <button class="btn btn-ghost" disabled="@busy" @onclick="CancelConflict">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+
+<style>
+    .fc-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;
+                 justify-content:center;padding:16px;z-index:1200}
+    .fc-modal{background:#fff;border-radius:14px;width:min(760px,100%);max-height:90vh;overflow:auto;
+              box-shadow:0 24px 60px rgba(0,0,0,.28)}
+    .fc-modal__head{display:flex;gap:12px;align-items:flex-start;padding:18px 20px;
+                    background:#FFFBEB;border-bottom:1px solid #FDE68A;border-radius:14px 14px 0 0}
+    .fc-modal__icon{font-size:22px;line-height:1.2}
+    .fc-modal__title{margin:0;font-size:17px;font-weight:800;color:#92400E}
+    .fc-modal__sub{margin:4px 0 0;font-size:13px;color:#92400E;line-height:1.5}
+    .fc-modal__body{padding:18px 20px}
+    .fc-modal__foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;padding:14px 20px;
+                    border-top:1px solid var(--gray-100,#f1f3f5)}
+
+    .fc-compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+    .fc-card{border:1px solid var(--gray-200,#e5e7eb);border-radius:10px;padding:12px 14px;min-width:0}
+    .fc-card--warn{border-color:#FDE68A;background:#FFFBEB}
+    .fc-card__title{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;
+                    color:var(--gray-500,#868e96);margin-bottom:8px}
+
+    .fc-dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0;font-size:13px}
+    .fc-dl dt{color:var(--gray-500,#868e96)}
+    .fc-dl dd{margin:0;font-weight:600;color:var(--gray-900,#111827);overflow-wrap:anywhere}
+    .fc-id{font-size:11px;font-weight:400}
+    .fc-tag{font-size:10px;font-weight:700;background:#FDE68A;color:#92400E;padding:1px 6px;border-radius:999px}
+    .fc-type{background:#EFF6FF;color:#1E40AF;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px}
+    .fc-note{margin:12px 0 0;font-size:13px;color:var(--gray-600,#4b5563);line-height:1.55}
+    .fc-err{margin-top:12px;background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;
+            padding:10px 12px;border-radius:8px;font-size:13px}
+
+    .fc-danger{margin-top:16px;border:1px solid #FECACA;background:#FEF2F2;border-radius:10px;padding:14px}
+    .fc-danger__title{font-weight:800;color:#991B1B;font-size:14px;margin-bottom:6px}
+    .fc-danger__text{font-size:12.5px;color:#7F1D1D;line-height:1.55;margin:0 0 10px}
+    .fc-check{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:7px;cursor:pointer}
+    .fc-check code{font-size:12px;background:#fff;padding:1px 5px;border-radius:4px;border:1px solid #FECACA}
+    .fc-check--confirm{margin-top:12px;padding-top:10px;border-top:1px dashed #FECACA;font-weight:600;color:#991B1B}
+
+    .fc-btn-danger{color:#991B1B;border-color:#FECACA}
+    .fc-btn-danger--solid{background:#B91C1C;color:#fff;border:1px solid #B91C1C}
+    .fc-btn-danger--solid:disabled{opacity:.55}
+
+    @@media(max-width:560px){
+        .fc-modal__foot{justify-content:stretch}
+        .fc-modal__foot .btn{flex:1 1 auto;text-align:center}
+        .fc-dl{grid-template-columns:1fr;gap:2px 0}
+        .fc-dl dt{margin-top:6px}
+    }
+</style>
+
+@code {
+    private List<FranchiseApplicationRow>? items;
+    private string search = "";
+    private FranchiseStatus? status;
+    private int page = 1, total;
+    private const int pageSize = 20;
+    private int TotalPages => (int)Math.Ceiling(total / (double)pageSize);
+
+    private Guid? approveId, rejectId, adjustId, editId;
+    private FranchiseProfileEdit? edit;
+    private string approveCode = "", approveRemarks = "", rejectRemarks = "", adjustReason = "";
+    // Credit Limit starts at 0 on the approval form: granting a credit line is a deliberate act,
+    // not a default. It used to pre-fill ₹50,000, so every approval silently issued that much credit.
+    private decimal approveCredit = 0, approveOpening = 0, adjustAmount = 0;
+    private bool adjustIsCredit = true;
+    // A credit is money in by default and gets invoiced; refunds/corrections untick this.
+    private bool adjustMoneyReceived = true;
+    private bool busy;
+    private string? msg, err;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        var r = await Svc.ListApplicationsAsync(status, search, page, pageSize);
+        items = r.Items; total = r.TotalCount;
+    }
+
+    private void CloseInline() { approveId = null; rejectId = null; adjustId = null; editId = null; edit = null; approveCode = ""; approveRemarks = ""; rejectRemarks = ""; adjustReason = ""; approveCredit = 0; approveOpening = 0; adjustAmount = 0; adjustIsCredit = true; adjustMoneyReceived = true; err = null; }
+
+    /// <summary>Loads the franchise's current particulars into the inline form. Read first, so the
+    /// admin edits what is actually stored rather than the abbreviated list row.</summary>
+    private async Task OpenEdit(Guid id)
+    {
+        CloseInline();
+        var d = await Svc.GetDetailAsync(id);
+        if (d == null) { err = "Franchise not found."; return; }
+        edit = new FranchiseProfileEdit
+        {
+            FranchiseId = d.Id, Name = d.Name, BusinessName = d.BusinessName,
+            ContactPerson = d.ContactPerson, ContactPhone = d.ContactPhone,
+            AddressLine = d.AddressLine, City = d.City, State = d.State, PinCode = d.PinCode,
+            Gstin = d.Gstin, Pan = d.Pan,
+        };
+        editId = id;
+    }
+
+    private async Task DoSaveProfile()
+    {
+        if (edit == null) return;
+        busy = true; err = null; msg = null;
+        try
+        {
+            var (ok, error) = await Svc.UpdateProfileAsync(edit, Guid.Empty);
+            if (!ok) { err = error; return; }
+        }
+        catch (Exception ex)
+        {
+            err = $"Save failed: {ex.Message}";
+            return;
+        }
+        finally { busy = false; }
+
+        msg = "Franchise details updated.";
+        CloseInline();
+        await Load();
+    }
+    private void OpenApprove(Guid id) { CloseInline(); approveId = id; }
+    private void OpenReject(Guid id) { CloseInline(); rejectId = id; }
+    private void OpenAdjust(Guid id) { CloseInline(); adjustId = id; }
+
+    private async Task VerifyApp(Guid id)
+    {
+        busy = true; err = null; msg = null;
+        var (ok, error) = await Svc.AdminVerifyApplicationAsync(id, Guid.Empty);
+        busy = false;
+        if (!ok) { err = error; return; }
+        msg = "Application verified — it's now Pending and ready to approve.";
+        // Jump to the Pending list so the just-verified application (and its Approve button) is visible.
+        status = FranchiseStatus.Pending;
+        await Load();
+    }
+
+    private async Task DoAdjust()
+    {
+        if (adjustId is not Guid id) return;
+        busy = true; err = null; msg = null;
+        var invoiced = adjustIsCredit && adjustMoneyReceived;
+        var (ok, error) = await Svc.AdjustWalletAsync(new AdjustWalletRequest
+        {
+            FranchiseId = id, IsCredit = adjustIsCredit, Amount = adjustAmount, Reason = adjustReason,
+            MoneyReceived = invoiced
+        }, Guid.Empty);
+        busy = false;
+        if (!ok) { err = error; return; }
+        msg = (adjustIsCredit ? (invoiced ? "Wallet credited and invoice raised." : "Wallet credited (no invoice).") : "Wallet debited.")
+            + " Open 👛 Wallet to see the ledger entry.";
+        CloseInline();
+        await Load();
+    }
+
+    // ── Existing-account conflict state ─────────────────────────────────────────────────────────
+    private FranchiseApprovalConflict? conflict;
+    private bool showReplacePanel, confirmReplace, replaceEmail, replacePhone;
+    private string? conflictErr;
+
+    /// <summary>One shape for every account card, so a two-account conflict reads the same as one.</summary>
+    private RenderFragment AccountCard(ExistingAccountInfo a) =>
+        @<dl class="fc-dl">
+            <dt>Name</dt><dd>@a.FullName</dd>
+            <dt>Phone</dt><dd>@(a.Phone ?? "—") @if (a.MatchedOnPhone) { <span class="fc-tag">match</span> }</dd>
+            <dt>Email</dt><dd>@(a.Email ?? "—") @if (a.MatchedOnEmail) { <span class="fc-tag">match</span> }</dd>
+            <dt>Type</dt><dd><span class="fc-type">@a.AccountType</span></dd>
+            <dt>Status</dt><dd>@(a.IsActive ? "Active" : "Inactive")</dd>
+            <dt>User ID</dt><dd><code class="fc-id">@a.UserId</code></dd>
+            <dt>Since</dt><dd>@a.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</dd>
+        </dl>;
+
+    private void ResetConflict()
+    {
+        conflict = null; conflictErr = null;
+        showReplacePanel = false; confirmReplace = false; replaceEmail = false; replacePhone = false;
+    }
+
+    /// <summary>Cancel: closes the dialog and leaves the database exactly as it was.</summary>
+    private void CancelConflict() { ResetConflict(); CloseInline(); }
+
+    /// <summary>Back to the approval form with everything the admin already typed still there, so the
+    /// contact details can be corrected without re-entering code, credit limit and remarks.</summary>
+    private void ChangeContactDetails() { ResetConflict(); }
+
+    private Task UseExistingAccount() => RunApproval(FranchiseAccountResolution.UseExistingAccount);
+    private Task ReplaceContactAndApprove() => RunApproval(FranchiseAccountResolution.ReplaceExistingContact);
+
+    private async Task DoApprove()
+    {
+        if (approveId is not Guid id) return;
+
+        // Look before writing. This is a pure read; if anything already owns the contact details the
+        // admin sees it and decides, and nothing has touched the database yet.
+        busy = true; err = null; msg = null; conflictErr = null;
+        try
+        {
+            var found = await Svc.CheckApprovalConflictAsync(id);
+            if (found.HasConflict) { conflict = found; return; }
+        }
+        catch (Exception ex)
+        {
+            err = $"Could not check for existing accounts: {ex.Message}";
+            return;
+        }
+        finally { busy = false; }
+
+        await RunApproval(FranchiseAccountResolution.None);
+    }
+
+    /// <summary>
+    /// The single path to approval, whichever button reached it.
+    ///
+    /// <para>try/finally rather than a bare await: an exception escaping the service used to skip
+    /// `busy = false` and leave the button reading "Approving…" for ever, with no error shown and
+    /// nothing saved. Every exit — success, validation failure, conflict, exception — resets it.</para>
+    /// </summary>
+    private async Task RunApproval(FranchiseAccountResolution resolution)
+    {
+        if (approveId is not Guid id) return;
+        busy = true; err = null; conflictErr = null;
+
+        var chosen = conflict?.EmailOwner ?? conflict?.PhoneOwner;
+        try
+        {
+            var (ok, error) = await Svc.ApproveAsync(new FranchiseApprovalRequest
+            {
+                FranchiseId = id, Code = approveCode, CreditLimit = approveCredit,
+                OpeningBalance = approveOpening > 0 ? approveOpening : null, Remarks = approveRemarks,
+                AccountResolution = resolution,
+                ExistingUserId = chosen?.UserId,
+                ConfirmContactReplacement = confirmReplace,
+                ReplaceEmail = replaceEmail,
+                ReplacePhone = replacePhone,
+            }, Guid.Empty);   // actor resolved server-side in JWT controller path; cookie path passes empty (audit logs admin)
+
+            if (!ok)
+            {
+                // Keep a failure inside the dialog it came from, so the admin can adjust and retry
+                // rather than losing the comparison they were reading.
+                if (conflict != null) conflictErr = error; else err = error;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            var text = $"Approval failed: {ex.Message}";
+            if (conflict != null) conflictErr = text; else err = text;
+            return;
+        }
+        finally { busy = false; }
+
+        msg = resolution == FranchiseAccountResolution.None
+            ? "Franchise approved. Login credentials emailed to the applicant."
+            : "Franchise approved using the existing account. Its password was not changed.";
+        ResetConflict();
+        CloseInline();
+        await Load();
+    }
+
+    private async Task DoReject()
+    {
+        if (rejectId is not Guid id) return;
+        busy = true; err = null; msg = null;
+        try
+        {
+            var (ok, error) = await Svc.RejectAsync(new FranchiseRejectionRequest { FranchiseId = id, Remarks = rejectRemarks }, Guid.Empty);
+            if (!ok) { err = error; return; }
+        }
+        catch (Exception ex)
+        {
+            err = $"Rejection failed: {ex.Message}";
+            return;
+        }
+        finally { busy = false; }
+
+        msg = "Application rejected. Remarks emailed to the applicant.";
+        CloseInline();
+        await Load();
+    }
+
+    private async Task Toggle(Guid id, bool active)
+    {
+        err = null; msg = null;
+        var (ok, error) = await Svc.SetActiveAsync(id, active, Guid.Empty);
+        if (!ok) { err = error; return; }
+        msg = active ? "Franchise activated." : "Franchise deactivated (login disabled).";
+        await Load();
+    }
+
+    private async Task ResetPw(Guid id)
+    {
+        err = null; msg = null;
+        var (ok, error) = await Svc.ResetPasswordAsync(id, Guid.Empty);
+        if (!ok) { err = error; return; }
+        msg = "Password reset. New password emailed to the franchisee.";
+    }
+
+    private async Task OnStatus(ChangeEventArgs e) { status = int.TryParse(e.Value?.ToString(), out var v) ? (FranchiseStatus)v : null; page = 1; await Load(); }
+    private async Task OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") { page = 1; await Load(); } }
+    private async Task Go(int p) { if (p < 1 || p > TotalPages) return; page = p; await Load(); }
+
+    private static MarkupString StatusBadge(FranchiseApplicationRow f) => new(f.Status switch
+    {
+        FranchiseStatus.Pending => "<span class=\"status status--pending\"><span class=\"dot\"></span>Pending</span>",
+        FranchiseStatus.Unverified => "<span class=\"status status--pending\"><span class=\"dot\"></span>Unverified</span>",
+        FranchiseStatus.Approved when f.IsActive => "<span class=\"status status--confirmed\"><span class=\"dot\"></span>Active</span>",
+        FranchiseStatus.Approved => "<span class=\"status status--cancelled\"><span class=\"dot\"></span>Inactive</span>",
+        FranchiseStatus.Rejected => "<span class=\"status status--cancelled\"><span class=\"dot\"></span>Rejected</span>",
+        _ => f.Status.ToString()
+    });
+}

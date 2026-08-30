@@ -1,0 +1,12 @@
+@* Friendly empty state for AdminGrid (and reusable elsewhere). *@
+<div class="ag-empty">
+    <div class="ag-empty__icon">@Icon</div>
+    <div class="ag-empty__text">@Text</div>
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public string Text { get; set; } = "Nothing here yet.";
+    [Parameter] public string Icon { get; set; } = "📭";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

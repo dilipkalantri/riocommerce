@@ -1,0 +1,1081 @@
+@page "/franchise/order"
+@attribute [Authorize(Roles = "franchise_admin")]
+@using RioCommerce.Core.Constants
+@using RioCommerce.Core.DTOs.Franchise
+@using RioCommerce.Core.Enums
+@inject IFranchisePortalService Svc
+@inject IPaymentModeRegistry PaymentModes
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Place Order — Franchise Portal" })" />
+
+<style>
+    /* Compact single-screen order builder — main form on the left, sticky pay panel on the right. */
+    .franchise-order .fo-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start;margin-top:16px}
+    .franchise-order .fo-main{display:flex;flex-direction:column;gap:16px;min-width:0}
+    .franchise-order .fo-card{background:#fff;border:1px solid var(--gray-200);border-radius:var(--radius-lg);padding:16px 18px}
+    .franchise-order .fo-card__title{font-size:14px;font-weight:700;color:var(--navy);margin:0 0 12px;padding-bottom:10px;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;gap:8px}
+    .franchise-order .fo-step{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
+    .franchise-order .fo-addrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;position:relative}
+    /* Lifted above the click-away veil so qty / “+ Add” stay clickable while the picker is open. */
+    .franchise-order .fo-addrow.is-open{z-index:50}
+
+    /* Searchable course picker (type-ahead combobox) */
+    .franchise-order .fo-pick{position:relative;flex:1;min-width:240px}
+    .franchise-order .fo-pick__ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--gray-400);pointer-events:none}
+    .franchise-order .fo-pick__input{width:100%;padding-left:32px;padding-right:32px}
+    .franchise-order .fo-pick__clear{position:absolute;right:5px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:var(--gray-400);font-size:12px;line-height:1;padding:5px 7px;border-radius:4px;cursor:pointer}
+    .franchise-order .fo-pick__clear:hover{color:var(--navy);background:var(--gray-100)}
+    .franchise-order .fo-pick__pop{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:51;background:#fff;border:1px solid var(--gray-200);border-radius:var(--radius-sm);box-shadow:0 16px 36px -14px rgba(15,27,51,.32);max-height:330px;overflow-y:auto}
+    .franchise-order .fo-pick__count{position:sticky;top:0;background:#fff;padding:7px 12px;font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--gray-400);border-bottom:1px solid var(--gray-100)}
+    .franchise-order .fo-pick__empty{padding:14px 12px;font-size:13px;color:var(--gray-500)}
+    .franchise-order .fo-pick__more{padding:9px 12px;font-size:11.5px;color:var(--gray-500);background:var(--gray-50);border-top:1px solid var(--gray-100)}
+    .franchise-order .fo-pick__row{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--gray-100)}
+    .franchise-order .fo-pick__row:last-child{border-bottom:0}
+    .franchise-order .fo-pick__row.is-active{background:var(--gray-50)}
+    .franchise-order .fo-pick__row.is-sel{box-shadow:inset 3px 0 0 var(--navy)}
+    .franchise-order .fo-pick__body{flex:1;min-width:0}
+    .franchise-order .fo-pick__name{font-size:13px;font-weight:600;color:var(--navy);line-height:1.35}
+    .franchise-order .fo-pick__meta{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--gray-400);margin-top:2px}
+    .franchise-order .fo-pick__price{text-align:right;white-space:nowrap;font-size:13px;font-weight:700;color:var(--navy)}
+    .franchise-order .fo-pick__earn{font-size:10.5px;font-weight:600;color:var(--green)}
+    .franchise-order .fo-pick__veil{position:fixed;inset:0;z-index:40}
+    .franchise-order .fo-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+    .franchise-order .fo-fields .form-group{margin-bottom:0}
+    .franchise-order .fo-fields .span2{grid-column:1 / -1}
+    .franchise-order .fo-pay-opt{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;margin-bottom:8px;transition:border-color .15s,background .15s}
+    .franchise-order .fo-pay-opt:hover{border-color:var(--gray-300)}
+    .franchise-order .fo-pay-opt.sel{border-color:var(--navy);background:var(--gray-50)}
+    .franchise-order .fo-cta{width:100%;justify-content:center;margin-top:4px}
+    /* Discount code — stacks on top of the franchisee's share, never replaces it. */
+    .franchise-order .fo-coupon{display:flex;gap:6px;align-items:center}
+    .franchise-order .fo-coupon .form-input{flex:1;min-width:0;text-transform:uppercase;font-size:13px;padding:7px 10px}
+    .franchise-order .fo-coupon__on{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#ECFDF5;border:1px solid #A7F3D0;border-radius:var(--radius-sm);padding:8px 10px}
+    .franchise-order .fo-coupon__code{font-size:12.5px;font-weight:700;color:#065F46;word-break:break-all}
+    .franchise-order .fo-coupon__off{border:0;background:transparent;color:#047857;font-size:11.5px;font-weight:600;cursor:pointer;padding:2px 4px;white-space:nowrap}
+    .franchise-order .fo-coupon__off:hover{text-decoration:underline}
+    .franchise-order .fo-coupon__msg{font-size:11.5px;line-height:1.45;margin-top:6px}
+    .franchise-order .order-summary__body{padding:16px 18px}
+    @@media(max-width:920px){
+        .franchise-order .fo-grid{grid-template-columns:1fr}
+        .franchise-order .order-summary{position:static}
+    }
+    @@media(max-width:560px){
+        .franchise-order .fo-fields{grid-template-columns:1fr}
+    }
+</style>
+
+<div class="container account-page franchise-order">
+    <h1 class="account-page__title">Franchise Portal</h1>
+    <FranchiseNav />
+
+    @if (loading)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+    }
+    else if (fid == null)
+    {
+        <div class="cart-empty"><p>Your account isn't linked to a franchise.</p></div>
+    }
+    else if (successOrder != null)
+    {
+        <div class="data-card" style="max-width:560px;margin:24px auto;text-align:center;padding:32px">
+            <div style="font-size:52px;line-height:1">✅</div>
+            <h2 style="margin:12px 0 4px">Order Placed Successfully</h2>
+            <p style="color:var(--gray-500);margin:0 0 4px">Payment received and the order is confirmed.</p>
+            <div style="font-size:22px;font-weight:700;margin:16px 0 4px">@successOrder</div>
+            <p style="color:var(--gray-500);margin:0">
+                You paid <strong>₹@successPaid.ToString("N0")</strong>@(successEarned > 0 ? $" — your ₹{successEarned:N0} share was kept up front." : ".")
+            </p>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:22px">
+                @if (LastOrderId != null)
+                {
+                    <a class="btn btn-outline" href="@($"/api/franchise/orders/{LastOrderId}/receipt.pdf?download=1")" target="_blank">📄 Customer Receipt</a>
+                    @* A wallet-paid order isn't invoiced — the top-up already was. *@
+                    @if (payMethod == FranchisePaymentMethod.Gateway)
+                    {
+                        <a class="btn btn-outline" href="@($"/api/franchise/orders/{LastOrderId}/invoice.pdf?download=1")" target="_blank">🧾 Your Tax Invoice</a>
+                    }
+                    else
+                    {
+                        <a class="btn btn-outline" href="/franchise/ledger">👛 Wallet &amp; invoices</a>
+                    }
+                }
+                <a class="btn btn-ghost" href="/franchise/orders">View All Orders</a>
+            </div>
+            <button class="btn btn-primary" style="margin-top:18px" @onclick="StartNewOrder">＋ Place Another Order</button>
+        </div>
+    }
+    else
+    {
+        @* Course carried over from a public course page (“Go to Franchise Portal → Place Order”). *@
+        @if (prefillNote != null)
+        {
+            <div class="inline-alert @(prefillOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-top:14px">@prefillNote</div>
+        }
+
+        <div class="fo-grid">
+            <div class="fo-main">
+                <!-- ── Step 1 · Courses ── -->
+                <div class="fo-card">
+                    <div class="fo-card__title"><span class="fo-step">1</span> Add Courses <span class="required">*</span></div>
+
+                    @* Type-ahead course picker — the catalog is already in memory, so matching on
+                       name / SKU / faculty is instant and needs no server round-trip. *@
+                    <div class="fo-addrow @(pickOpen ? "is-open" : "")">
+                        <div class="fo-pick">
+                            <span class="fo-pick__ico">🔍</span>
+                            <input @ref="pickInput" class="form-input fo-pick__input" autocomplete="off"
+                                   placeholder="Search a course by name or SKU…"
+                                   value="@pickQuery" @oninput="OnPickInput"
+                                   @onfocus="OpenPick" @onkeydown="OnPickKey" />
+                            @if (!string.IsNullOrEmpty(pickQuery))
+                            {
+                                <button type="button" class="fo-pick__clear" title="Clear" @onclick="ClearPick">✕</button>
+                            }
+                            @if (pickOpen)
+                            {
+                                <div class="fo-pick__pop">
+                                    @if (pickResults.Count == 0)
+                                    {
+                                        <div class="fo-pick__empty">No course matches “@pickQuery”. Try a shorter word or the SKU.</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="fo-pick__count">
+                                            @pickTotal course@(pickTotal == 1 ? "" : "s")@(IsSearching ? " found" : "")
+                                        </div>
+                                        @for (var i = 0; i < pickResults.Count; i++)
+                                        {
+                                            var idx = i;
+                                            var c = pickResults[i];
+                                            var earn = EarnPerUnit(c.ProductId);
+                                            <div class="fo-pick__row @(pickIdx == idx ? "is-active" : "") @(SelectedCourse?.ProductId == c.ProductId ? "is-sel" : "")"
+                                                 @onmousedown="() => SelectPick(idx)" @onmouseover="() => pickIdx = idx">
+                                                <div class="fo-pick__body">
+                                                    <div class="fo-pick__name">@c.Title</div>
+                                                    <div class="fo-pick__meta">
+                                                        @if (!string.IsNullOrWhiteSpace(c.Sku)) { <span>SKU: @c.Sku</span> }
+                                                        @if (!string.IsNullOrWhiteSpace(c.FacultyName)) { <span>@c.FacultyName</span> }
+                                                    </div>
+                                                </div>
+                                                <div class="fo-pick__price">
+                                                    ₹@c.FranchisePrice.ToString("N0")
+                                                    @if (earn > 0) { <div class="fo-pick__earn">you earn ₹@earn.ToString("N0")/unit</div> }
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (pickTotal > pickResults.Count)
+                                        {
+                                            <div class="fo-pick__more">
+                                                Showing the first @pickResults.Count of @pickTotal — type a course name or SKU to narrow it down.
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <input type="number" min="1" class="form-input" style="width:80px" @bind="addQty"
+                               title="Quantity" @onfocus="ClosePick" />
+                        <button type="button" class="btn btn-outline" @onclick="AddLine">+ Add</button>
+                    </div>
+                    @if (pickOpen) { <div class="fo-pick__veil" @onclick="ClosePick"></div> }
+                    @if (lineError != null) { <div class="form-hint" style="color:var(--error)">@lineError</div> }
+                    else if (SelectedCourse is { } sel)
+                    {
+                        <div class="form-hint" style="margin-top:8px">
+                            Selected <strong>@sel.Title</strong> — ₹@sel.FranchisePrice.ToString("N0")@(EarningHint(sel.ProductId)) · set the quantity and click “+ Add”.
+                        </div>
+                    }
+
+                    @if (lines.Count > 0)
+                    {
+                        <div class="table-wrap" style="margin-top:12px">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Course</th>
+                                        <th style="text-align:right">Unit ₹</th>
+                                        <th style="text-align:center;width:110px">Qty</th>
+                                        <th style="text-align:right">Line Total</th>
+                                        <th style="text-align:right">My Share</th>
+                                        <th style="width:40px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var l in lines)
+                                    {
+                                        <tr>
+                                            <td><strong>@l.Title</strong></td>
+                                            <td style="text-align:right;white-space:nowrap">₹@l.UnitPrice.ToString("N0")</td>
+                                            <td style="text-align:center">
+                                                <input type="number" min="1" class="form-input" style="width:72px;text-align:center" value="@l.Quantity"
+                                                       @onchange="@(e => UpdateQty(l, e.Value?.ToString()))" />
+                                            </td>
+                                            <td style="text-align:right;white-space:nowrap"><strong>₹@l.LineTotal.ToString("N0")</strong></td>
+                                            <td style="text-align:right;white-space:nowrap">
+                                                @if (l.SharePerUnit > 0)
+                                                {
+                                                    <strong style="color:var(--green)">₹@l.LineEarning.ToString("N0")</strong>
+                                                    <div style="font-size:11px;color:var(--gray-400)">@l.ShareLabel/unit</div>
+                                                }
+                                                else { <span style="color:var(--gray-300)">—</span> }
+                                            </td>
+                                            <td style="text-align:center">
+                                                <button type="button" class="btn btn-ghost btn-sm" title="Remove" @onclick="() => RemoveLine(l)">✕</button>
+                                            </td>
+                                        </tr>
+                                        @if (l.HasConfig)
+                                        {
+                                            <tr>
+                                                <td colspan="6" style="background:var(--gray-50);padding:12px 14px;border-top:0">
+                                                    <div style="display:flex;flex-wrap:wrap;gap:18px">
+                                                        @if (l.Modes.Count > 0)
+                                                        {
+                                                            <div style="min-width:220px;flex:1">
+                                                                <label class="form-label" style="font-size:12px;margin-bottom:4px">Mode of Lecture</label>
+                                                                <select class="form-input" style="width:100%"
+                                                                        value="@(l.ProductModeId?.ToString())"
+                                                                        @onchange="e => SetMode(l, e.Value?.ToString())">
+                                                                    @foreach (var m in l.Modes)
+                                                                    {
+                                                                        <option value="@m.Id">@m.Name@(m.Price > 0 ? $"  (+₹{m.Price:N0})" : "")</option>
+                                                                    }
+                                                                </select>
+                                                            </div>
+                                                        }
+                                                        @foreach (var g in l.OptionGroups)
+                                                        {
+                                                            var picked = l.SelectedOption.ContainsKey(g.Id);
+                                                            <div style="min-width:220px;flex:1">
+                                                                <label class="form-label" style="font-size:12px;margin-bottom:4px">
+                                                                    @g.Name <span class="required">*</span>
+                                                                </label>
+                                                                <select class="form-input" style="@($"width:100%;{(picked ? "" : "border-color:var(--error)")}")"
+                                                                        value="@(l.SelectedOption.TryGetValue(g.Id, out var oid) ? oid.ToString() : "")"
+                                                                        @onchange="e => SetOption(l, g.Id, e.Value?.ToString())">
+                                                                    <option value="">— Select @g.Name —</option>
+                                                                    @foreach (var o in g.Options)
+                                                                    {
+                                                                        <option value="@o.Id">@o.Name@(o.PriceAddOn > 0 ? $"  (+₹{o.PriceAddOn:N0})" : "")</option>
+                                                                    }
+                                                                </select>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="form-hint" style="margin-top:10px">No courses added yet — select a course above and click “+ Add”.</div>
+                    }
+                </div>
+
+                <!-- ── Step 2 · Student & delivery (combined, dense) ── -->
+                <div class="fo-card">
+                    <div class="fo-card__title"><span class="fo-step">2</span> Student &amp; Delivery</div>
+                    <div class="fo-fields">
+                        <div class="form-group"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="req.CustomerName" placeholder="Student's full name" /></div>
+                        <div class="form-group"><label class="form-label">Mobile <span class="required">*</span></label><input class="form-input" @bind="req.Phone" placeholder="10-digit mobile" /></div>
+                        @* Email + the full delivery address are mandatory: they feed the SHIPPING
+                           address (billing is the franchisee's own) and the access/update emails, so
+                           an order missing them cannot be despatched or delivered. *@
+                        <div class="form-group"><label class="form-label">Email <span class="required">*</span></label><input type="email" class="form-input" @bind="req.Email" placeholder="For order &amp; access details" /></div>
+                        <div class="form-group"><label class="form-label">City <span class="required">*</span></label><input class="form-input" @bind="req.City" /></div>
+                        @* Picked, not typed. The State string goes straight onto the order and is
+                           what the GST place-of-supply comparison reads, so a free-text field made
+                           "Maharastra" and "MH" as valid to save as the real thing. Same form-input
+                           class as every other control here, so it inherits the existing styling. *@
+                        <div class="form-group"><label class="form-label">State <span class="required">*</span></label>
+                            <select class="form-input" @bind="req.State">
+                                <option value="">Select State</option>
+                                @foreach (var state in IndianStates.All)
+                                {
+                                    <option value="@state">@state</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">PIN Code <span class="required">*</span></label><input class="form-input" inputmode="numeric" maxlength="6" @bind="req.PinCode" placeholder="6 digits" /></div>
+                        <div class="form-group span2"><label class="form-label">Delivery Address <span class="required">*</span></label><textarea rows="2" class="form-input" @bind="req.AddressLine" placeholder="Street, building, area"></textarea></div>
+                        <div class="form-group span2"><label class="form-label">Order Notes / Remarks</label><textarea rows="2" class="form-input" @bind="req.CustomerNotes" placeholder="Anything our team should know about this order"></textarea></div>
+                        <div class="form-group" style="max-width:200px"><label class="form-label">Shipping (₹)</label><input type="number" step="1" class="form-input" @bind="req.ShippingCharges" /></div>
+                    </div>
+                    <div class="form-hint" style="margin-top:10px">The invoice is raised in your franchise's name; this is the student who receives the course.</div>
+                </div>
+            </div>
+
+            <!-- ── Sticky pay panel: summary + method + CTA always visible ── -->
+            <div class="order-summary">
+                <div class="order-summary__header"><h3>Payment Summary</h3></div>
+                <div class="order-summary__body">
+                    @if (lines.Count > 0)
+                    {
+                        @foreach (var l in lines)
+                        {
+                            <div class="summary-row" style="font-size:13px">
+                                <span class="label">@l.Title <span style="color:var(--gray-400)">× @l.Quantity</span></span>
+                                <span class="value">₹@l.LineTotal.ToString("N0")</span>
+                            </div>
+                        }
+                        <hr style="margin:10px 0;border:0;border-top:1px dashed var(--gray-200)" />
+
+                        @* Discount code — separate from, and on top of, the franchise share below. *@
+                        <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">DISCOUNT CODE</div>
+                        @if (coupon is { Ok: true })
+                        {
+                            <div class="fo-coupon__on">
+                                <span class="fo-coupon__code">🏷 @coupon.Code</span>
+                                <button type="button" class="fo-coupon__off" @onclick="RemoveCoupon">Remove</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="fo-coupon">
+                                <input class="form-input" placeholder="Enter code" autocomplete="off"
+                                       @bind="couponInput" @bind:event="oninput" @onkeydown="OnCouponKey" />
+                                <button type="button" class="btn btn-outline btn-sm" disabled="@couponBusy" @onclick="ApplyCoupon">
+                                    @(couponBusy ? "…" : "Apply")
+                                </button>
+                            </div>
+                        }
+                        @if (CouponBelowMinimum)
+                        {
+                            <div class="fo-coupon__msg" style="color:var(--error)">
+                                This code needs a minimum order of ₹@coupon!.MinOrder.ToString("N0") — add ₹@((coupon.MinOrder - Math.Max(0, Subtotal - TotalDiscount)).ToString("N0")) more to use it.
+                            </div>
+                        }
+                        else if (couponMsg != null)
+                        {
+                            <div class="fo-coupon__msg" style="color:@(couponOk ? "var(--green)" : "var(--error)")">@couponMsg</div>
+                        }
+
+                        <hr style="margin:12px 0 10px;border:0;border-top:1px dashed var(--gray-200)" />
+                        <div class="summary-row"><span class="label">Subtotal</span><span class="value">₹@Subtotal.ToString("N0")</span></div>
+                        @if (CouponDiscount > 0)
+                        {
+                            <div class="summary-row" style="color:var(--green)"><span class="label">Discount (@coupon!.Code)</span><span class="value">−₹@CouponDiscount.ToString("N0")</span></div>
+                        }
+                        @if (req.ShippingCharges > 0) { <div class="summary-row"><span class="label">Shipping</span><span class="value">+₹@req.ShippingCharges.ToString("N0")</span></div> }
+                        <div class="summary-row" style="font-size:11px;color:var(--gray-500)"><span class="label">GST (incl.)</span><span class="value">₹@GstInclusive.ToString("N0")</span></div>
+                        <div class="summary-row"><span class="label">Order Total</span><span class="value">₹@Total.ToString("N0")</span></div>
+                        @if (TotalEarning > 0)
+                        {
+                            <div class="summary-row" style="color:var(--green)"><span class="label">Less: Your Share</span><span class="value">−₹@TotalEarning.ToString("N0")</span></div>
+                        }
+                        <hr style="margin:10px 0;border:0;border-top:1px solid var(--gray-200)" />
+                        <div class="summary-row summary-row--total"><span class="label">You Pay</span><span class="value">₹@NetPayable.ToString("N0")</span></div>
+                        @if (TotalEarning > 0)
+                        {
+                            <p style="font-size:12px;color:var(--gray-500);margin:8px 0 0">
+                                You keep your ₹@TotalEarning.ToString("N0") share up front and pay only the balance@(CouponDiscount > 0 ? $" — the ₹{CouponDiscount:N0} discount is on top of it, not out of it." : ".")
+                            </p>
+                        }
+
+                        <hr style="margin:14px 0 12px;border:0;border-top:1px solid var(--gray-200)" />
+
+                        <!-- Payment method -->
+                        <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px">PAYMENT METHOD</div>
+                        @* Wallet appears only when the franchisee actually has money in it. When the
+                           balance cannot cover this order it stays visible but unselectable — an option
+                           that can be picked and then refused at submit is worse than one clearly
+                           marked short. *@
+                        @if (HasWallet)
+                        {
+                            <label class="fo-pay-opt @(payMethod == FranchisePaymentMethod.Wallet ? "sel" : "") @(WalletCovers ? "" : "is-disabled")"
+                                   style="@(WalletCovers ? "" : "opacity:.55;cursor:not-allowed")">
+                                <input type="radio" name="payMethod" disabled="@(!WalletCovers)" checked="@(payMethod == FranchisePaymentMethod.Wallet)"
+                                       @onchange="@(() => payMethod = FranchisePaymentMethod.Wallet)" />
+                                <span>
+                                    Pay from <strong>Wallet</strong><br />
+                                    <span style="color:var(--gray-400)">Available ₹@WalletAvailable.ToString("N0")</span>
+                                    @if (!WalletCovers)
+                                    {
+                                        <br /><span style="color:var(--error)">Short by ₹@((NetPayable - WalletAvailable).ToString("N0")) — pay online instead</span>
+                                    }
+                                </span>
+                            </label>
+                        }
+                        @* Online stays available whenever a gateway is configured. The gateway NAME comes
+                           from the admin settings — it used to say "Razorpay" regardless, so an
+                           Easebuzz-only setup showed the wrong provider to the franchisee. *@
+                        @if (onlineGatewayName != null)
+                        {
+                            <label class="fo-pay-opt @(payMethod == FranchisePaymentMethod.Gateway ? "sel" : "")">
+                                <input type="radio" name="payMethod" checked="@(payMethod == FranchisePaymentMethod.Gateway)"
+                                       @onchange="@(() => payMethod = FranchisePaymentMethod.Gateway)" />
+                                <span>Pay <strong>Online</strong><br /><span style="color:var(--gray-400)">@onlineGatewayName — card / UPI / netbanking</span></span>
+                            </label>
+                        }
+                        @if (!HasWallet && onlineGatewayName != null)
+                        {
+                            <div class="form-hint" style="margin:-2px 0 8px">Wallet balance is ₹0 — please pay online to complete this order.</div>
+                        }
+                        @if (onlineGatewayName == null && !WalletCovers)
+                        {
+                            @* No gateway configured AND the wallet can't cover it — say so plainly
+                               rather than leaving a submit button that cannot succeed. *@
+                            <div class="inline-alert inline-alert--err" style="margin:4px 0 8px">
+                                Online payment is currently unavailable and your wallet balance is not enough for this order.
+                                Please top up your wallet or contact the administrator.
+                            </div>
+                        }
+
+                        @if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:10px 0">@msg</div> }
+
+                        <button class="btn btn-primary btn-lg fo-cta" disabled="@placing" @onclick="Place">
+                            @(placing
+                                ? (payMethod == FranchisePaymentMethod.Gateway ? "Opening payment…" : "Placing…")
+                                : (payMethod == FranchisePaymentMethod.Gateway ? $"Pay ₹{NetPayable:N0} Online" : $"✓ Place Order · Pay ₹{NetPayable:N0}"))
+                        </button>
+                    }
+                    else
+                    {
+                        <p style="font-size:13px;color:var(--gray-500);margin:0">Add one or more courses to see your payment breakdown.</p>
+                        @if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:10px 0 0">@msg</div> }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // ── Deep-link prefill from a public course page ───────────────────────────
+    // Franchise accounts browse the same public website as customers but can't use the customer
+    // cart, so the course page sends them here. It carries the course — plus the lecture mode and
+    // purchase options picked there — in the query string, so this page opens with that line
+    // already added: the franchisee only fills in the student details and pays. The resulting
+    // order lands in /franchise/orders exactly like any other portal order.
+    [SupplyParameterFromQuery(Name = "product")] public Guid? PrefillProductId { get; set; }
+    [SupplyParameterFromQuery(Name = "mode")] public Guid? PrefillModeId { get; set; }
+    [SupplyParameterFromQuery(Name = "opt")] public Guid[]? PrefillOptionIds { get; set; }
+    [SupplyParameterFromQuery(Name = "qty")] public int? PrefillQty { get; set; }
+
+    // The product already pulled in from the query string — guards against a re-render adding it twice.
+    private Guid? prefilledFor;
+    private string? prefillNote;
+    private bool prefillOk;
+
+    private Guid? fid;
+    private List<FranchiseCatalogItem>? catalog;
+    // Per-product resolved share (type/value/earning) so the franchisee sees what they earn while ordering.
+    private Dictionary<Guid, FranchiseProductShareRow> shares = new();
+    private FranchiseOrderRequest req = new();
+    private decimal wallet, credit;
+    private bool loading = true, placing, msgOk;
+    // After a successful order, switch the form to a Thank-You panel.
+    private string? successOrder;
+    private decimal successPaid, successEarned;
+    private FranchisePaymentMethod payMethod = FranchisePaymentMethod.Wallet;
+    private string? msg;
+
+    // Multi-product line builder
+    private readonly List<OrderLineVm> lines = new();
+    private string? addProductId;
+    private int addQty = 1;
+    private string? lineError;
+
+    // ── Course picker (type-ahead over the in-memory catalog) ──
+    private ElementReference pickInput;
+    private bool pickOpen;
+    // Raw text in the box. Holds the search term while typing; the chosen course's title after a pick.
+    private string pickQuery = "";
+    // True only while the text is a live search term — after a pick the full list is shown again.
+    private bool pickTyping;
+    private int pickIdx = -1;
+    // Rendered rows (capped) plus the true match count behind them.
+    private List<FranchiseCatalogItem> pickResults = new();
+    private int pickTotal;
+    private const int PickLimit = 50;
+
+    private bool IsSearching => pickTyping && !string.IsNullOrWhiteSpace(pickQuery);
+    private FranchiseCatalogItem? SelectedCourse
+        => Guid.TryParse(addProductId, out var g) ? catalog?.FirstOrDefault(c => c.ProductId == g) : null;
+
+    private sealed class OrderLineVm
+    {
+        public Guid ProductId { get; set; }
+        public string Title { get; set; } = "";
+        // Base franchise price (effective selling price). Mode + option add-ons stack on top.
+        public decimal BasePrice { get; set; }
+        public int Quantity { get; set; } = 1;
+        public decimal Discount { get; set; }
+        // Resolved share on the base course price (per unit). 0 when no share applies.
+        public decimal BaseSharePerUnit { get; set; }
+        public CommissionType ShareType { get; set; }
+        public decimal ShareValue { get; set; }
+        public string ShareLabel { get; set; } = "—";
+        // Per-unit franchise earning. A % share also earns on the mode + option add-ons; a fixed
+        // ₹ share stays flat. Kept in lock-step with the server's BuildOrderAsync commission math.
+        public decimal SharePerUnit => ShareType == CommissionType.Percent && BaseSharePerUnit > 0
+            ? BaseSharePerUnit + Math.Round((ModeAddOn + OptionAddOn) * ShareValue / 100m, 2)
+            : BaseSharePerUnit;
+
+        // ── Lecture mode + purchase options ──
+        public IReadOnlyList<FranchiseCatalogMode> Modes { get; set; } = System.Array.Empty<FranchiseCatalogMode>();
+        public IReadOnlyList<FranchiseCatalogOptionGroup> OptionGroups { get; set; } = System.Array.Empty<FranchiseCatalogOptionGroup>();
+        public Guid? ProductModeId { get; set; }
+        // groupId -> selected optionId (exactly one per group).
+        public Dictionary<Guid, Guid> SelectedOption { get; set; } = new();
+
+        public decimal ModeAddOn => Modes.FirstOrDefault(m => m.Id == ProductModeId)?.Price ?? 0m;
+        public decimal OptionAddOn => OptionGroups.Sum(g =>
+            SelectedOption.TryGetValue(g.Id, out var oid)
+                ? (g.Options.FirstOrDefault(o => o.Id == oid)?.PriceAddOn ?? 0m)
+                : 0m);
+        public bool HasConfig => Modes.Count > 0 || OptionGroups.Count > 0;
+        public List<Guid> SelectedOptionIds => SelectedOption.Values.ToList();
+
+        public decimal UnitPrice => BasePrice + ModeAddOn + OptionAddOn;
+        public decimal LineTotal => Math.Max(0, UnitPrice * Quantity - Discount);
+        public decimal LineEarning => Math.Round(SharePerUnit * Quantity, 2);
+    }
+
+    private decimal Subtotal => lines.Sum(l => l.UnitPrice * l.Quantity);
+    private decimal TotalDiscount => lines.Sum(l => Math.Min(l.Discount, l.UnitPrice * l.Quantity));
+    private decimal Total => Math.Max(0, Subtotal - TotalDiscount - CouponDiscount + req.ShippingCharges);
+    private decimal GstInclusive => Math.Round(Math.Max(0, Subtotal - TotalDiscount - CouponDiscount) * 18m / 118m, 0);
+    private decimal TotalEarning => lines.Sum(l => l.LineEarning);
+    // The franchisee keeps their share and pays only the balance. The share is calculated from
+    // product pricing, so a discount code never eats into it — the two reductions stack.
+    private decimal NetPayable => Math.Max(0, Total - Math.Min(TotalEarning, Total));
+
+    // ── Discount code ─────────────────────────────────────────────────────────
+    // Applying a code fetches its RULES (percent/fixed, cap, minimum) once, then the rupee value is
+    // recomputed here as courses and quantities change — no round-trip per keystroke. Only the code
+    // string is sent when the order is placed; the server re-resolves the same rules and owns the
+    // final amount, so nothing here can dictate a discount.
+    private string couponInput = "";
+    private FranchiseCouponPreview? coupon;
+    private string? couponMsg;
+    private bool couponOk, couponBusy;
+
+    private decimal CouponDiscount
+    {
+        get
+        {
+            if (coupon is not { Ok: true }) return 0m;
+            var basis = Math.Max(0, Subtotal - TotalDiscount);
+            if (basis < coupon.MinOrder) return 0m;
+            var d = coupon.CouponType == SharingType.Percentage ? basis * coupon.Value / 100m : coupon.Value;
+            if (coupon.MaxDiscount is { } cap && d > cap) d = cap;
+            return Math.Round(Math.Clamp(d, 0m, basis), 2);
+        }
+    }
+
+    // The code is applied but the order has since dropped under its minimum — kept on the order so
+    // it starts working again as soon as enough is added back.
+    private bool CouponBelowMinimum
+        => coupon is { Ok: true } && Math.Max(0, Subtotal - TotalDiscount) < coupon.MinOrder;
+
+    private Task OnCouponKey(KeyboardEventArgs e) => e.Key == "Enter" ? ApplyCoupon() : Task.CompletedTask;
+
+    private async Task ApplyCoupon()
+    {
+        couponMsg = null;
+        if (string.IsNullOrWhiteSpace(couponInput)) { couponOk = false; couponMsg = "Enter a discount code."; return; }
+
+        couponBusy = true;
+        var res = await Svc.PreviewCouponAsync(fid!.Value, couponInput);
+        couponBusy = false;
+
+        couponOk = res.Ok;
+        couponMsg = res.Message;
+        coupon = res.Ok ? res : null;
+        if (res.Ok) couponInput = res.Code!;
+    }
+
+    private void RemoveCoupon()
+    {
+        coupon = null;
+        couponInput = "";
+        couponMsg = null;
+        couponOk = false;
+    }
+
+    // Spendable wallet = own balance + approved credit line. The Wallet payment option is
+    // offered only when this is positive; otherwise the franchisee pays via the online gateway.
+    private decimal WalletAvailable => wallet + credit;
+    private bool HasWallet => WalletAvailable > 0;
+
+    /// <summary>Whether the wallet can actually settle THIS order. Having ₹500 available is not the
+    /// same as being able to pay ₹6,800 — the server's debit guard would refuse it, so the option is
+    /// shown but not selectable rather than failing at submit.</summary>
+    private bool WalletCovers => WalletAvailable >= NetPayable;
+
+    /// <summary>Display name of the gateway the admin has enabled, or null when none is — resolved
+    /// from settings, never assumed. Null hides the Online option entirely.</summary>
+    private string? onlineGatewayName;
+    // Default to the wallet only when it can actually settle the order — otherwise the form opens on
+    // a pre-selected option the server would refuse. WalletCovers depends on the order total, so this
+    // is re-applied whenever lines change.
+    private void ApplyDefaultPayMethod()
+        => payMethod = (HasWallet && WalletCovers) ? FranchisePaymentMethod.Wallet : FranchisePaymentMethod.Gateway;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Which gateway the admin has enabled — drives the Online option's label and whether it is
+        // offered at all. A settings read must never take the order page down, so a failure here just
+        // means the Online option is hidden and the wallet path still works.
+        try { onlineGatewayName = (await PaymentModes.ResolveOnlineGatewayAsync())?.Name; }
+        catch { onlineGatewayName = null; }
+
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+        {
+            fid = await Svc.ResolveFranchiseIdAsync(userId);
+            if (fid != null)
+            {
+                catalog = await Svc.CatalogAsync();
+                var shareRows = await Svc.ProductSharesAsync(fid.Value);
+                shares = shareRows.ToDictionary(s => s.ProductId);
+                RecomputePicks();
+                await RefreshWallet();
+                ApplyDefaultPayMethod();
+            }
+        }
+        loading = false;
+    }
+
+    // Runs after OnInitializedAsync has loaded the catalog, so the deep-linked course can be
+    // resolved against it. Also fires on a fresh navigation to this page with a different course.
+    protected override void OnParametersSet()
+    {
+        if (fid == null || catalog == null) return;
+        if (PrefillProductId is not { } pid || pid == prefilledFor) return;
+        prefilledFor = pid;
+        ApplyPrefill(pid);
+    }
+
+    private void ApplyPrefill(Guid productId)
+    {
+        var c = catalog?.FirstOrDefault(x => x.ProductId == productId);
+        if (c == null)
+        {
+            prefillOk = false;
+            prefillNote = "That course isn't available in your franchise catalogue right now — please search for it below.";
+            return;
+        }
+
+        var qty = Math.Clamp(PrefillQty ?? 1, 1, 999);
+        var existing = lines.FirstOrDefault(l => l.ProductId == productId);
+        if (existing != null)
+        {
+            existing.Quantity += qty;
+        }
+        else
+        {
+            var line = NewLine(c, qty);
+            // Honour the lecture mode chosen on the course page; NewLine's default stands otherwise.
+            if (PrefillModeId is { } mid && c.Modes.Any(m => m.Id == mid)) line.ProductModeId = mid;
+            // Same for the purchase options — at most one per group, ignoring any id that doesn't
+            // belong to this product. Groups the course page left unanswered stay unpicked here.
+            foreach (var g in c.OptionGroups)
+            {
+                var picked = g.Options.FirstOrDefault(o => PrefillOptionIds?.Contains(o.Id) == true);
+                if (picked != null) line.SelectedOption[g.Id] = picked.Id;
+            }
+            lines.Add(line);
+        }
+
+        prefillOk = true;
+        prefillNote = $"“{c.Title}” was added from the website at your franchise price. Check the mode / options and quantity, fill in the student's details, then place the order.";
+    }
+
+    // ── Course picker ─────────────────────────────────────────────────────────
+    private void OpenPick()
+    {
+        pickOpen = true;
+        pickIdx = -1;
+        RecomputePicks();
+    }
+
+    private void ClosePick()
+    {
+        pickOpen = false;
+        pickIdx = -1;
+        // A half-typed term that matched nothing stays put, so the franchisee can fix it.
+        // Otherwise put the chosen course's title back in the box — it must never show a
+        // search term while a different course is the one actually selected.
+        if (SelectedCourse is { } sel) { pickQuery = sel.Title; pickTyping = false; }
+    }
+
+    private void OnPickInput(ChangeEventArgs e)
+    {
+        pickQuery = e.Value?.ToString() ?? "";
+        pickTyping = true;
+        pickOpen = true;
+        lineError = null;
+        // Typing invalidates any earlier pick — the franchisee is looking for something else.
+        addProductId = "";
+        RecomputePicks();
+        pickIdx = pickResults.Count == 1 ? 0 : -1;
+    }
+
+    private void OnPickKey(KeyboardEventArgs e)
+    {
+        if (!pickOpen)
+        {
+            if (e.Key is "ArrowDown" or "ArrowUp") OpenPick();
+            else if (e.Key == "Enter" && SelectedCourse != null) AddLine();
+            return;
+        }
+
+        var n = pickResults.Count;
+        switch (e.Key)
+        {
+            case "ArrowDown": if (n > 0) pickIdx = (pickIdx + 1) % n; break;
+            case "ArrowUp":   if (n > 0) pickIdx = (pickIdx - 1 + n) % n; break;
+            case "Escape":    ClosePick(); break;
+            case "Enter":
+                if (pickIdx >= 0 && pickIdx < n) SelectPick(pickIdx);
+                else if (n == 1) SelectPick(0);
+                else if (SelectedCourse != null) AddLine();
+                break;
+        }
+    }
+
+    private void SelectPick(int idx)
+    {
+        if (idx < 0 || idx >= pickResults.Count) return;
+        var c = pickResults[idx];
+        addProductId = c.ProductId.ToString();
+        pickQuery = c.Title;
+        pickTyping = false;
+        pickOpen = false;
+        pickIdx = -1;
+        lineError = null;
+        RecomputePicks();
+    }
+
+    private void ResetPick()
+    {
+        addProductId = "";
+        pickQuery = "";
+        pickTyping = false;
+        pickOpen = false;
+        pickIdx = -1;
+        RecomputePicks();
+    }
+
+    // ✕ button: wipe the box and put the cursor back, so the next search starts straight away.
+    private async Task ClearPick()
+    {
+        ResetPick();
+        lineError = null;
+        try { await pickInput.FocusAsync(); } catch { /* element may already be gone */ }
+    }
+
+    // Matches every whitespace-separated token against title, SKU and faculty, so word order
+    // doesn't matter ("gst inter" finds "CA Inter GST …"). The rendered list is capped — the
+    // full match count is kept in pickTotal so the UI can say what it's holding back.
+    private void RecomputePicks()
+    {
+        var all = catalog ?? new List<FranchiseCatalogItem>();
+        IEnumerable<FranchiseCatalogItem> matched = all;
+        if (IsSearching)
+        {
+            var tokens = pickQuery.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            matched = all.Where(c => tokens.All(t => MatchesToken(c, t)));
+        }
+        var list = matched.ToList();
+        pickTotal = list.Count;
+        pickResults = list.Count > PickLimit ? list.GetRange(0, PickLimit) : list;
+    }
+
+    private static bool MatchesToken(FranchiseCatalogItem c, string token)
+        => c.Title.Contains(token, StringComparison.OrdinalIgnoreCase)
+        || (c.Sku?.Contains(token, StringComparison.OrdinalIgnoreCase) ?? false)
+        || (c.FacultyName?.Contains(token, StringComparison.OrdinalIgnoreCase) ?? false);
+
+    private decimal EarnPerUnit(Guid productId)
+        => shares.TryGetValue(productId, out var sh) ? Math.Max(0, sh.CalculatedFranchiseAmount) : 0m;
+
+    private void AddLine()
+    {
+        lineError = null;
+        if (!Guid.TryParse(addProductId, out var pid)) { lineError = "Please search for and select a course to add."; return; }
+        if (addQty <= 0) { lineError = "Quantity must be at least 1."; return; }
+
+        var existing = lines.FirstOrDefault(l => l.ProductId == pid);
+        if (existing != null)
+        {
+            // Adding the same course again just increases its quantity.
+            existing.Quantity += addQty;
+        }
+        else
+        {
+            var c = catalog?.FirstOrDefault(x => x.ProductId == pid);
+            if (c == null) { lineError = "That course is not available."; return; }
+            lines.Add(NewLine(c, addQty));
+        }
+        addQty = 1;
+        ResetPick();   // empty the search box, ready for the next course
+    }
+
+    // Builds an order line for a catalog course: franchise price, resolved share, and the modes /
+    // option groups the franchisee can configure. The lecture mode defaults to the first available
+    // (a delivery mode is always required); purchase-option groups are left UNSELECTED — the
+    // franchisee must pick one per group.
+    private OrderLineVm NewLine(FranchiseCatalogItem c, int qty)
+    {
+        shares.TryGetValue(c.ProductId, out var sh);
+        return new OrderLineVm
+        {
+            ProductId = c.ProductId,
+            Title = c.Title,
+            BasePrice = c.FranchisePrice,
+            Quantity = qty,
+            BaseSharePerUnit = sh?.CalculatedFranchiseAmount ?? 0m,
+            ShareType = sh?.ShareType ?? CommissionType.Percent,
+            ShareValue = sh?.ShareValue ?? 0m,
+            ShareLabel = ShareLabelFor(sh),
+            Modes = c.Modes,
+            OptionGroups = c.OptionGroups,
+            ProductModeId = c.Modes.FirstOrDefault()?.Id
+        };
+    }
+
+    private void RemoveLine(OrderLineVm l)
+    {
+        lines.Remove(l);
+        // Drop the "added from the website" banner once its line is gone, so it can't go stale.
+        if (l.ProductId == prefilledFor) prefillNote = null;
+    }
+
+    private void UpdateQty(OrderLineVm l, string? raw)
+    {
+        if (int.TryParse(raw, out var q) && q >= 1) l.Quantity = q;
+        else l.Quantity = 1;
+    }
+
+    private void SetMode(OrderLineVm l, string? raw)
+    {
+        if (Guid.TryParse(raw, out var id)) l.ProductModeId = id;
+    }
+
+    private void SetOption(OrderLineVm l, Guid groupId, string? raw)
+    {
+        if (Guid.TryParse(raw, out var id)) l.SelectedOption[groupId] = id;
+        else l.SelectedOption.Remove(groupId);   // "— Select —" placeholder
+    }
+
+    // Every active option group on every line must have a pick. Returns the first offender's message.
+    private string? FirstUnpickedOption()
+    {
+        foreach (var l in lines)
+            foreach (var g in l.OptionGroups)
+                if (!l.SelectedOption.ContainsKey(g.Id))
+                    return $"Please choose an option for “{g.Name}” on {l.Title}.";
+        return null;
+    }
+
+    private async Task RefreshWallet()
+    {
+        var d = await Svc.GetDashboardAsync(fid!.Value);
+        if (d != null) { wallet = d.Wallet; credit = d.CreditLimit; }
+    }
+
+    private async Task Place()
+    {
+        msg = null;
+        if (lines.Count == 0) { msgOk = false; msg = "Please add at least one course to the order."; return; }
+
+        var unpicked = FirstUnpickedOption();
+        if (unpicked != null) { msgOk = false; msg = unpicked; return; }
+
+        // The wallet may have stopped covering the order after it was selected (a line was added, or
+        // the balance moved in another tab). Catch it here rather than letting the server's debit
+        // guard reject it after the order has been built.
+        if (payMethod == FranchisePaymentMethod.Wallet && !WalletCovers)
+        {
+            msgOk = false;
+            msg = $"Wallet balance (₹{WalletAvailable:N0}) is not enough for ₹{NetPayable:N0}. Please pay online or top up your wallet.";
+            payMethod = onlineGatewayName != null ? FranchisePaymentMethod.Gateway : payMethod;
+            return;
+        }
+
+        req.Lines = lines.Select(l => new FranchiseOrderLine
+        {
+            ProductId = l.ProductId,
+            ProductModeId = l.ProductModeId,
+            SelectedOptionIds = l.SelectedOptionIds,
+            Quantity = l.Quantity,
+            Discount = l.Discount
+        }).ToList();
+        req.PaymentMethod = payMethod;
+        // Only the code travels — the server re-resolves the discount and owns the amount.
+        req.CouponCode = coupon is { Ok: true } ? coupon.Code : null;
+
+        if (payMethod == FranchisePaymentMethod.Gateway)
+        {
+            await PayOnline();
+            return;
+        }
+
+        // ── Wallet ──
+        placing = true;
+        var paid = NetPayable; var earned = TotalEarning;
+        var (ok, error, orderNumber) = await Svc.PlaceOrderAsync(fid!.Value, req);
+        placing = false;
+        msgOk = ok;
+        if (ok)
+        {
+            await ResolveLastOrderId(orderNumber);
+            if (LastOrderId != null)
+            {
+                Nav.NavigateTo($"/franchise/order-success/{LastOrderId}");
+                return;
+            }
+            // Fallback: show inline success if id couldn't be resolved.
+            successOrder = orderNumber; successPaid = paid; successEarned = earned; msg = null;
+            await RefreshWallet();
+            ResetForm();
+        }
+        else msg = error;
+    }
+
+    private async Task PayOnline()
+    {
+        placing = true;
+        var paid = NetPayable; var earned = TotalEarning;
+
+        // A redirect gateway needs an absolute return URL and the server cannot derive one from a
+        // Blazor circuit, so the origin travels with the request.
+        req.OriginBaseUrl = Nav.BaseUri.TrimEnd('/');
+
+        // 1. Create the Pending order + an intent on whichever gateway the admin has enabled.
+        var (ok, error, handoff) = await Svc.CreateGatewayOrderAsync(fid!.Value, req);
+        if (!ok || handoff == null) { placing = false; msgOk = false; msg = error ?? "Could not start the payment."; return; }
+
+        // 2a. REDIRECT gateway (Easebuzz): hand the browser over. Settlement happens server-side when
+        //     the gateway POSTs its verified callback, so there is nothing to await here — and no
+        //     popup, which is why this branches on RedirectUrl rather than on the gateway name.
+        if (!string.IsNullOrWhiteSpace(handoff.RedirectUrl))
+        {
+            Nav.NavigateTo(handoff.RedirectUrl!, forceLoad: true);
+            return;
+        }
+
+        // 2b. POPUP gateway (Razorpay): needs the key + gateway order id back from the server.
+        if (string.IsNullOrWhiteSpace(handoff.GatewayKey) || string.IsNullOrWhiteSpace(handoff.GatewayOrderId))
+        {
+            placing = false; msgOk = false;
+            msg = $"Could not start the payment — {handoff.GatewayName} did not return the details the payment window needs.";
+            return;
+        }
+
+        // Open the popup (returns the signed result to us — no redirect).
+        var prefill = new { name = req.CustomerName, email = req.Email ?? "", contact = req.Phone };
+        var jsHandoff = new
+        {
+            key = handoff.GatewayKey,
+            amount = handoff.AmountPaise,
+            currency = handoff.Currency,
+            orderId = handoff.GatewayOrderId,
+            orderNumber = handoff.OrderNumber
+        };
+        PopupResult outcome;
+        try
+        {
+            // The popup can stay open for minutes (card entry, OTP). The default JS interop
+            // timeout (~1 min) is too short, so allow up to 15 minutes.
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(15));
+            outcome = await JS.InvokeAsync<PopupResult>("hjc.franchisePayRazorpay", cts.Token, jsHandoff, prefill);
+        }
+        catch (Exception ex)
+        {
+            placing = false; msgOk = false; msg = "Payment window error: " + ex.Message; return;
+        }
+
+        if (outcome?.outcome != "success")
+        {
+            placing = false; msgOk = false;
+            msg = outcome?.outcome == "dismissed"
+                ? "Payment was cancelled. The order is saved as pending — you can pay later."
+                : ("Payment failed: " + (outcome?.reason ?? "unknown error"));
+            return;
+        }
+
+        // 3. Verify on the server and finalise.
+        var (cok, cerr, orderNumber) = await Svc.ConfirmGatewayOrderAsync(
+            fid!.Value, handoff.OrderNumber, outcome.orderId!, outcome.paymentId!, outcome.signature!);
+        placing = false;
+        msgOk = cok;
+        if (cok)
+        {
+            await ResolveLastOrderId(orderNumber);
+            if (LastOrderId != null)
+            {
+                Nav.NavigateTo($"/franchise/order-success/{LastOrderId}");
+                return;
+            }
+            successOrder = orderNumber; successPaid = paid; successEarned = earned; msg = null;
+            await RefreshWallet();
+            ResetForm();
+        }
+        else msg = cerr ?? "Payment verification failed.";
+    }
+
+    private void ResetForm()
+    {
+        req = new FranchiseOrderRequest();
+        lines.Clear();
+        prefillNote = null;
+        RemoveCoupon();
+        addQty = 1;
+        ResetPick();
+        ApplyDefaultPayMethod();
+    }
+
+    // Resolved order GUID for the Thank-You download links (endpoints take the order id).
+    private Guid? LastOrderId { get; set; }
+
+    private async Task ResolveLastOrderId(string? orderNumber)
+    {
+        LastOrderId = null;
+        if (orderNumber == null || fid == null) return;
+        var rows = await Svc.MyOrdersAsync(fid.Value);
+        LastOrderId = rows.FirstOrDefault(o => o.OrderNumber == orderNumber)?.Id;
+    }
+
+    private void StartNewOrder()
+    {
+        successOrder = null;
+        LastOrderId = null;
+        msg = null;
+    }
+
+    // Mirrors the JS resolve shape from hjc._launchRazorpay.
+    public class PopupResult
+    {
+        public string? outcome { get; set; }   // success | dismissed | failed | error
+        public string? paymentId { get; set; }
+        public string? orderId { get; set; }
+        public string? signature { get; set; }
+        public string? reason { get; set; }
+    }
+
+    private static string ShareLabelFor(FranchiseProductShareRow? sh)
+    {
+        if (sh == null || sh.CalculatedFranchiseAmount <= 0) return "—";
+        var val = sh.ShareType == CommissionType.Percent
+            ? sh.ShareValue.ToString("0.##") + "%"
+            : "₹" + sh.ShareValue.ToString("N0");
+        return val;
+    }
+
+    // Appended to each dropdown option so the franchisee sees their per-unit earning up front.
+    private string EarningHint(Guid productId)
+        => shares.TryGetValue(productId, out var sh) && sh.CalculatedFranchiseAmount > 0
+            ? $"  (you earn ₹{sh.CalculatedFranchiseAmount:N0}/unit)"
+            : "";
+}

@@ -1,0 +1,161 @@
+@page "/admin/catalog/checkout-attributes"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IAttributeAdminService Svc
+<PageTitle>Checkout Attributes — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Checkout Attributes</h1>
+    <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ Add Attribute</button>
+</div>
+<p style="color:var(--gray-400);margin-top:-8px">Extra fields asked during checkout (e.g. <em>Need printed notes shipped?</em>). Values can carry a price adjustment.</p>
+
+@if (editing != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editing.Id == null ? "New Checkout Attribute" : "Edit Checkout Attribute")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="editing.Name" /></div>
+            <div class="form-group">
+                <label class="form-label">Control Type</label>
+                <select class="form-input" @bind="editing.ControlType">
+                    @foreach (var ct in Enum.GetValues<AttributeControlType>())
+                    {
+                        <option value="@ct">@Label(ct)</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group form-group--full"><label class="form-label">Text Prompt</label><input class="form-input" @bind="editing.TextPrompt" placeholder="shown above the field at checkout" /></div>
+            <div class="form-group"><label class="form-label">Display Order</label><input type="number" class="form-input" @bind="editing.DisplayOrder" /></div>
+            <div class="form-group" style="display:flex;align-items:flex-end;gap:16px">
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="editing.IsRequired" /> Required</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="editing.IsActive" /> Active</label>
+            </div>
+        </div>
+
+        @if (HasValues(editing.ControlType))
+        {
+            <div class="form-label" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+                <span>Values</span>
+                <button class="btn btn-ghost btn-sm" @onclick="AddValue">➕ Add Value</button>
+            </div>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Name</th><th>Price adj.</th><th>%?</th><th>Pre-selected</th><th>Order</th><th></th></tr></thead>
+                <tbody>
+                    @if (editing.Values.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">Add the selectable options.</td></tr> }
+                    @foreach (var v in editing.Values)
+                    {
+                        <tr>
+                            <td><input class="form-input" @bind="v.Name" style="min-width:160px" /></td>
+                            <td><input type="number" step="0.01" class="form-input" @bind="v.PriceAdjustment" style="width:100px" /></td>
+                            <td style="text-align:center"><input type="checkbox" @bind="v.PriceAdjustmentUsePercentage" /></td>
+                            <td style="text-align:center"><input type="checkbox" @bind="v.IsPreSelected" /></td>
+                            <td><input type="number" class="form-input" @bind="v.DisplayOrder" style="width:70px" /></td>
+                            <td><button class="btn btn-danger btn-sm" @onclick="() => editing.Values.Remove(v)">✕</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        }
+        else
+        {
+            <p style="color:var(--gray-400);font-size:13px">This control type is free-form input — no predefined values needed.</p>
+        }
+
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Control</th><th>Required</th><th>Values</th><th>Order</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No checkout attributes yet.</td></tr> }
+            else
+            {
+                @foreach (var a in items)
+                {
+                    <tr>
+                        <td><strong>@a.Name</strong></td>
+                        <td>@Label(a.ControlType)</td>
+                        <td>@(a.IsRequired ? "Yes" : "No")</td>
+                        <td>@a.ValueCount</td>
+                        <td>@a.DisplayOrder</td>
+                        <td><span class="status @(a.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(a.IsActive ? "Active" : "Inactive")</span></td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(a.Id)">Edit</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(a.Id)">@(a.IsActive ? "Disable" : "Enable")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(a.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<CheckoutAttributeAdminItem>? items;
+    private CheckoutAttributeEditModel? editing;
+    private bool saving, msgOk;
+    private string? err, msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => items = await Svc.ListCheckoutAttributesAsync();
+
+    // Free-form controls (text/date) don't use predefined values.
+    private static bool HasValues(AttributeControlType ct) =>
+        ct is AttributeControlType.DropdownList or AttributeControlType.RadioList or AttributeControlType.Checkboxes;
+
+    private static string Label(AttributeControlType ct) => ct switch
+    {
+        AttributeControlType.DropdownList => "Dropdown",
+        AttributeControlType.RadioList => "Radio buttons",
+        AttributeControlType.Checkboxes => "Checkboxes",
+        AttributeControlType.TextBox => "Text box",
+        AttributeControlType.MultilineTextBox => "Multiline text",
+        AttributeControlType.Datepicker => "Date picker",
+        _ => ct.ToString()
+    };
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null
+            ? new CheckoutAttributeEditModel { IsActive = true, DisplayOrder = (items?.Count ?? 0) + 1 }
+            : await Svc.GetCheckoutAttributeAsync(id.Value);
+    }
+
+    private void AddValue()
+        => editing?.Values.Add(new CheckoutValueEditModel { DisplayOrder = (editing.Values.Count + 1) });
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveCheckoutAttributeAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); Flash(true, "Attribute saved."); }
+        else err = error;
+    }
+
+    private async Task Toggle(Guid id) { await Svc.ToggleCheckoutAttributeAsync(id); await Reload(); }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteCheckoutAttributeAsync(id);
+        if (ok) { await Reload(); Flash(true, "Attribute deleted."); }
+        else Flash(false, error!);
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

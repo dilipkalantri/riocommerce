@@ -1,0 +1,324 @@
+@page "/admin/leads/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ILeadService Svc
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>Lead — RioCommerce Admin</PageTitle>
+
+<style>
+    .ld-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:18px;align-items:start}
+    @@media(max-width:1040px){.ld-grid{grid-template-columns:1fr}}
+    .ld-stack{display:flex;flex-direction:column;gap:18px;min-width:0}
+    .ld-body{padding:16px 20px}
+
+    /* identity strip */
+    .ld-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .ld-avatar{width:46px;height:46px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex:0 0 auto}
+
+    /* lead information */
+    .ld-facts{display:grid;grid-template-columns:132px minmax(0,1fr);gap:11px 14px;padding:16px 20px;font-size:13.5px;margin:0}
+    @@media(max-width:520px){.ld-facts{grid-template-columns:1fr;gap:3px 0}.ld-facts dt{margin-top:11px}}
+    .ld-facts dt{color:var(--gray-400);font-size:12px;font-weight:600}
+    .ld-facts dd{margin:0;color:var(--gray-800);word-break:break-word}
+    .ld-msg{background:var(--gray-50);border:1px solid var(--gray-100);border-radius:8px;padding:9px 11px;white-space:pre-wrap}
+
+    .ld-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:14px}
+
+    /* conversation timeline */
+    .ld-timeline{position:relative;padding:4px 0 0 24px;margin:0}
+    .ld-timeline::before{content:"";position:absolute;left:6px;top:10px;bottom:10px;width:2px;background:var(--gray-200)}
+    .ld-note{position:relative;padding:0 0 18px}
+    .ld-note:last-child{padding-bottom:2px}
+    .ld-note::before{content:"";position:absolute;left:-24px;top:5px;width:12px;height:12px;border-radius:50%;background:var(--orange);border:2px solid #fff;box-shadow:0 0 0 2px var(--gray-200)}
+    .ld-note__box{border:1px solid var(--gray-200);border-radius:10px;padding:11px 13px;background:#fff}
+    .ld-note__text{font-size:13.5px;color:var(--gray-800);white-space:pre-wrap;word-break:break-word;line-height:1.5}
+    .ld-note__meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--gray-400);margin-top:8px}
+    .ld-note__who{font-weight:700;color:var(--navy)}
+    .ld-note__edited{font-style:italic}
+    .ld-note__tools{margin-left:auto;display:flex;gap:8px}
+    .ld-link{border:0;background:none;padding:0;font-size:11.5px;font-weight:600;color:var(--gray-500);cursor:pointer}
+    .ld-link:hover{color:var(--navy)}
+    .ld-link--danger{color:var(--error)}
+    .ld-empty{color:var(--gray-400);font-size:13px;padding:6px 0 2px}
+    .ld-note-input{min-height:120px;resize:vertical;line-height:1.5}
+</style>
+
+@if (notFound)
+{
+    <div class="data-card"><div class="ld-body">Lead not found. <a href="/admin/leads">Back to leads</a></div></div>
+}
+else if (d == null)
+{
+    <div class="data-card"><div class="ld-body">Loading…</div></div>
+}
+else
+{
+    <div class="page__header">
+        <a href="/admin/leads" class="ld-link" style="font-size:12.5px">← Back to Leads</a>
+        <div class="ld-head" style="margin-top:6px">
+            <span class="ld-avatar">@Initials(d.FullName)</span>
+            <div style="min-width:0">
+                <h1 style="margin:0">@d.FullName</h1>
+                <div style="font-size:12.5px;color:var(--gray-400)">Lead since @d.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</div>
+            </div>
+            <span class="stage @LeadStageMeta.Css(d.Status)">@LeadStageMeta.Label(d.Status)</span>
+        </div>
+    </div>
+
+    <div class="ld-grid">
+        <div class="ld-stack">
+            @* ── Section 1: Lead Information ── *@
+            <div class="data-card">
+                <div class="data-card__title">Lead Information</div>
+                <dl class="ld-facts">
+                    <dt>Name</dt><dd>@d.FullName</dd>
+                    <dt>Phone</dt><dd><a href="tel:@d.Phone">@d.Phone</a></dd>
+                    @* Leads carry no email today — the website capture form collects name/phone/city
+                       only, and requirement was to leave the DB structure unchanged. Rendered as a
+                       placeholder so the section is complete the moment an Email column is added. *@
+                    <dt>Email</dt><dd title="Not captured by the enquiry form">—</dd>
+                    <dt>City</dt><dd>@Show(d.City)</dd>
+                    <dt>Interest</dt><dd>@Show(d.CourseInterest)</dd>
+                    <dt>Source</dt><dd>@Show(d.Source)</dd>
+                    <dt>Created Date</dt><dd>@d.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</dd>
+                    <dt>Message</dt>
+                    <dd>@if (string.IsNullOrWhiteSpace(d.Message)) { <text>—</text> } else { <div class="ld-msg">@d.Message</div> }</dd>
+                </dl>
+            </div>
+
+            @* ── Section 2: Lead Status ── *@
+            <div class="data-card">
+                <div class="data-card__title">Lead Status</div>
+                <div class="ld-body">
+                    @if (savedMsg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:12px">@savedMsg</div> }
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Stage</label>
+                            <select class="form-input" @bind="stage">
+                                @foreach (var s in LeadStageMeta.Pipeline)
+                                {
+                                    <option value="@s">@LeadStageMeta.Label(s)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Next Follow-up Date</label>
+                            <input type="date" class="form-input" @bind="followUpDate" @bind:format="yyyy-MM-dd" />
+                        </div>
+                    </div>
+                    <div class="ld-actions">
+                        <button class="btn btn-primary" disabled="@savingStage" @onclick="SaveStage">
+                            @(savingStage ? "Saving…" : "Save")
+                        </button>
+                        @if (followUpDate.HasValue)
+                        {
+                            <button class="ld-link" @onclick="ClearFollowUp">Clear follow-up date</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ld-stack">
+            @* ── Section 3: Conversation Timeline ── *@
+            <div class="data-card">
+                <div class="data-card__title" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+                    <span>Conversation Timeline</span>
+                    <span style="font-size:12px;font-weight:500;color:var(--gray-400)">@d.Notes.Count note@(d.Notes.Count == 1 ? "" : "s")</span>
+                </div>
+                <div class="ld-body">
+                    @if (noteErr != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:12px">@noteErr</div> }
+
+                    @if (d.Notes.Count == 0)
+                    {
+                        <div class="ld-empty">No conversation yet. Add the first follow-up note below.</div>
+                    }
+                    else
+                    {
+                        <div class="ld-timeline">
+                            @foreach (var n in d.Notes)
+                            {
+                                <div class="ld-note" @key="n.Id">
+                                    <div class="ld-note__box">
+                                        @if (editingId == n.Id)
+                                        {
+                                            <textarea class="form-input" rows="3" @bind="editBuffer" @bind:event="oninput"></textarea>
+                                            <div class="ld-actions" style="margin-top:8px">
+                                                <button class="btn btn-primary btn-sm" disabled="@string.IsNullOrWhiteSpace(editBuffer)" @onclick="SaveEdit">Save</button>
+                                                <button class="ld-link" @onclick="CancelEdit">Cancel</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="ld-note__text">@n.Body</div>
+                                            <div class="ld-note__meta">
+                                                <span class="ld-note__who">@n.CreatedByName</span>
+                                                <span>@n.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</span>
+                                                @if (n.WasEdited)
+                                                {
+                                                    <span class="ld-note__edited">· edited @n.UpdatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</span>
+                                                }
+                                                <span class="ld-note__tools">
+                                                    <button class="ld-link" @onclick="() => BeginEdit(n)">Edit</button>
+                                                    @if (confirmDeleteId == n.Id)
+                                                    {
+                                                        <button class="ld-link ld-link--danger" @onclick="() => DeleteNote(n.Id)">Confirm delete</button>
+                                                        <button class="ld-link" @onclick="() => confirmDeleteId = null">Cancel</button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button class="ld-link ld-link--danger" @onclick="() => confirmDeleteId = n.Id">Delete</button>
+                                                    }
+                                                </span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Section 4: Add New Note ── *@
+            <div class="data-card">
+                <div class="data-card__title">Add New Note</div>
+                <div class="ld-body">
+                    <div class="form-group">
+                        <textarea class="form-input ld-note-input" rows="5" @bind="newNote" @bind:event="oninput"
+                                  placeholder="e.g. Called customer, interested in courses. Asked to call after 6 PM."></textarea>
+                    </div>
+                    <div class="ld-actions">
+                        <button class="btn btn-primary" disabled="@(addingNote || string.IsNullOrWhiteSpace(newNote))" @onclick="AddNote">
+                            @(addingNote ? "Saving…" : "Save Note")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private LeadDetail? d;
+    private bool notFound;
+
+    private LeadStatus stage;
+    private DateTime? followUpDate;
+    private bool savingStage;
+    private string? savedMsg;
+
+    private string newNote = "";
+    private bool addingNote;
+    private string? noteErr;
+
+    private Guid? editingId;
+    private string editBuffer = "";
+    private Guid? confirmDeleteId;
+
+    private Guid? actorId;
+    private string actorName = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+    }
+
+    protected override async Task OnParametersSetAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        d = await Svc.GetDetailAsync(Id);
+        notFound = d == null;
+        if (d != null)
+        {
+            stage = d.Status;
+            followUpDate = d.NextFollowUpAt?.ToLocalTime().Date;
+        }
+    }
+
+    private async Task SaveStage()
+    {
+        if (d == null) return;
+        savingStage = true; savedMsg = null;
+
+        if (stage != d.Status) await Svc.UpdateStatusAsync(Id, stage);
+        await Svc.UpdateFollowUpAsync(Id, ToUtcDate(followUpDate));
+
+        savingStage = false;
+        savedMsg = "Lead updated.";
+        await Reload();
+    }
+
+    private async Task ClearFollowUp()
+    {
+        followUpDate = null;
+        await Svc.UpdateFollowUpAsync(Id, null);
+        savedMsg = "Follow-up date cleared.";
+        await Reload();
+    }
+
+    private async Task AddNote()
+    {
+        noteErr = null;
+        if (string.IsNullOrWhiteSpace(newNote)) return;
+        addingNote = true;
+
+        var id = await Svc.AddNoteAsync(Id, new AddLeadNoteRequest(newNote), actorId, actorName);
+        addingNote = false;
+        if (id == null) { noteErr = "Could not save the note — the lead may have been removed."; return; }
+
+        newNote = "";
+        await Reload();
+    }
+
+    private void BeginEdit(LeadNoteItem n)
+    {
+        editingId = n.Id;
+        editBuffer = n.Body;
+        confirmDeleteId = null;
+    }
+
+    private void CancelEdit()
+    {
+        editingId = null;
+        editBuffer = "";
+    }
+
+    private async Task SaveEdit()
+    {
+        if (editingId == null || string.IsNullOrWhiteSpace(editBuffer)) return;
+        noteErr = null;
+        var ok = await Svc.UpdateNoteAsync(editingId.Value, new UpdateLeadNoteRequest(editBuffer));
+        if (!ok) noteErr = "Could not update the note — it may have been deleted.";
+        CancelEdit();
+        await Reload();
+    }
+
+    private async Task DeleteNote(Guid noteId)
+    {
+        noteErr = null;
+        confirmDeleteId = null;
+        var ok = await Svc.DeleteNoteAsync(noteId);
+        if (!ok) noteErr = "Could not delete the note — it may already be gone.";
+        await Reload();
+    }
+
+    // The column is timestamptz, so Npgsql requires a UTC-kind value. Treat the picked calendar day
+    // as local midnight and convert.
+    private static DateTime? ToUtcDate(DateTime? local) =>
+        local.HasValue ? DateTime.SpecifyKind(local.Value.Date, DateTimeKind.Local).ToUniversalTime() : null;
+
+    private static string Show(string? v) => string.IsNullOrWhiteSpace(v) ? "—" : v!;
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "–";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name.Trim()[..Math.Min(2, name.Trim().Length)].ToUpper();
+    }
+}

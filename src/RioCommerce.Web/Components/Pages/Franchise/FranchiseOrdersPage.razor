@@ -1,0 +1,134 @@
+@page "/franchise/orders"
+@attribute [Authorize(Roles = "franchise_admin")]
+@inject IFranchisePortalService Svc
+@inject IReceiptService Receipts
+@inject AuthenticationStateProvider AuthProvider
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Orders — Franchise Portal" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">Franchise Portal</h1>
+    <FranchiseNav />
+
+    @if (orders == null)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+    }
+    else if (orders.Count == 0)
+    {
+        <div class="cart-empty"><p>No orders yet.</p><a href="/franchise/order" class="btn btn-primary" style="margin-top:12px">Place First Order</a></div>
+    }
+    else
+    {
+        <div class="data-card">
+            <div class="table-wrap"><table>
+                <thead><tr><th>Order #</th><th>Date</th><th>Student</th><th>Phone</th><th>Course</th><th>Amount</th><th>Status</th><th>Documents</th></tr></thead>
+                <tbody>
+                    @foreach (var o in orders)
+                    {
+                        <tr>
+                            <td><strong>#@o.OrderNumber</strong></td>
+                            <td>@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                            <td>@o.StudentName</td>
+                            <td>@o.StudentPhone</td>
+                            <td style="max-width:240px">@o.ProductSummary</td>
+                            <td>₹@o.TotalAmount.ToString("N0")</td>
+                            <td><span class="status @StatusClass(o.Status)"><span class="dot"></span>@o.Status</span></td>
+                            <td style="white-space:nowrap">
+                                <a class="btn btn-ghost btn-sm" href="@($"/api/franchise/orders/{o.Id}/receipt.pdf?download=1")" target="_blank" title="Download receipt">📄 Receipt</a>
+                                @* Wallet-paid orders have no invoice — the top-up that funded them was
+                                   invoiced instead, and it lives on the Wallet page. *@
+                                @if (o.PaidFromWallet)
+                                {
+                                    <a class="btn btn-ghost btn-sm" href="/franchise/ledger" title="Paid from your wallet — the invoice was raised when the money was added">👛 Wallet invoice</a>
+                                }
+                                else if (o.Status is not (OrderStatus.Pending or OrderStatus.Draft or OrderStatus.Cancelled))
+                                {
+                                    <a class="btn btn-ghost btn-sm" href="@($"/api/franchise/orders/{o.Id}/invoice.pdf?download=1")" target="_blank" title="Download tax invoice (in your name)">🧾 Invoice</a>
+                                }
+                                <button class="btn btn-ghost btn-sm" @onclick="() => ToggleBifurcation(o.Id)" title="Financial bifurcation">💰 Bifurcation</button>
+                            </td>
+                        </tr>
+                        @if (openBifurcation == o.Id)
+                        {
+                            <tr>
+                                <td colspan="8" style="background:var(--gray-50);padding:12px 16px">
+                                    @if (bifLoading)
+                                    {
+                                        <span style="color:var(--gray-400)">Loading bifurcation…</span>
+                                    }
+                                    else if (bif is { IsFranchiseOrder: true })
+                                    {
+                                        <table style="width:100%;font-size:13px">
+                                            <thead><tr><th style="text-align:left">Product</th><th style="text-align:center">Qty</th><th style="text-align:right">Line ₹</th><th style="text-align:center">Share</th><th style="text-align:right">Your Share</th><th style="text-align:right">Company</th></tr></thead>
+                                            <tbody>
+                                                @foreach (var l in bif.Lines)
+                                                {
+                                                    <tr>
+                                                        <td>@l.ProductTitle@(l.SpecialPriceApplied ? " (special)" : "")</td>
+                                                        <td style="text-align:center">@l.Quantity</td>
+                                                        <td style="text-align:right">₹@l.LineAmount.ToString("N0")</td>
+                                                        <td style="text-align:center">@l.ShareLabel</td>
+                                                        <td style="text-align:right;color:var(--green)">₹@l.FranchiseShare.ToString("N0")</td>
+                                                        <td style="text-align:right">₹@l.CompanyShare.ToString("N0")</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                        <div style="display:flex;gap:24px;justify-content:flex-end;margin-top:8px;font-size:13px">
+                                            <span>Order Total: <strong>₹@bif.OrderTotal.ToString("N0")</strong></span>
+                                            <span style="color:var(--green)">Your Share: <strong>₹@bif.TotalFranchiseShare.ToString("N0")</strong></span>
+                                            <span>Company Share: <strong>₹@bif.TotalCompanyShare.ToString("N0")</strong></span>
+                                            <span>You Paid: <strong>₹@bif.NetPayableByFranchisee.ToString("N0")</strong></span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:var(--gray-400)">No franchise bifurcation for this order.</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table></div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<FranchiseOrderRow>? orders;
+    private Guid? fid;
+    private Guid? openBifurcation;
+    private bool bifLoading;
+    private FranchiseBifurcation? bif;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+        {
+            fid = await Svc.ResolveFranchiseIdAsync(userId);
+            orders = fid == null ? new() : await Svc.MyOrdersAsync(fid.Value);
+        }
+        else orders = new();
+    }
+
+    private async Task ToggleBifurcation(Guid orderId)
+    {
+        if (openBifurcation == orderId) { openBifurcation = null; return; }
+        openBifurcation = orderId;
+        bif = null;
+        bifLoading = true;
+        bif = await Receipts.GetBifurcationAsync(orderId);
+        bifLoading = false;
+    }
+
+    private static string StatusClass(OrderStatus s) => s switch
+    {
+        OrderStatus.Confirmed or OrderStatus.Activated or OrderStatus.Delivered => "status--confirmed",
+        OrderStatus.Pending or OrderStatus.Draft => "status--pending",
+        OrderStatus.Processing => "status--processing",
+        _ => "status--cancelled"
+    };
+}

@@ -1,0 +1,72 @@
+@page "/account/orders"
+@attribute [Authorize]
+@inject IAccountService AccountSvc
+@inject AuthenticationStateProvider AuthProvider
+
+<SeoHead Seo="@(new SeoMetadata { Title = "My Orders — RioCommerce" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">My Account</h1>
+    <AccountNav />
+
+    @if (orders == null)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading your orders…</p>
+    }
+    else if (orders.Count == 0)
+    {
+        <div class="cart-empty">
+            <div style="font-size:42px">🧾</div>
+            <p>You have no orders yet.</p>
+            <a href="/courses/ca-foundation" class="btn btn-primary" style="margin-top:12px">Browse Courses</a>
+        </div>
+    }
+    else
+    {
+        <div class="data-card">
+            <div class="table-wrap"><table>
+                <thead><tr><th>Order #</th><th>Date</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var o in orders)
+                    {
+                        <tr>
+                            <td><strong>#@o.OrderNumber</strong></td>
+                            <td>@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                            <td style="max-width:280px">@o.Summary</td>
+                            <td>₹@o.Total.ToString("N0")</td>
+                            <td><span class="status @PayClass(o.PaymentStatus)"><span class="dot"></span>@o.PaymentStatus</span></td>
+                            <td><span class="status @StatusClass(o.Status)"><span class="dot"></span>@o.Status</span></td>
+                            <td><a href="/account/orders/@o.OrderNumber" class="btn btn-ghost btn-sm">View →</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<MyOrderItem>? orders;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+            orders = await AccountSvc.GetMyOrdersAsync(userId);
+    }
+
+    private static string StatusClass(OrderStatus s) => s switch
+    {
+        OrderStatus.Confirmed or OrderStatus.Activated or OrderStatus.Delivered => "status--confirmed",
+        OrderStatus.Pending or OrderStatus.Draft => "status--pending",
+        OrderStatus.Processing => "status--processing",
+        _ => "status--cancelled"
+    };
+
+    private static string PayClass(PaymentStatus s) => s switch
+    {
+        PaymentStatus.Success => "status--confirmed",
+        PaymentStatus.Pending => "status--pending",
+        _ => "status--cancelled"
+    };
+}

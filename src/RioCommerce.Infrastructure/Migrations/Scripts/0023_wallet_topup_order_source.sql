@@ -1,0 +1,23 @@
+-- ============================================================================
+-- 0023_wallet_topup_order_source.sql
+-- Adds the 'wallet_top_up' label to the order_source enum.
+--
+-- Money added to a franchisee's wallet is now recorded as a real ORDER so it
+-- flows through the ordinary invoice pipeline (numbering, franchisee bill-to,
+-- PDF, /admin/invoices) with no new invoice machinery. That order is tagged
+-- with this source, which is the single flag every order list and revenue
+-- report filters on so a top-up is never counted as sales revenue.
+--
+-- ── WHY THIS SCRIPT IS ALONE ────────────────────────────────────────────────
+-- SqlMigrationRunner runs each script inside its own transaction, and
+-- PostgreSQL forbids USING an enum label in the same transaction that ADDED
+-- it. So this script only widens the type; 0024 does the work that depends on
+-- it. Do not merge them.
+--
+-- Label spelling is Npgsql's default snake_case translation of the C# member
+-- OrderSource.WalletTopUp — it must stay exactly 'wallet_top_up'.
+--
+-- Idempotent (IF NOT EXISTS): safe to re-run.
+-- ============================================================================
+
+ALTER TYPE public.order_source ADD VALUE IF NOT EXISTS 'wallet_top_up';

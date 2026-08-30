@@ -1,0 +1,241 @@
+@page "/admin/serial-keys"
+@using RioCommerce.Core.DTOs.SerialKeys
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,support,backend_user")]
+@inject ISerialKeyService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+<PageTitle>Serial Keys — RioCommerce Admin</PageTitle>
+
+@*
+    Dispatched serial keys — every record the system has tried to generate, with status,
+    attempt count and last error. Lets admin / support inspect failures, regenerate stuck
+    rows, and revoke keys when needed.
+*@
+
+<style>
+    .sk-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:14px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; margin-bottom:14px }
+    .sk-toolbar .form-input, .sk-toolbar .form-select { font-size:13px; padding:7px 10px; min-width:140px }
+    .sk-toolbar .form-input[type="search"] { min-width:220px }
+    .sk-tbl { width:100%; border-collapse:collapse; font-size:13px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden }
+    .sk-tbl th, .sk-tbl td { padding:10px 12px; border-bottom:1px solid var(--gray-100); text-align:left; vertical-align:middle }
+    .sk-tbl th { background:var(--gray-50); font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--gray-500); font-weight:700 }
+    .sk-tbl tbody tr:hover td { background:var(--gray-50) }
+    .sk-tbl tbody tr:last-child td { border-bottom:0 }
+    .sk-key { font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11.5px; color:var(--navy); background:var(--gray-100); padding:2px 8px; border-radius:4px; max-width:180px; display:inline-block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle }
+    .sk-key--none { color:var(--gray-400); font-style:italic; background:none; padding:0 }
+    .sk-status { display:inline-block; padding:3px 9px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap }
+    .sk-status--pending     { background:var(--gray-100); color:var(--gray-600) }
+    .sk-status--generating  { background:#DBEAFE; color:#1E40AF }
+    .sk-status--generated   { background:#D1FAE5; color:#065F46 }
+    .sk-status--activated   { background:#A7F3D0; color:#064E3B }
+    .sk-status--failed      { background:#FEF3C7; color:#92400E }
+    .sk-status--deadlettered{ background:#FEE2E2; color:#991B1B }
+    .sk-status--revoked     { background:var(--gray-200); color:var(--gray-500); text-decoration:line-through }
+    .sk-err { color:var(--red); font-size:11.5px; margin-top:3px; font-weight:500; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+    .sk-actions { display:flex; gap:4px; justify-content:flex-end }
+    .sk-empty { padding:60px 16px; text-align:center; color:var(--gray-400) }
+    .sk-meta { font-size:11.5px; color:var(--gray-500); margin-top:2px }
+</style>
+
+<div class="page__header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px">
+    <div>
+        <h1>Serial Keys</h1>
+        <p style="color:var(--gray-500); font-size:13.5px; margin:4px 0 0">
+            Dispatched keys across all providers. Configure providers at
+            <a href="/admin/settings/serial-keys">Settings → Serial Key Providers</a>.
+        </p>
+    </div>
+    <button class="btn btn-primary btn-sm" style="white-space:nowrap" @onclick="ProcessNow" disabled="@processing">
+        @(processing ? "Processing…" : "⚡ Process Pending Now")
+    </button>
+</div>
+
+<div class="sk-toolbar">
+    <select class="form-select" @bind="statusFilter" @bind:after="Reload">
+        <option value="">All statuses</option>
+        @foreach (var s in Enum.GetValues<SerialKeyStatus>())
+        {
+            <option value="@s">@s</option>
+        }
+    </select>
+    <select class="form-select" @bind="providerFilter" @bind:after="Reload">
+        <option value="">All providers</option>
+        @if (providers != null)
+        {
+            @foreach (var p in providers)
+            {
+                <option value="@p.Key">@p.DisplayName</option>
+            }
+        }
+    </select>
+    <input type="search" class="form-input" placeholder="Order #, customer, or key…" @bind="search" @bind:after="Reload" />
+    <div style="margin-left:auto; font-size:12.5px; color:var(--gray-500)">
+        @(items?.Count ?? 0) record@(items?.Count == 1 ? "" : "s")
+    </div>
+</div>
+
+@if (items == null)
+{
+    <p style="color:var(--gray-400); padding:30px 0; text-align:center">Loading…</p>
+}
+else if (items.Count == 0)
+{
+    <div class="sk-empty">
+        <div style="font-size:32px">📭</div>
+        <div style="margin-top:8px; font-size:14px">No serial-key records match those filters.</div>
+        <div style="margin-top:4px; font-size:12.5px">
+            Records are created automatically when a paid order contains a product with
+            <a href="/admin/products">serial-key config</a> attached.
+        </div>
+    </div>
+}
+else
+{
+    <table class="sk-tbl">
+        <thead>
+            <tr>
+                <th>Order / Customer</th>
+                <th>Product</th>
+                <th>Provider</th>
+                <th>Serial Key</th>
+                <th>Status</th>
+                <th>Attempts</th>
+                <th>Created</th>
+                <th style="text-align:right">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in items)
+            {
+                <tr>
+                    <td>
+                        <a href="/admin/orders/@r.OrderId" style="font-weight:600; color:var(--navy); text-decoration:none">@r.OrderNumber</a>
+                        <div class="sk-meta">@r.CustomerName</div>
+                    </td>
+                    <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis" title="@r.ProductTitle">
+                        @r.ProductTitle
+                        @if (!string.IsNullOrEmpty(r.ModeName))
+                        {
+                            <div class="sk-meta" style="color:var(--orange)">@r.ModeName</div>
+                        }
+                    </td>
+                    <td><span style="font-size:12px; color:var(--gray-600); font-weight:600">@r.ProviderKey</span></td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(r.SerialKey))
+                        {
+                            <span class="sk-key" title="@r.SerialKey">@r.SerialKey</span>
+                            <button class="btn btn-ghost btn-xs" style="margin-left:4px" @onclick='() => CopyKey(r.SerialKey!)' title="Copy">📋</button>
+                        }
+                        else
+                        {
+                            <span class="sk-key sk-key--none">— not yet —</span>
+                        }
+                    </td>
+                    <td><span class="sk-status sk-status--@r.Status.ToString().ToLowerInvariant()">@r.Status</span></td>
+                    <td style="text-align:center">@r.AttemptCount</td>
+                    <td style="font-size:12px; color:var(--gray-600)">@r.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")</td>
+                    <td>
+                        <div class="sk-actions">
+                            <button class="btn btn-ghost btn-xs" @onclick="() => OpenRecord(r.Id)">View</button>
+                            @if (r.Status == SerialKeyStatus.Failed || r.Status == SerialKeyStatus.DeadLettered || r.Status == SerialKeyStatus.Pending)
+                            {
+                                <button class="btn btn-primary btn-xs" @onclick="() => Regenerate(r.Id)">Retry</button>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(r.ErrorMessage)) { <div class="sk-err" title="@r.ErrorMessage">@r.ErrorMessage</div> }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<SerialKeyListItem>? items;
+    private List<ProviderInfo>? providers;
+
+    private string statusFilter = "";
+    private string providerFilter = "";
+    private string search = "";
+    private bool processing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Allow ?orderId= deep links from the order detail page.
+        // We deliberately don't depend on Microsoft.AspNetCore.WebUtilities — Web is a Razor
+        // Class Library and doesn't reference that package. BCL string parsing is enough.
+        providers = await Svc.ListProvidersAsync();
+        await Reload();
+    }
+
+    /// <summary>Manually run the dispatch loop right now instead of waiting for the 60s scheduled
+    /// task. Processes all Pending + due-Failed records and refreshes the list.</summary>
+    private async Task ProcessNow()
+    {
+        processing = true; StateHasChanged();
+        try
+        {
+            var (processed, generated, failed, dead) = await Svc.ProcessDueAsync(200);
+            if (processed == 0)
+                Toast.Info("No pending records were due for processing.");
+            else
+                Toast.Success($"Processed {processed}: {generated} generated, {failed} failed, {dead} dead-lettered.");
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Processing failed: {ex.Message}");
+        }
+        finally { processing = false; StateHasChanged(); }
+    }
+
+    private async Task Reload()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        Guid? orderId = TryExtractGuidParam(uri.Query, "orderId");
+
+        var filter = new SerialKeyListFilter
+        {
+            Status = !string.IsNullOrEmpty(statusFilter) && Enum.TryParse<SerialKeyStatus>(statusFilter, out var s) ? s : null,
+            ProviderKey = string.IsNullOrEmpty(providerFilter) ? null : providerFilter,
+            Query = string.IsNullOrWhiteSpace(search) ? null : search.Trim(),
+            OrderId = orderId,
+            Page = 1,
+            PageSize = 100,
+        };
+        items = await Svc.ListAsync(filter);
+    }
+
+    /// <summary>Tiny query-string parser — avoids pulling in Microsoft.AspNetCore.WebUtilities
+    /// (which Web doesn't reference). Returns null when the key is missing or not a Guid.</summary>
+    private static Guid? TryExtractGuidParam(string query, string key)
+    {
+        if (string.IsNullOrEmpty(query)) return null;
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = pair.IndexOf('=');
+            if (eq <= 0) continue;
+            if (!string.Equals(pair.Substring(0, eq), key, StringComparison.OrdinalIgnoreCase)) continue;
+            var raw = Uri.UnescapeDataString(pair.Substring(eq + 1));
+            if (Guid.TryParse(raw, out var g)) return g;
+        }
+        return null;
+    }
+
+    private void OpenRecord(Guid id) => Nav.NavigateTo($"/admin/serial-keys/{id}");
+
+    private async Task Regenerate(Guid recordId)
+    {
+        var ok = await Svc.RegenerateAsync(recordId, null);
+        if (ok) { Toast.Success("Queued for retry — runs on next scheduled-task tick (≤60s)."); await Reload(); }
+        else { Toast.Error("Couldn't queue retry."); }
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    private async Task CopyKey(string key)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", key);
+        Toast.Success("Key copied.");
+    }
+}

@@ -1,0 +1,8 @@
+@* Reusable status pill. Variant maps to a colour: confirmed(green) · pending(amber) · processing(blue) · danger(red) · neutral(grey). *@
+<span class="status status--@Variant" title="@(Title ?? Label)"><span class="dot"></span>@Label</span>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter, EditorRequired] public string Variant { get; set; } = "neutral";
+    [Parameter] public string? Title { get; set; }
+}

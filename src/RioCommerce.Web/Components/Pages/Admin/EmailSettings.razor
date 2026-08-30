@@ -1,0 +1,78 @@
+@page "/admin/settings/email"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IIntegrationSettingsService Svc
+<PageTitle>Email (SMTP) — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Email (SMTP)</h1>
+    <a href="/admin/settings/email-api" class="btn btn-outline btn-sm">Switch / configure Email API →</a>
+</div>
+
+@if (model == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+}
+else
+{
+    @if (msg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:14px">@msg</div> }
+
+    @* ── Active-transport banner so admins editing SMTP know whether their changes are live
+          or whether the system is currently routing through an HTTP API provider. ── *@
+    @if (transport == "smtp")
+    {
+        <div class="inline-alert inline-alert--ok" style="margin-bottom:14px">
+            ✅ SMTP is currently the <strong>active</strong> outbound provider.
+        </div>
+    }
+    else
+    {
+        <div class="inline-alert" style="margin-bottom:14px;background:#FFF7ED;border-color:#FED7AA;color:#9A3412">
+            ⚠️ SMTP is configured but <strong>not active</strong>. The system is currently sending via the Email API
+            (<a href="/admin/settings/email-api">change provider</a>).
+        </div>
+    }
+    <div class="account-grid">
+        <div class="form-card">
+            <div class="form-card__title">SMTP Server</div>
+            <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="model.Enabled" /> Enable email sending via SMTP</label><div class="form-hint">When off, emails are logged instead of sent.</div></div>
+            <div class="form-group"><label class="form-label">SMTP Host</label><input class="form-input" @bind="model.Host" placeholder="smtp.gmail.com" /></div>
+            <div class="form-group"><label class="form-label">Port</label><input type="number" class="form-input" @bind="model.Port" placeholder="587" /></div>
+            <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="model.UseSsl" /> Use SSL/TLS</label></div>
+        </div>
+        <div class="form-card">
+            <div class="form-card__title">Credentials &amp; Sender</div>
+            <div class="form-group"><label class="form-label">Username</label><input class="form-input" @bind="model.Username" autocomplete="off" /></div>
+            <div class="form-group"><label class="form-label">Password / App Password</label><input type="password" class="form-input" @bind="model.Password" autocomplete="new-password" /></div>
+            <div class="form-group"><label class="form-label">From Email</label><input class="form-input" @bind="model.FromEmail" placeholder="noreply@riocommerce.com" /></div>
+            <div class="form-group"><label class="form-label">From Name</label><input class="form-input" @bind="model.FromName" placeholder="RioCommerce" /></div>
+        </div>
+    </div>
+    <div class="form-actions" style="margin-top:4px">
+        <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save Email Settings")</button>
+        <a href="/admin/notifications" class="btn btn-outline">Email templates &amp; test send →</a>
+    </div>
+}
+
+@code {
+    private SmtpSettings? model;
+    private bool saving;
+    private string? msg;
+    private string transport = "smtp";
+
+    protected override async Task OnInitializedAsync()
+    {
+        model = await Svc.GetSmtpAsync();
+        var p = await Svc.GetEmailProviderAsync();
+        transport = p.Transport;
+    }
+
+    private async Task Save()
+    {
+        if (model == null) return;
+        saving = true; msg = null;
+        await Svc.SaveSmtpAsync(model);
+        saving = false;
+        msg = "Email (SMTP) settings saved.";
+    }
+}

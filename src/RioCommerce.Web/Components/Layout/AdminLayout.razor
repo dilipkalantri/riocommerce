@@ -1,0 +1,706 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject IPermissionService Perms
+@inject AuthenticationStateProvider AuthProvider
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
+@inject ISiteSettingsService Settings
+@implements IDisposable
+<link rel="stylesheet" href="_content/RioCommerce.Web/css/erp-styles.css" />
+<link rel="stylesheet" href="_content/RioCommerce.Web/css/responsive-normalize.css" />
+<div class="admin-layout @(collapsed ? "admin-layout--collapsed" : "") @(mobileOpen ? "admin-layout--mobile-open" : "")">
+    <div class="nav-overlay" @onclick="CloseMobile"></div>
+    <aside class="sidebar @(_searchActive ? "sidebar--searching" : "")" id="sidebar">
+        <div class="sidebar__logo"><a href="/admin/dashboard"><img src="@LogoSrc" alt="RioCommerce" /></a><span class="sidebar__txt">ADMIN</span></div>
+
+        @* ── Global menu search — type to filter all groups + links. Ctrl+K from anywhere focuses
+              this input. ESC clears. Auto-expands every visible group while a search is active. ── *@
+        <div class="sidebar__search sidebar__txt">
+            <span class="sidebar__search-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            </span>
+            <input type="text" class="sidebar__search-input" placeholder="Search menu…" aria-label="Search menu"
+                   data-sidebar-search
+                   value="@_search" @oninput="OnSearchInput" @onkeydown="OnSearchKey" />
+            @if (_searchActive)
+            {
+                <button type="button" class="sidebar__search-clear" @onclick="ClearSearch" aria-label="Clear search" title="Clear (Esc)">×</button>
+            }
+            else
+            {
+                <span class="sidebar__search-kbd" aria-hidden="true">Ctrl + K</span>
+            }
+        </div>
+
+        <nav class="sidebar__nav">
+
+            @* ── 🔒 Per-permission menu gating ──
+               For legacy staff (super_admin / admin / operations / faculty / franchise_admin) Show(key)
+               always returns true. For backend_user-only customers the helper checks their effective
+               permissions — they see ONLY the modules an admin toggled ON for them. ── *@
+            @if (Show("dashboard.view") && MatchLink("Dashboard"))
+            {
+                <NavLink href="/admin/dashboard" class="sidebar__link sidebar__link--top" Match="NavLinkMatch.All"><span class="sidebar__ico">📊</span><span class="sidebar__txt">Dashboard</span></NavLink>
+            }
+
+            @* ── Catalog ── *@
+            @if (ShowAny("catalog.products.view","catalog.categories.view","catalog.faculty.view","catalog.attributes.view")
+                 && MatchGroup("Catalog", "Products", "Categories", "Faculty", "Attributes", "Product Attributes", "Specification Attributes", "Checkout Attributes"))
+            {
+                <div class="sidebar__group">
+                    <button class="sidebar__group-header @(IsOpen("catalog") ? "open" : "")" @onclick='() => Toggle("catalog")'>
+                        <span class="sidebar__group-label"><span class="sidebar__ico">📚</span><span class="sidebar__txt">Catalog</span></span><span class="sidebar__chevron">▸</span>
+                    </button>
+                    @if (IsOpen("catalog"))
+                    {
+                        <div class="sidebar__group-items">
+                            @if (Show("catalog.products.view")         && MatchLink("Products"))        { <NavLink href="/admin/products" class="sidebar__link" Match="NavLinkMatch.All"><span class="sidebar__txt">Products</span></NavLink> }
+                            @if (Show("catalog.categories.view")       && MatchLink("Categories"))      { <NavLink href="/admin/categories" class="sidebar__link"><span class="sidebar__txt">Categories</span></NavLink> }
+                            @if (Show("catalog.faculty.view")          && MatchLink("Faculty"))         { <NavLink href="/admin/faculty" class="sidebar__link" Match="NavLinkMatch.All"><span class="sidebar__txt">Faculty</span></NavLink> }
+                            @if (Show("catalog.categories.view")       && MatchLink("Subjects"))        { <NavLink href="/admin/catalog/subjects" class="sidebar__link"><span class="sidebar__txt">Subjects</span></NavLink> }
+
+                            @if (Show("catalog.attributes.view") && MatchGroup("Attributes", "Product Attributes", "Specification Attributes", "Checkout Attributes"))
+                            {
+                                <button class="sidebar__group-header sidebar__group-header--sub @(IsOpen("catalog.attributes") ? "open" : "")" @onclick='() => Toggle("catalog.attributes")'>
+                                    <span class="sidebar__group-label"><span class="sidebar__ico">🧩</span><span class="sidebar__txt">Attributes</span></span><span class="sidebar__chevron">▸</span>
+                                </button>
+                                @if (IsOpen("catalog.attributes"))
+                                {
+                                    <div class="sidebar__group-items sidebar__group-items--sub">
+                                        @if (MatchLink("Product Attributes"))       { <NavLink href="/admin/catalog/product-attributes" class="sidebar__link"><span class="sidebar__txt">Product Attributes</span></NavLink> }
+                                        @if (MatchLink("Specification Attributes")) { <NavLink href="/admin/catalog/specification-attributes" class="sidebar__link"><span class="sidebar__txt">Specification Attributes</span></NavLink> }
+                                        @if (MatchLink("Checkout Attributes"))      { <NavLink href="/admin/catalog/checkout-attributes" class="sidebar__link"><span class="sidebar__txt">Checkout Attributes</span></NavLink> }
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Sales (website orders only) ── *@
+            @if (ShowAny("sales.orders.view","sales.create_order.view","sales.dispatch.view","sales.returns.view")
+                 && MatchGroup("Sales", "Orders", "Create Order", "Installment Reports", "Installment Settings", "Dispatch", "Returns", "Invoices"))
+            {
+                <div class="sidebar__group">
+                    <button class="sidebar__group-header @(IsOpen("sales") ? "open" : "")" @onclick='() => Toggle("sales")'>
+                        <span class="sidebar__group-label"><span class="sidebar__ico">🛒</span><span class="sidebar__txt">Sales</span></span><span class="sidebar__chevron">▸</span>
+                    </button>
+                    @if (IsOpen("sales"))
+                    {
+                        <div class="sidebar__group-items">
+                            @if (Show("sales.orders.view")       && MatchLink("Orders"))       { <NavLink href="/admin/orders" class="sidebar__link" Match="NavLinkMatch.All"><span class="sidebar__txt">Orders</span></NavLink> }
+                            @if (Show("sales.create_order.view") && MatchLink("Create Order")) { <NavLink href="/admin/orders/create" class="sidebar__link"><span class="sidebar__txt">Create Order</span></NavLink> }
+                            @if (Show("sales.create_order.view") && MatchLink("Installment Reports")) { <NavLink href="/admin/installments/reports" class="sidebar__link"><span class="sidebar__txt">Installment Reports</span></NavLink> }
+                            @if (Show("sales.create_order.view") && MatchLink("Installment Settings")) { <NavLink href="/admin/installments/settings" class="sidebar__link"><span class="sidebar__txt">Installment Settings</span></NavLink> }
+                            @if (Show("sales.dispatch.view")     && MatchLink("Dispatch"))     { <NavLink href="/admin/dispatch" class="sidebar__link"><span class="sidebar__txt">Dispatch</span></NavLink> }
+                            @if (Show("sales.returns.view")      && MatchLink("Returns"))      { <NavLink href="/admin/returns" class="sidebar__link"><span class="sidebar__txt">Returns</span></NavLink> }
+                            @if (Show("reports.view")            && MatchLink("Invoices"))     { <NavLink href="/admin/invoices" class="sidebar__link"><span class="sidebar__txt">Invoices</span></NavLink> }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── 🏢 Franchisees (everything franchise-related lives here) ── *@
+            @if (ShowAny("sales.franchise_orders.view")
+                 && MatchGroup("Franchisees", "Dashboard", "Franchise Orders", "Create Franchise Order", "Franchise List", "Import Franchisees", "Bulk Assign Products", "Franchise Settings"))
+            {
+                <div class="sidebar__group">
+                    <button class="sidebar__group-header @(IsOpen("franchise") ? "open" : "")" @onclick='() => Toggle("franchise")'>
+                        <span class="sidebar__group-label"><span class="sidebar__ico">🏢</span><span class="sidebar__txt">Franchisees</span></span><span class="sidebar__chevron">▸</span>
+                    </button>
+                    @if (IsOpen("franchise"))
+                    {
+                        <div class="sidebar__group-items">
+                            @if (Show("sales.franchise_orders.view") && MatchLink("Dashboard"))              { <NavLink href="/admin/franchise/dashboard" class="sidebar__link"><span class="sidebar__txt">Dashboard</span></NavLink> }
+                            @if (Show("sales.franchise_orders.view") && MatchLink("Franchise Orders"))       { <NavLink href="/admin/franchise-orders" class="sidebar__link"><span class="sidebar__txt">Franchise Orders</span></NavLink> }
+                            @if (Show("sales.franchise_orders.view") && MatchLink("Create Franchise Order")) { <NavLink href="/admin/franchise/orders/create" class="sidebar__link"><span class="sidebar__txt">Create Franchise Order</span></NavLink> }
+                            @if (MatchLink("Franchise List"))
+                            {
+                                <AuthorizeView Roles="super_admin,admin" Context="frnListCtx">
+                                    <NavLink href="/admin/franchises" class="sidebar__link"><span class="sidebar__txt">Franchise List</span></NavLink>
+                                </AuthorizeView>
+                            }
+                            @if (MatchLink("Import Franchisees"))
+                            {
+                                <AuthorizeView Roles="super_admin,admin,backend_user" Context="frnImportCtx">
+                                    <NavLink href="/admin/franchisees/import" class="sidebar__link"><span class="sidebar__txt">Import Franchisees</span></NavLink>
+                                </AuthorizeView>
+                            }
+                            @if (MatchLink("Bulk Assign Products"))
+                            {
+                                <AuthorizeView Roles="super_admin,admin" Context="frnBulkCtx">
+                                    <NavLink href="/admin/franchises/bulk-assign" class="sidebar__link"><span class="sidebar__txt">Bulk Assign Products</span></NavLink>
+                                </AuthorizeView>
+                            }
+                            @if (MatchLink("Franchise Settings"))
+                            {
+                                <AuthorizeView Roles="super_admin,admin" Context="frnSetCtx">
+                                    <NavLink href="/admin/settings/franchise" class="sidebar__link"><span class="sidebar__txt">Franchise Settings</span></NavLink>
+                                </AuthorizeView>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Customers ── *@
+            @if (ShowAny("customers.view","customers.roles.view","customers.leads.view","customers.reviews.view")
+                 && MatchGroup("Customers", "Customer roles", "Leads", "Reviews"))
+            {
+                <div class="sidebar__group">
+                    <button class="sidebar__group-header @(IsOpen("customers") ? "open" : "")" @onclick='() => Toggle("customers")'>
+                        <span class="sidebar__group-label"><span class="sidebar__ico">👥</span><span class="sidebar__txt">Customers</span></span><span class="sidebar__chevron">▸</span>
+                    </button>
+                    @if (IsOpen("customers"))
+                    {
+                        <div class="sidebar__group-items">
+                            @if (Show("customers.view")         && MatchLink("Customers"))      { <NavLink href="/admin/customers" class="sidebar__link" Match="NavLinkMatch.All"><span class="sidebar__txt">Customers</span></NavLink> }
+                            @if (Show("customers.roles.view")   && MatchLink("Customer roles")) { <NavLink href="/admin/customer-roles" class="sidebar__link"><span class="sidebar__txt">Customer roles</span></NavLink> }
+                            @if (Show("customers.leads.view")   && MatchLink("Leads"))          { <NavLink href="/admin/leads" class="sidebar__link"><span class="sidebar__txt">Leads</span></NavLink> }
+                            @if (Show("customers.reviews.view") && MatchLink("Reviews"))        { <NavLink href="/admin/reviews" class="sidebar__link"><span class="sidebar__txt">Reviews</span></NavLink> }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Promotions ── *@
+            @if (ShowAny("promotions.coupons.view","promotions.discounts.view","promotions.offers.view")
+                 && MatchGroup("Promotions", "Coupons", "Affiliates", "Referred By Options", "Newsletter"))
+            {
+                <div class="sidebar__group">
+                    <button class="sidebar__group-header @(IsOpen("promotions") ? "open" : "")" @onclick='() => Toggle("promotions")'>
+                        <span class="sidebar__group-label"><span class="sidebar__ico">🎯</span><span class="sidebar__txt">Promotions</span></span><span class="sidebar__chevron">▸</span>
+                    </button>
+                    @if (IsOpen("promotions"))
+                    {
+                        <div class="sidebar__group-items">
+                            @if (Show("promotions.coupons.view")   && MatchLink("Coupons"))             { <NavLink href="/admin/coupons" class="sidebar__link"><span class="sidebar__txt">Coupons</span></NavLink> }
+                            @if (Show("promotions.discounts.view") && MatchLink("Affiliates"))          { <NavLink href="/admin/affiliates" class="sidebar__link"><span class="sidebar__txt">Affiliates</span></NavLink> }
+                            @if (Show("promotions.offers.view")    && MatchLink("Referred By Options")) { <NavLink href="/admin/promotions/referredby" class="sidebar__link"><span class="sidebar__txt">Referred By Options</span></NavLink> }
+                            @if (Show("promotions.offers.view")    && MatchLink("Newsletter"))          { <NavLink href="/admin/newsletter" class="sidebar__link"><span class="sidebar__txt">Newsletter</span></NavLink> }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Content management ── *@
+            @if (ShowAny("content.pages.view","content.blogs.view","content.faqs.view","content.media.view")
+                 && MatchGroup("Content management", "Pages", "Blog", "Banners"))
+            {
+                <div class="sidebar__group">
+                    <button class="sidebar__group-header @(IsOpen("content") ? "open" : "")" @onclick='() => Toggle("content")'>
+                        <span class="sidebar__group-label"><span class="sidebar__ico">📝</span><span class="sidebar__txt">Content management</span></span><span class="sidebar__chevron">▸</span>
+                    </button>
+                    @if (IsOpen("content"))
+                    {
+                        <div class="sidebar__group-items">
+                            @if (Show("content.pages.view") && MatchLink("Pages")) { <NavLink href="/admin/pages" class="sidebar__link"><span class="sidebar__txt">Pages</span></NavLink> }
+                            @if (Show("content.pages.view") && MatchLink("Banners")) { <NavLink href="/admin/banners" class="sidebar__link"><span class="sidebar__txt">Banners</span></NavLink> }
+                            @if (Show("content.blogs.view") && MatchLink("Blog"))  { <NavLink href="/admin/blog" class="sidebar__link"><span class="sidebar__txt">Blog</span></NavLink> }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Reports (§30) ──
+               The eight reports come from ReportCatalog, so this menu cannot drift from the routes
+               or the report page's own tab strip. The two legacy entries stay until the new section
+               is signed off, then come out. *@
+            @if (Show("reports.view") && MatchGroup("Reports", ReportMenuNames))
+            {
+                <div class="sidebar__group">
+                    <button class="sidebar__group-header @(IsOpen("reports") ? "open" : "")" @onclick='() => Toggle("reports")'>
+                        <span class="sidebar__group-label"><span class="sidebar__ico">📈</span><span class="sidebar__txt">Reports</span></span><span class="sidebar__chevron">▸</span>
+                    </button>
+                    @if (IsOpen("reports"))
+                    {
+                        <div class="sidebar__group-items">
+                            @foreach (var r in RioCommerce.Core.DTOs.Reporting.ReportCatalog.All)
+                            {
+                                @if (MatchLink(r.MenuLabel) || MatchLink(r.Title))
+                                {
+                                    <NavLink href="@($"/admin/reports/{r.Slug}")" class="sidebar__link sidebar__link--ico" title="@r.Title">
+                                        <span class="sidebar__ico sidebar__ico--sm">@r.Icon</span><span class="sidebar__txt">@r.MenuLabel</span>
+                                    </NavLink>
+                                }
+                            }
+
+                            @* The two superseded screens stay reachable until the new section is
+                               signed off, but below a rule so they no longer compete with it. *@
+                            @if (MatchLink("Reports") || MatchLink("Reports & Exports"))
+                            {
+                                <div class="sidebar__subhead">Legacy</div>
+                                @if (MatchLink("Reports"))           { <NavLink href="/admin/reports" class="sidebar__link sidebar__link--muted" Match="NavLinkMatch.All"><span class="sidebar__txt">Dashboard &amp; Reports</span></NavLink> }
+                                @if (MatchLink("Reports & Exports")) { <NavLink href="/admin/reports-exports" class="sidebar__link sidebar__link--muted"><span class="sidebar__txt">Reports &amp; Exports</span></NavLink> }
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Serial Keys (dispatched keys log) ── *@
+            @if (Show("reports.view") && MatchLink("Serial Keys"))
+            {
+                <NavLink href="/admin/serial-keys" class="sidebar__link sidebar__link--top"><span class="sidebar__ico">🔑</span><span class="sidebar__txt">Serial Keys</span></NavLink>
+            }
+            @if (Show("reports.view") && MatchLink("Bulk Serial Map"))
+            {
+                <NavLink href="/admin/serial-keys/bulk-map" class="sidebar__link sidebar__link--top"><span class="sidebar__ico">🗂️</span><span class="sidebar__txt">Bulk Serial Map</span></NavLink>
+            }
+            @if (Show("reports.view") && MatchLink("ERP Serial Import"))
+            {
+                <NavLink href="/admin/serial-keys/erp-import" class="sidebar__link sidebar__link--top"><span class="sidebar__ico">📥</span><span class="sidebar__txt">ERP Serial Import</span></NavLink>
+            }
+            @if (Show("reports.view") && MatchLink("Superclass Registrations"))
+            {
+                <NavLink href="/admin/integrations/superclass" class="sidebar__link sidebar__link--top"><span class="sidebar__ico">🎓</span><span class="sidebar__txt">Superclass Registrations</span></NavLink>
+            }
+
+            @* ── Finance ── *@
+            @if (MatchGroup("Finance", "Dashboard", "Payouts", "Settlements", "Revenue Sharing"))
+            {
+                <AuthorizeView Roles="super_admin,admin" Context="finCtx">
+                    <div class="sidebar__group">
+                        <button class="sidebar__group-header @(IsOpen("finance") ? "open" : "")" @onclick='() => Toggle("finance")'>
+                            <span class="sidebar__group-label"><span class="sidebar__ico">💰</span><span class="sidebar__txt">Finance</span></span><span class="sidebar__chevron">▸</span>
+                        </button>
+                        @if (IsOpen("finance"))
+                        {
+                            <div class="sidebar__group-items">
+                                @if (MatchLink("Dashboard"))        { <NavLink href="/admin/finance" class="sidebar__link" Match="NavLinkMatch.All"><span class="sidebar__txt">Dashboard</span></NavLink> }
+                                @if (MatchLink("Payouts"))          { <NavLink href="/admin/payouts" class="sidebar__link"><span class="sidebar__txt">Payouts</span></NavLink> }
+                                @if (MatchLink("Settlements"))      { <NavLink href="/admin/settlements" class="sidebar__link"><span class="sidebar__txt">Settlements</span></NavLink> }
+                                @if (MatchLink("Revenue Sharing"))  { <NavLink href="/admin/revenue-sharing" class="sidebar__link"><span class="sidebar__txt">Revenue Sharing</span></NavLink> }
+                                @if (MatchLink("Faculty Shares"))   { <NavLink href="/admin/faculty-sharing" class="sidebar__link"><span class="sidebar__txt">Faculty Shares</span></NavLink> }
+                                @if (MatchLink("Faculty Bulk Assign")) { <NavLink href="/admin/faculty/bulk-assign" class="sidebar__link"><span class="sidebar__txt">Faculty Bulk Assign</span></NavLink> }
+                            </div>
+                        }
+                    </div>
+                </AuthorizeView>
+            }
+
+            @* ── Payment Gateways (dedicated section) ── *@
+            @if (MatchGroup("Payment Gateways", "Payment Gateways"))
+            {
+                <AuthorizeView Roles="super_admin,admin" Context="payCtx">
+                    <div class="sidebar__group">
+                        <button class="sidebar__group-header @(IsOpen("paygw") ? "open" : "")" @onclick='() => Toggle("paygw")'>
+                            <span class="sidebar__group-label"><span class="sidebar__ico">💳</span><span class="sidebar__txt">Payment Gateways</span></span><span class="sidebar__chevron">▸</span>
+                        </button>
+                        @if (IsOpen("paygw"))
+                        {
+                            <div class="sidebar__group-items">
+                                @if (MatchLink("Payment Gateways")) { <NavLink href="/admin/settings/payments" class="sidebar__link"><span class="sidebar__txt">Gateway Settings</span></NavLink> }
+                            </div>
+                        }
+                    </div>
+                </AuthorizeView>
+            }
+
+            @* ── Master Data ── *@
+            @if (MatchGroup("Master Data", "URL Redirects", "Mega Menu"))
+            {
+                <AuthorizeView Roles="super_admin,admin" Context="mdCtx">
+                    <div class="sidebar__group">
+                        <button class="sidebar__group-header @(IsOpen("masterdata") ? "open" : "")" @onclick='() => Toggle("masterdata")'>
+                            <span class="sidebar__group-label"><span class="sidebar__ico">🗂️</span><span class="sidebar__txt">Master Data</span></span><span class="sidebar__chevron">▸</span>
+                        </button>
+                        @if (IsOpen("masterdata"))
+                        {
+                            <div class="sidebar__group-items">
+                                @if (MatchLink("URL Redirects")) { <NavLink href="/admin/url-redirects" class="sidebar__link"><span class="sidebar__txt">URL Redirects</span></NavLink> }
+                                @if (MatchLink("Mega Menu"))     { <NavLink href="/admin/mega-menu" class="sidebar__link"><span class="sidebar__txt">Mega Menu</span></NavLink> }
+                            </div>
+                        }
+                    </div>
+                </AuthorizeView>
+            }
+
+            @* ── Configuration ── *@
+            @if (MatchGroup("Configuration", "Users & Roles", "Audit Log", "Email (SMTP)", "Email API", "Email Templates", "Email Logs", "SMS Gateway", "Serial Key Providers", "Superclass Settings", "Scheduled Tasks", "Finance Settings", "Admin Access Control", "Application Logs", "Notifications", "Settings"))
+            {
+                <div class="sidebar__group">
+                    <button class="sidebar__group-header @(IsOpen("config") ? "open" : "")" @onclick='() => Toggle("config")'>
+                        <span class="sidebar__group-label"><span class="sidebar__ico">⚙️</span><span class="sidebar__txt">Configuration</span></span><span class="sidebar__chevron">▸</span>
+                    </button>
+                    @if (IsOpen("config"))
+                    {
+                        <div class="sidebar__group-items">
+                            <AuthorizeView Roles="super_admin,admin" Context="cfgCtx">
+                                @if (MatchLink("Users & Roles"))     { <NavLink href="/admin/users" class="sidebar__link"><span class="sidebar__txt">Users &amp; Roles</span></NavLink> }
+                                @if (MatchLink("Audit Log"))         { <NavLink href="/admin/audit" class="sidebar__link"><span class="sidebar__txt">Audit Log</span></NavLink> }
+                                @if (MatchLink("Email (SMTP)"))      { <NavLink href="/admin/settings/email" class="sidebar__link"><span class="sidebar__txt">Email (SMTP)</span></NavLink> }
+                                @if (MatchLink("Email API"))         { <NavLink href="/admin/settings/email-api" class="sidebar__link"><span class="sidebar__txt">Email API</span></NavLink> }
+                                @if (MatchLink("Email Templates"))   { <NavLink href="/admin/notifications" class="sidebar__link"><span class="sidebar__txt">Email Templates</span></NavLink> }
+                                @if (MatchLink("Email Logs"))        { <NavLink href="/admin/email-logs" class="sidebar__link"><span class="sidebar__txt">Email Logs</span></NavLink> }
+                                @if (MatchLink("SMS Gateway"))       { <NavLink href="/admin/settings/sms" class="sidebar__link"><span class="sidebar__txt">SMS Gateway</span></NavLink> }
+                                @if (MatchLink("Serial Key Providers")) { <NavLink href="/admin/settings/serial-keys" class="sidebar__link"><span class="sidebar__txt">Serial Key Providers</span></NavLink> }
+                                @if (MatchLink("Superclass Settings")) { <NavLink href="/admin/settings/superclass" class="sidebar__link"><span class="sidebar__txt">Superclass Settings</span></NavLink> }
+                                @if (MatchLink("Scheduled Tasks"))   { <NavLink href="/admin/scheduled-tasks" class="sidebar__link"><span class="sidebar__txt">Scheduled Tasks</span></NavLink> }
+                                @if (MatchLink("Finance Settings"))  { <NavLink href="/admin/settings/finance" class="sidebar__link"><span class="sidebar__txt">Finance Settings</span></NavLink> }
+                                @if (MatchLink("Application Logs"))  { <NavLink href="/admin/logs" class="sidebar__link"><span class="sidebar__txt">Application Logs</span></NavLink> }
+                            </AuthorizeView>
+                            @* ── 🔒 Admin Access Control — Super Admin only (no other role should see this) ── *@
+                            @if (MatchLink("Admin Access Control"))
+                            {
+                                <AuthorizeView Roles="super_admin" Context="acCtx">
+                                    <NavLink href="/admin/access-control" class="sidebar__link"><span class="sidebar__txt">🔒 Admin Access Control</span></NavLink>
+                                </AuthorizeView>
+                            }
+                            @if (MatchLink("Notifications"))  { <NavLink href="/admin/alerts" class="sidebar__link"><span class="sidebar__txt">Notifications</span></NavLink> }
+                            @if (MatchLink("Settings"))       { <NavLink href="/admin/settings" class="sidebar__link"><span class="sidebar__txt">Settings</span></NavLink> }
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_searchActive && !AnyMenuVisible())
+            {
+                <div class="sidebar__search-empty">
+                    No menu items match <strong>“@_search”</strong>
+                </div>
+            }
+        </nav>
+        <AuthorizeView>
+            <Authorized>
+                <div class="sidebar__user">
+                    <div class="sidebar__avatar">@Initials(context.User.Identity?.Name)</div>
+                    <div class="sidebar__user-info sidebar__txt">
+                        <div class="sidebar__user-name">@(context.User.Identity?.Name ?? "User")</div>
+                        <div class="sidebar__user-role">@TopRole(context)</div>
+                    </div>
+                    <form method="post" action="/account/logout" data-enhance="false" style="margin:0 0 0 auto">
+                        <button type="submit" class="btn btn-ghost btn-sm" title="Logout">⎋</button>
+                    </form>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </aside>
+    <div class="main-content">
+        <div class="admin-topbar">
+            <div class="topbar__left">
+                <button class="topbar__btn topbar__hamburger" @onclick="ToggleMobile" aria-label="Toggle menu">☰</button>
+                <button class="topbar__btn topbar__collapse" @onclick="ToggleCollapse" aria-label="Collapse sidebar" title="Collapse sidebar">@(collapsed ? "⮞" : "⮜")</button>
+            </div>
+            <div class="topbar__right">
+                @* ── “View Store” shortcut — opens the public frontend in a new tab. Reads
+                      the configured StoreUrl from appsettings if present, otherwise falls
+                      back to "/" so the same-origin frontend loads regardless of env. ── *@
+                <a href="@_storeUrl" target="_blank" rel="noopener" class="topbar__store" title="Open public store in a new tab">
+                    <svg class="topbar__store-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h18l-1.5 9a2 2 0 0 1-2 1.7H6.5A2 2 0 0 1 4.5 16Z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg>
+                    <span class="topbar__store-txt">View Store</span>
+                    <svg class="topbar__store-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>
+                </a>
+
+                <AuthorizeView Context="tb">
+                    <Authorized><NotificationBell /></Authorized>
+                </AuthorizeView>
+
+                @* ── Compact profile pill, mirrors the sidebar avatar. Wraps the existing
+                      AuthorizeView so it disappears for anonymous users. ── *@
+                <AuthorizeView Context="tbu">
+                    <Authorized>
+                        <div class="topbar__profile" title="@(tbu.User.Identity?.Name ?? "User")">
+                            <span class="topbar__profile-avatar">@Initials(tbu.User.Identity?.Name)</span>
+                            <span class="topbar__profile-meta">
+                                <span class="topbar__profile-name">@(tbu.User.Identity?.Name ?? "User")</span>
+                                <span class="topbar__profile-role">@TopRole(tbu)</span>
+                            </span>
+                        </div>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </div>
+        <div class="page">
+            @if (PageAllowed())
+            {
+                @Body
+            }
+            else
+            {
+                <div style="min-height:60vh;display:flex;align-items:center;justify-content:center;padding:24px">
+                    <div style="max-width:460px;width:100%;background:#fff;border-radius:20px;padding:36px 28px;text-align:center;box-shadow:0 24px 60px -28px rgba(15,23,42,.45);border:1px solid var(--gray-200)">
+                        <span style="display:inline-flex;align-items:center;justify-content:center;width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#FEE2E2,#FECACA);color:#DC2626;font-size:30px;margin-bottom:14px;box-shadow:0 12px 28px -16px rgba(220,38,38,.4)">🔒</span>
+                        <h2 style="font-size:21px;font-weight:800;color:var(--navy);margin:0 0 8px">Access Restricted</h2>
+                        <p style="color:var(--gray-600);font-size:14px;line-height:1.55;margin:0 0 4px">You do not have permission to access this module.</p>
+                        <p style="color:var(--gray-400);font-size:12.5px;margin:6px 0 0">Please contact your Super Admin if you believe this is a mistake.</p>
+                        <a href="/admin/dashboard" class="btn btn-primary" style="margin-top:20px;font-weight:800;padding:11px 22px;border-radius:12px">Go to Dashboard</a>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+<ToastHost />
+
+@* ── Global Ctrl+K (or ⌘K) shortcut focuses the sidebar search input.
+      Self-installs once via a window flag so SignalR re-renders don't stack listeners. ── *@
+<script suppress-error="BL9992">
+    (function () {
+        if (window.__hjAdminShortcutsInstalled) return;
+        window.__hjAdminShortcutsInstalled = true;
+        document.addEventListener('keydown', function (e) {
+            var k = e.key;
+            if ((e.ctrlKey || e.metaKey) && (k === 'k' || k === 'K')) {
+                var input = document.querySelector('[data-sidebar-search]');
+                if (input) { e.preventDefault(); input.focus(); input.select(); }
+            }
+        });
+    })();
+</script>
+
+
+@code {
+    private readonly HashSet<string> _open = new();
+    private bool collapsed;
+    private bool mobileOpen;
+
+    // ── Menu search ── live-filters every group + link, case-insensitive, ESC clears.
+    private string _search = string.Empty;
+    private bool _searchActive => !string.IsNullOrWhiteSpace(_search);
+    private string _storeUrl = "/";
+
+    private bool MatchText(string label)
+    {
+        if (!_searchActive) return true;
+        return (label ?? string.Empty).Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+    private bool MatchLink(string label) => MatchText(label);
+
+    /// <summary>
+    /// Every searchable label under the Reports group: the eight report titles from the catalog,
+    /// the two management screens, and the legacy pages that have not been retired yet. Derived
+    /// from <c>ReportCatalog</c> so the menu search stays in step with the reports that exist.
+    /// </summary>
+    private static readonly string[] ReportMenuNames =
+        RioCommerce.Core.DTOs.Reporting.ReportCatalog.All.SelectMany(r => new[] { r.MenuLabel, r.Title })
+            .Concat(new[] { "Reports", "Reports & Exports" })
+            .ToArray();
+    private bool MatchGroup(string groupLabel, params string[] descendants)
+    {
+        if (!_searchActive) return true;
+        if (MatchText(groupLabel)) return true;
+        foreach (var d in descendants) if (MatchText(d)) return true;
+        return false;
+    }
+
+    private void OnSearchInput(ChangeEventArgs e) => _search = e.Value?.ToString() ?? string.Empty;
+    private void OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Escape") ClearSearch(); }
+    private void ClearSearch() => _search = string.Empty;
+
+    // The whole-menu “no results” hint relies on this — true when at least one group
+    // OR top-level link in the full tree matches the active query.
+    private bool AnyMenuVisible() =>
+        MatchLink("Dashboard")
+        || MatchGroup("Catalog", "Products", "Categories", "Faculty", "Attributes", "Product Attributes", "Specification Attributes", "Checkout Attributes")
+        || MatchGroup("Sales", "Orders", "Create Order", "Installment Reports", "Installment Settings", "Dispatch", "Returns", "Invoices")
+        || MatchGroup("Franchisees", "Dashboard", "Franchise Orders", "Create Franchise Order", "Franchise List", "Import Franchisees", "Bulk Assign Products", "Franchise Settings")
+        || MatchGroup("Customers", "Customer roles", "Leads", "Reviews")
+        || MatchGroup("Promotions", "Coupons", "Affiliates", "Referred By Options", "Newsletter")
+        || MatchGroup("Content management", "Pages", "Blog")
+        || MatchGroup("Reports", ReportMenuNames) || MatchLink("Serial Keys") || MatchLink("Superclass Registrations")
+        || MatchGroup("Finance", "Dashboard", "Payouts", "Settlements", "Revenue Sharing")
+        || MatchGroup("Payment Gateways", "Payment Gateways")
+        || MatchGroup("Master Data", "URL Redirects", "Mega Menu")
+        || MatchGroup("Configuration", "Users & Roles", "Audit Log", "Email (SMTP)", "Email API", "Email Templates", "Email Logs", "SMS Gateway", "Serial Key Providers", "Superclass Settings", "Scheduled Tasks", "Finance Settings", "Admin Access Control", "Application Logs", "Notifications", "Settings");
+
+    // ── 🔒 Per-user permission cache ──
+    // Loaded once when the layout mounts and re-checked when the auth state changes.
+    // For legacy staff the layout treats every permission as granted (no regression).
+    // For backend_user-only customers, only the keys actually toggled on for them are visible.
+    private bool _isLegacyStaff;
+    private HashSet<string> _granted = new(StringComparer.Ordinal);
+
+    private bool Show(string key) => _isLegacyStaff || _granted.Contains(key);
+    private bool ShowAny(params string[] keys) => _isLegacyStaff || keys.Any(k => _granted.Contains(k));
+
+    // ── URL → permission-key map (most specific prefixes first; the central PageAllowed() gate
+    //    uses this to render Access Restricted when a backend_user-only customer types in or
+    //    bookmarks a URL they weren't granted). Legacy staff bypass this gate entirely. ──
+    private static readonly (string prefix, string key)[] _routeMap =
+    {
+        ("/admin/access-control",                  "settings.access_control.view"),
+        ("/admin/audit",                           "settings.access_control.view"),
+        ("/admin/users",                           "settings.users.view"),
+        ("/admin/settings/email-api",              "settings.website_config.view"),
+        ("/admin/settings/email",                  "settings.website_config.view"),
+        ("/admin/settings/sms",                    "settings.website_config.view"),
+        ("/admin/settings/payments",               "settings.website_config.view"),
+        ("/admin/scheduled-tasks",                 "settings.website_config.view"),
+        ("/admin/settings/finance",                "settings.website_config.view"),
+        ("/admin/settings/superclass",             "settings.website_config.view"),
+        ("/admin/settings",                        "settings.website_config.view"),
+        ("/admin/mega-menu",                       "settings.website_config.view"),
+        ("/admin/alerts",                          "settings.notifications.view"),
+        ("/admin/email-logs",                      "settings.notifications.view"),
+        ("/admin/url-redirects",                   "settings.website_config.view"),
+        ("/admin/notifications",                   "settings.notifications.view"),
+        ("/admin/finance",                         "finance.gst.view"),
+        ("/admin/payouts",                         "finance.payment.view"),
+        ("/admin/settlements",                     "finance.payment.view"),
+        ("/admin/franchises",                      "franchise.view"),
+        ("/admin/franchise-orders",                "sales.franchise_orders.view"),
+        ("/admin/franchise/orders/create",         "sales.franchise_orders.view"),
+        ("/admin/franchise/dashboard",             "sales.franchise_orders.view"),
+        ("/admin/franchise/revenue",               "sales.franchise_orders.view"),
+        ("/admin/franchise/payments",              "sales.franchise_orders.view"),
+        ("/admin/franchise/settlements",           "sales.franchise_orders.view"),
+        ("/admin/franchise/students",              "sales.franchise_orders.view"),
+        ("/admin/franchise/reports",               "sales.franchise_orders.view"),
+        ("/admin/orders/create",                   "sales.create_order.view"),
+        ("/admin/orders",                          "sales.orders.view"),
+        ("/admin/dispatch",                        "sales.dispatch.view"),
+        ("/admin/returns",                         "sales.returns.view"),
+        ("/admin/customers",                       "customers.view"),
+        ("/admin/customer-roles",                  "customers.roles.view"),
+        ("/admin/leads",                           "customers.leads.view"),
+        ("/admin/reviews",                         "customers.reviews.view"),
+        ("/admin/coupons",                         "promotions.coupons.view"),
+        ("/admin/affiliates",                      "promotions.discounts.view"),
+        ("/admin/promotions",                      "promotions.offers.view"),
+        ("/admin/newsletter",                      "promotions.offers.view"),
+        ("/admin/pages",                           "content.pages.view"),
+        ("/admin/blog",                            "content.blogs.view"),
+        ("/admin/integrations/superclass",         "reports.view"),
+        ("/admin/reports-exports",                 "reports.view"),
+        ("/admin/reports",                         "reports.view"),
+        ("/admin/products",                        "catalog.products.view"),
+        ("/admin/categories",                      "catalog.categories.view"),
+        ("/admin/faculty-sharing",                 "catalog.revenue_sharing.view"),
+        ("/admin/faculty-share-settings",          "catalog.revenue_sharing.view"),
+        ("/admin/faculty/bulk-assign",             "catalog.revenue_sharing.view"),
+        ("/admin/faculty",                         "catalog.faculty.view"),
+        // Must stay ABOVE the "/admin/catalog" entry: this map is first-match-wins on prefix, and
+        // subjects are a catalog lookup alongside categories, not an attribute screen.
+        ("/admin/catalog/subjects",                "catalog.categories.view"),
+        ("/admin/catalog",                         "catalog.attributes.view"),
+        ("/admin/dashboard",                       "dashboard.view"),
+        ("/admin",                                 "dashboard.view"),
+    };
+
+    /// <summary>True if the current URL is permitted for the signed-in user. Legacy staff always
+    /// pass. Backend-only customers pass only if they hold the mapped permission for the URL.</summary>
+    private bool PageAllowed()
+    {
+        if (_isLegacyStaff) return true;
+        var path = Path;
+        foreach (var (prefix, key) in _routeMap)
+            if (path.StartsWith(prefix)) return _granted.Contains(key);
+        return false;   // unmapped /admin/* → denied by default
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        OpenActiveGroup();
+        // Prefer the explicit StoreUrl setting; fall back to "/" so the link still works
+        // out-of-the-box on dev and same-origin production where the frontend lives at root.
+        var configured = Config["StoreUrl"];
+        _storeUrl = string.IsNullOrWhiteSpace(configured) ? "/" : configured!.Trim();
+        // Never let a settings hiccup keep the admin shell from rendering.
+        try { customLogoUrl = (await Settings.GetAsync()).LogoUrl; } catch { }
+        await LoadPermissionsAsync();
+    }
+
+    // Same source as the storefront header, footer and sign-in page: whatever the admin uploaded on
+    // Admin › Settings, falling back to the bundled asset when nothing has been.
+    private string? customLogoUrl;
+    private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
+    private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
+
+
+    private async Task LoadPermissionsAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idStr = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(idStr, out var uid)) return;
+        _isLegacyStaff = await Perms.IsLegacyStaffAsync(uid);
+        if (!_isLegacyStaff)
+            _granted = new HashSet<string>(await Perms.GetEffectivePermissionsAsync(uid), StringComparer.Ordinal);
+
+        SendToFirstAllowedPage();
+    }
+
+    /// <summary>
+    /// The "Admin" button in the header points everyone at the dashboard, which a narrowly-scoped
+    /// user (the SEO team, say) is not allowed to see — so their first screen would be Access
+    /// Restricted, with a button offering to send them back to the same place. Land them on the
+    /// first page they DO hold, instead. Only fires on the dashboard entry point: a restricted user
+    /// who types some other URL still gets the honest refusal.
+    /// </summary>
+    private void SendToFirstAllowedPage()
+    {
+        if (_isLegacyStaff || PageAllowed()) return;
+        if (Path is not ("/admin" or "/admin/" or "/admin/dashboard")) return;
+
+        var landing = _routeMap.FirstOrDefault(m => _granted.Contains(m.key));
+        if (landing.prefix is { Length: > 0 } url) Nav.NavigateTo(url);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        mobileOpen = false;          // close the mobile drawer on navigation
+        OpenActiveGroup();
+        StateHasChanged();           // re-evaluate PageAllowed() against the new URL
+    }
+
+    private void ToggleCollapse() => collapsed = !collapsed;
+    private void ToggleMobile() => mobileOpen = !mobileOpen;
+    private void CloseMobile() => mobileOpen = false;
+
+    private string Path => new Uri(Nav.Uri).AbsolutePath.ToLowerInvariant();
+
+    // Auto-expand whichever group contains the current route (manual toggles are preserved on top of this).
+    private void OpenActiveGroup()
+    {
+        if (StartsWithAny("/admin/products", "/admin/categories", "/admin/faculty", "/admin/catalog")) _open.Add("catalog");
+        if (Path.StartsWith("/admin/catalog")) _open.Add("catalog.attributes");
+        // Sales — website order operations + invoices.
+        if (StartsWithAny("/admin/orders", "/admin/dispatch", "/admin/returns", "/admin/invoices")) _open.Add("sales");
+        // Anything franchise-related opens the dedicated Franchisees group.
+        if (StartsWithAny("/admin/franchise", "/admin/franchises", "/admin/franchise-orders")) _open.Add("franchise");
+        if (StartsWithAny("/admin/customers", "/admin/customer-roles", "/admin/leads", "/admin/reviews")) _open.Add("customers");
+        if (StartsWithAny("/admin/coupons", "/admin/affiliates", "/admin/promotions", "/admin/newsletter")) _open.Add("promotions");
+        if (StartsWithAny("/admin/pages", "/admin/blog")) _open.Add("content");
+        if (StartsWithAny("/admin/reports", "/admin/reports-exports")) _open.Add("reports");
+        if (StartsWithAny("/admin/finance", "/admin/payouts", "/admin/settlements", "/admin/revenue-sharing",
+                          "/admin/faculty-sharing", "/admin/faculty-share-settings",
+                          "/admin/faculty/bulk-assign")) _open.Add("finance");
+        if (Path.StartsWith("/admin/settings/payments")) _open.Add("paygw");
+        if (StartsWithAny("/admin/url-redirects", "/admin/mega-menu")) _open.Add("masterdata");
+        // Configuration — settings + ops, but NOT the payment-gateway settings page (its own section).
+        if (StartsWithAny("/admin/users", "/admin/audit", "/admin/notifications", "/admin/alerts",
+                          "/admin/scheduled-tasks", "/admin/email-logs", "/admin/logs", "/admin/access-control")
+            || (Path.StartsWith("/admin/settings") && !Path.StartsWith("/admin/settings/payments"))) _open.Add("config");
+    }
+
+    private bool StartsWithAny(params string[] prefixes) => prefixes.Any(p => Path.StartsWith(p));
+    private void Toggle(string key) { if (!_open.Remove(key)) _open.Add(key); }
+    // While a search is active, force every group open so matches aren't hidden behind a collapse.
+    // The user's manual toggles are preserved in _open and restored when the search clears.
+    private bool IsOpen(string key) => _searchActive || _open.Contains(key);
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "RC";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
+            : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+
+    private static string TopRole(AuthenticationState? state)
+    {
+        var role = state?.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+        return role switch
+        {
+            "super_admin" => "Super Admin",
+            "admin" => "Admin",
+            "operations" => "Operations",
+            "faculty" => "Faculty",
+            "franchise_admin" => "Franchise Admin",
+            _ => "Member"
+        };
+    }
+}

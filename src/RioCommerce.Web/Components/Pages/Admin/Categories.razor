@@ -1,0 +1,75 @@
+@page "/admin/categories"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ICatalogAdminService Svc
+@inject NavigationManager Nav
+<PageTitle>Categories — RioCommerce Admin</PageTitle>
+
+<style>
+    .cat-indent { display:inline-flex; align-items:center; gap:6px; }
+    .cat-indent__pad { display:inline-block; width:24px; }
+    .cat-indent__icon { color:var(--gray-400); font-size:11px; }
+    .cat-parent-badge { display:inline-block; font-size:11px; color:var(--gray-400); background:var(--gray-100); border-radius:6px; padding:1px 7px; margin-left:6px; }
+</style>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Categories</h1>
+    <a href="/admin/categories/new" class="btn btn-primary btn-sm">➕ Add Category</a>
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Slug</th><th>Courses</th><th>Order</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No categories yet.</td></tr> }
+            else
+            {
+                @foreach (var c in items)
+                {
+                    <tr>
+                        <td>
+                            <span class="cat-indent">
+                                @for (var i = 0; i < c.Depth; i++) { <span class="cat-indent__pad"></span> }
+                                @if (c.Depth > 0) { <span class="cat-indent__icon">└</span> }
+                                <strong>@c.Name</strong>
+                            </span>
+                            @if (!string.IsNullOrEmpty(c.ParentName)) { <span class="cat-parent-badge">↑ @c.ParentName</span> }
+                        </td>
+                        <td><code>@c.Slug</code></td>
+                        <td>@c.ProductCount</td>
+                        <td>@c.DisplayOrder</td>
+                        <td><span class="status @(c.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(c.IsActive ? "Active" : "Inactive")</span></td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <a href="/admin/categories/@c.Id" class="btn btn-ghost btn-sm">Edit</a>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(c.Id)">@(c.IsActive ? "Disable" : "Enable")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(c.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<CategoryAdminItem>? items;
+    private bool msgOk;
+    private string? msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => items = await Svc.ListCategoriesAsync();
+
+    private async Task Toggle(Guid id) { await Svc.ToggleCategoryAsync(id); await Reload(); }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteCategoryAsync(id);
+        if (ok) { await Reload(); msgOk = true; msg = "Category deleted."; }
+        else { msgOk = false; msg = error; }
+    }
+}

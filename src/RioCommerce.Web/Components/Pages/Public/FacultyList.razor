@@ -1,0 +1,245 @@
+@page "/faculty"
+@inject HttpClient Http
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Our Faculty — RioCommerce", Description = "Meet the expert CA faculty behind RioCommerce." })" />
+
+<div class="fac-page">
+    <div class="container">
+        <header class="fac-hero">
+            <span class="fac-hero__eyebrow">Our Mentors</span>
+            <h1>Meet Our Faculty</h1>
+            <p>Learn from experienced CA professionals trusted by thousands of students.</p>
+        </header>
+
+        @if (faculty == null)
+        {
+            <div class="fac-grid">
+                @for (var i = 0; i < 4; i++)
+                {
+                    <div class="fac-card fac-card--skeleton">
+                        <div class="fac-card__photo fac-skel"></div>
+                        <div class="fac-skel fac-skel--line" style="width:60%"></div>
+                        <div class="fac-skel fac-skel--line" style="width:40%"></div>
+                    </div>
+                }
+            </div>
+        }
+        else if (faculty.Count == 0)
+        {
+            <div class="fac-empty">
+                <div class="fac-empty__icon">👩‍🏫</div>
+                <h3>No Faculty To Show Yet</h3>
+                <p>Faculty profiles will appear here once they're published.</p>
+            </div>
+        }
+        else
+        {
+            <div class="fac-grid">
+                @foreach (var f in faculty)
+                {
+                    <a href="/faculty/@f.Code.ToLower()" class="fac-card">
+                        <div class="fac-card__photo">
+                            @if (!string.IsNullOrEmpty(f.PhotoUrl))
+                            {
+                                <img src="@f.PhotoUrl" alt="@f.DisplayName" loading="lazy" />
+                            }
+                            else
+                            {
+                                <span class="fac-card__initials">@Initials(f.DisplayName)</span>
+                            }
+                        </div>
+
+                        <h2 class="fac-card__name">@f.DisplayName</h2>
+                        @if (!string.IsNullOrEmpty(f.Designation)) { <div class="fac-card__role">@f.Designation</div> }
+                        @if (!string.IsNullOrEmpty(f.Qualifications)) { <div class="fac-card__qual">@f.Qualifications</div> }
+
+                        <div class="fac-card__meta">
+                            <span class="fac-card__chip">@f.CourseCount course@(f.CourseCount == 1 ? "" : "s")</span>
+                            @if (f.RatingCount > 0)
+                            {
+                                <span class="fac-card__chip fac-card__chip--rating">★ @f.AvgRating.ToString("0.0")</span>
+                            }
+                        </div>
+
+                        <span class="fac-card__cta">View Profile <span aria-hidden="true">→</span></span>
+                    </a>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    /* Faculty listing — self-contained + responsive. High-specificity selectors so this
+       overrides the conflicting global .faculty-card rules (which assumed different markup). */
+    .fac-page { padding: clamp(28px, 5vw, 56px) 0 clamp(48px, 7vw, 80px); }
+
+    .fac-page .fac-hero { text-align: center; max-width: 640px; margin: 0 auto clamp(28px, 5vw, 48px); }
+    .fac-page .fac-hero__eyebrow {
+        display: inline-block; font-size: 12.5px; font-weight: 700; letter-spacing: 1.5px;
+        text-transform: uppercase; color: var(--orange); margin-bottom: 10px;
+    }
+    .fac-page .fac-hero h1 {
+        font-size: clamp(28px, 5vw, 44px); font-weight: 800; color: var(--navy);
+        line-height: 1.1; margin: 0;
+    }
+    .fac-page .fac-hero p {
+        color: var(--gray-500); margin-top: 12px; font-size: clamp(14px, 2vw, 16.5px); line-height: 1.6;
+    }
+
+    /* Responsive grid: 1 col mobile → 2 small → 3 → 4 wide. */
+    .fac-page .fac-grid {
+        display: grid; gap: clamp(16px, 2.4vw, 26px);
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+    @@media (min-width: 480px)  { .fac-page .fac-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @@media (min-width: 768px)  { .fac-page .fac-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @@media (min-width: 1080px) { .fac-page .fac-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+    .fac-page .fac-card {
+        display: flex; flex-direction: column; align-items: center; text-align: center;
+        background: #fff; border: 1px solid var(--gray-200); border-radius: 18px;
+        padding: 28px 20px 22px; text-decoration: none;
+        transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+    }
+    .fac-page .fac-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 18px 40px -18px rgba(16, 42, 67, .35);
+        border-color: rgba(10, 199, 229, .35);
+    }
+    .fac-page .fac-card:focus-visible {
+        outline: 3px solid var(--orange); outline-offset: 3px;
+    }
+
+    /* The fix: a fixed-size SQUARE box → perfect circle, image cover-cropped & top-anchored
+       so faces aren't cut off. No more stretched ovals. */
+    .fac-page .fac-card__photo {
+        width: clamp(110px, 28vw, 140px); aspect-ratio: 1 / 1; border-radius: 50%;
+        overflow: hidden; flex-shrink: 0; margin-bottom: 16px;
+        background: linear-gradient(135deg, var(--navy), var(--navy-light, #2a5580));
+        border: 3px solid #fff;
+        box-shadow: 0 0 0 3px rgba(10, 199, 229, .25), 0 10px 24px -12px rgba(16, 42, 67, .5);
+        display: flex; align-items: center; justify-content: center;
+    }
+    .fac-page .fac-card__photo img {
+        width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block;
+    }
+    .fac-page .fac-card__initials { color: #fff; font-size: 30px; font-weight: 800; letter-spacing: .5px; }
+
+    .fac-page .fac-card__name { font-size: 17px; font-weight: 700; color: var(--navy); margin: 0; line-height: 1.3; }
+    .fac-page .fac-card__role { font-size: 12.5px; font-weight: 600; color: var(--orange); margin-top: 4px; }
+    .fac-page .fac-card__qual {
+        font-size: 12.5px; color: var(--gray-500); margin-top: 6px; line-height: 1.45;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    .fac-page .fac-card__meta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+    .fac-page .fac-card__chip {
+        font-size: 12px; font-weight: 600; color: var(--gray-600, #475569);
+        background: var(--gray-100); padding: 4px 11px; border-radius: 999px;
+    }
+    .fac-page .fac-card__chip--rating { color: #b45309; background: #fff7ed; }
+
+    .fac-page .fac-card__cta {
+        margin-top: 18px; font-size: 13px; font-weight: 700; color: var(--navy);
+        display: inline-flex; align-items: center; gap: 6px;
+    }
+    .fac-page .fac-card:hover .fac-card__cta { color: var(--orange); }
+    .fac-page .fac-card:hover .fac-card__cta span { transform: translateX(3px); }
+    .fac-page .fac-card__cta span { transition: transform .25s ease; }
+
+    /* ── COMPACT DIRECTORY (≤1079px) — matches the Home page faculty tiles ──────
+       Mobile shows 3 per row, tablet 4. The large white card, its border, shadow
+       and padding, the course-count / rating chips, the qualifications line and
+       the "View Profile" button all step out, leaving circular photo + name +
+       expertise. The tile is already an anchor to /faculty/{code}, so the photo
+       and the name both navigate exactly as before — no routing change.
+       (Angle brackets are avoided in this comment: Razor parses the style block
+       as markup and would read them as a real tag.)
+       Desktop (≥1080px) keeps the existing card design. */
+    @@media (max-width: 1079.98px) {
+        .fac-page { padding: 20px 0 32px; }
+        .fac-page .fac-hero { margin-bottom: 20px; }
+        .fac-page .fac-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 12px; }
+
+        .fac-page .fac-card {
+            background: none; border: 0; border-radius: 0;
+            box-shadow: none; padding: 0;
+        }
+        .fac-page .fac-card:hover { transform: none; box-shadow: none; border-color: transparent; }
+        /* soft hover stays — just on the photo, like the Home tiles */
+        .fac-page .fac-card:hover .fac-card__photo { transform: translateY(-3px); }
+
+        .fac-page .fac-card__photo {
+            width: 72px; aspect-ratio: 1 / 1; margin-bottom: 8px;
+            border: 2px solid #fff;
+            box-shadow: 0 0 0 2px rgba(10, 199, 229, .22), 0 4px 10px -6px rgba(16, 42, 67, .45);
+            transition: transform .25s ease;
+        }
+        .fac-page .fac-card__initials { font-size: 20px; }
+        /* A photo that 404s renders its alt text, which spills out of the round
+           frame. Hiding the visual text leaves a clean circle; the alt attribute
+           is untouched so screen readers still announce it. */
+        .fac-page .fac-card__photo img { font-size: 0; color: transparent; }
+
+        .fac-page .fac-card__name {
+            font-size: 13px; line-height: 1.25; margin: 0;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        }
+        /* designation doubles as the expertise line here (this page has no subject list) */
+        .fac-page .fac-card__role {
+            font-size: 11px; font-weight: 500; color: var(--gray-500); margin-top: 2px;
+            line-height: 1.35;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        }
+        .fac-page .fac-card__qual,
+        .fac-page .fac-card__meta,
+        .fac-page .fac-card__cta { display: none; }
+    }
+
+    /* Tablet: 4 across. */
+    @@media (min-width: 768px) and (max-width: 1079.98px) {
+        .fac-page .fac-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px 16px; }
+        .fac-page .fac-card__photo { width: 88px; }
+        .fac-page .fac-card__initials { font-size: 24px; }
+        .fac-page .fac-card__name { font-size: 14px; }
+        .fac-page .fac-card__role { font-size: 12px; }
+    }
+
+    /* Empty + skeleton states */
+    .fac-page .fac-empty { text-align: center; padding: 56px 20px; color: var(--gray-500); }
+    .fac-page .fac-empty__icon { font-size: 44px; }
+    .fac-page .fac-empty h3 { color: var(--navy); margin: 12px 0 4px; }
+
+    .fac-page .fac-card--skeleton { pointer-events: none; }
+    .fac-page .fac-skel { background: linear-gradient(90deg, #eef2f6 25%, #e2e8f0 37%, #eef2f6 63%); background-size: 400% 100%; animation: facShimmer 1.4s ease infinite; border-radius: 8px; }
+    .fac-page .fac-card__photo.fac-skel { width: clamp(110px,28vw,140px); aspect-ratio: 1/1; border-radius: 50%; margin-bottom: 16px; }
+    .fac-page .fac-skel--line { height: 12px; margin-top: 10px; }
+    @@keyframes facShimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .fac-page .fac-card, .fac-page .fac-card__cta span { transition: none; }
+        .fac-page .fac-skel { animation: none; }
+    }
+</style>
+
+@code {
+    private List<FacultyCard>? faculty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ApiResponse<List<FacultyCard>>>("/api/faculty");
+            faculty = r?.Data ?? new();
+        }
+        catch { faculty = new(); }
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "RC";
+        var parts = name.Replace("CA", "").Replace("CS", "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+}

@@ -1,0 +1,371 @@
+@inject ICartService Cart
+@inject IMenuAdminService Menu
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject ISiteSettingsService Settings
+@inject IJSRuntime JS
+@implements IDisposable
+
+<header class="header">
+    <div class="header__inner">
+        <a href="/" class="header__logo"><img src="@LogoSrc" alt="RioCommerce" /></a>
+        <nav class="header__nav">
+            @if (menu is { Count: > 0 })
+            {
+                @foreach (var top in menu)
+                {
+                    @if (top.Children.Count > 0)
+                    {
+                        <div class="hnav-item">
+                            <a href="@top.Url" class="header__link hnav-top @(IsActiveBranch(top) ? "active" : "")" target="@(top.OpenInNewTab ? "_blank" : null)" aria-haspopup="true">@top.Title <span class="hnav-caret" aria-hidden="true">▾</span></a>
+                            <div class="hnav-drop" role="menu">
+                                @foreach (var c in top.Children) { @DropNode(c) }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <a href="@top.Url" class="header__link @(IsActive(top.Url) ? "active" : "")" target="@(top.OpenInNewTab ? "_blank" : null)">@top.Title</a>
+                    }
+                }
+            }
+            else
+            {
+                <NavLink href="/" class="header__link" Match="NavLinkMatch.All">Home</NavLink>
+                <NavLink href="/courses/ca-foundation" class="header__link">Courses</NavLink>
+                <NavLink href="/faculty" class="header__link">Faculty</NavLink>
+                <NavLink href="/blog" class="header__link">Blogs</NavLink>
+                <NavLink href="/contact" class="header__link">Contact</NavLink>
+            }
+        </nav>
+        <div class="header__actions">
+            @* has-text drives the clear button's VISIBILITY only — the markup is
+               identical in both states so nothing can reflow. *@
+            <div class="header__search @(searchOpen ? "is-open" : "") @(string.IsNullOrEmpty(searchTerm) ? "" : "has-text")">
+                <input class="header__search-input" type="search" placeholder="Search Courses..." value="@searchTerm"
+                       @oninput="e => searchTerm = e.Value?.ToString() ?? string.Empty" @onkeydown="OnSearchKey" @ref="searchInput" aria-label="Search courses" />
+                <button type="button" class="header__icon header__search-btn" @onclick="ToggleSearch" data-tip="Search" aria-label="Search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                </button>
+                @* Always in the DOM — never added/removed, so the input never reflows.
+                   CSS hides it with visibility (which also drops it from tab order)
+                   until .header__search gains .has-text. *@
+                <button type="button" class="header__search-clear" @onclick="ClearSearch" aria-label="Clear search" title="Clear">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+                @* Dismisses the desktop/tablet search overlay. Also always in the DOM
+                   (CSS-hidden until .is-open, and never shown on mobile, where the
+                   search bar is permanently expanded and has nothing to dismiss). *@
+                <button type="button" class="header__search-close" @onclick="CloseSearch" aria-label="Close search" title="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <AuthorizeView Roles="franchise_admin">
+                <NotAuthorized Context="cartCtx">
+                    <a href="/cart" class="header__icon header__cart" data-tip="Cart" aria-label="Cart">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>
+                        @* Always rendered so the mobile header can show a live "0". The
+                           is-zero variant stays hidden on desktop/tablet, so their badge
+                           behaviour (nothing at zero) is unchanged. Count comes from
+                           ICartService — never hardcoded. *@
+                        <span class="header__cart-badge @(cartCount == 0 ? "is-zero" : "")">@cartCount</span>
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
+            <AuthorizeView>
+                <Authorized>
+                    @{ var uname = context.User.Identity?.Name ?? "Account"; }
+                    <span class="header__divider"></span>
+                    @* backend_user is the sentinel role auto-attached by PermissionService when an
+                       admin grants any custom permission via /admin/access-control. Including it
+                       here means those customers see the orange "Admin" button without having to
+                       be a full staff role like operations. *@
+                    <AuthorizeView Roles="super_admin,admin,operations,faculty,backend_user,seo" Context="adm">
+                        <a href="/admin/dashboard" class="header__chip" title="Admin panel">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3Z"/></svg>
+                            Admin
+                        </a>
+                    </AuthorizeView>
+                    <AuthorizeView Roles="franchise_admin" Context="fr">
+                        <a href="/franchise" class="header__chip" title="Franchise portal">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>
+                            Franchise
+                        </a>
+                    </AuthorizeView>
+                    <div class="header__profile">
+                        <button type="button" class="header__user @(profileOpen ? "is-open" : "")" @onclick="ToggleProfile" aria-label="Account menu" aria-expanded="@profileOpen">
+                            <span class="header__avatar"><span class="header__avatar-txt">@Initials(uname)</span><span class="header__status"></span></span>
+                            <span class="header__user-name">@uname</span>
+                            <svg class="header__user-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        @if (profileOpen)
+                        {
+                            <div class="header__menu-backdrop" @onclick="CloseProfile"></div>
+                            <div class="header__menu">
+                                <div class="header__menu-head">
+                                    <span class="header__avatar header__avatar--lg"><span class="header__avatar-txt">@Initials(uname)</span><span class="header__status"></span></span>
+                                    <div class="header__menu-id">
+                                        <span class="header__menu-name">@uname</span>
+                                        <span class="header__menu-role">@RoleLabel(context.User)</span>
+                                    </div>
+                                </div>
+                                <a href="/account" class="header__menu-item" @onclick="CloseProfile">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>My Account
+                                </a>
+                                <AuthorizeView Roles="franchise_admin" Context="frCart">
+                                    <NotAuthorized Context="frCartNo">
+                                        <a href="/cart" class="header__menu-item" @onclick="CloseProfile">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>Cart
+                                            @if (cartCount > 0) { <span class="header__menu-count">@cartCount</span> }
+                                        </a>
+                                    </NotAuthorized>
+                                    <Authorized Context="frCartYes">
+                                        <a href="/franchise/order" class="header__menu-item" @onclick="CloseProfile">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Place Franchise Order
+                                        </a>
+                                    </Authorized>
+                                </AuthorizeView>
+                                <div class="header__menu-sep"></div>
+                                <form method="post" action="/account/logout" data-enhance="false" style="margin:0">
+                                    <button type="submit" class="header__menu-item header__menu-item--danger">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>Logout
+                                    </button>
+                                </form>
+                            </div>
+                        }
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    <span class="header__divider"></span>
+                    <a href="/login" class="btn btn-primary btn-sm header__login">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/></svg>
+                        Login
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+        <button class="header__hamburger @(MenuOpen ? "is-open" : "")" @onclick="ToggleMenu" aria-label="Menu">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+</header>
+@if (MenuOpen)
+{
+    <div class="drawer-overlay" @onclick="ToggleMenu"></div>
+    <aside class="drawer">
+        <div class="drawer__header">
+            <img src="@LogoSrc" alt="RioCommerce" class="drawer__logo" />
+            <button class="drawer__close" @onclick="ToggleMenu">✕</button>
+        </div>
+        <nav class="drawer__nav">
+            <a href="/" @onclick="ToggleMenu">Home</a>
+            <a href="/search" @onclick="ToggleMenu">Search</a>
+            @if (menu is { Count: > 0 })
+            {
+                @foreach (var top in menu) { @DrawerNode(top, 0) }
+            }
+            else
+            {
+                <a href="/courses" @onclick="ToggleMenu">Courses</a>
+                <a href="/faculty" @onclick="ToggleMenu">Faculty</a>
+                <a href="/contact" @onclick="ToggleMenu">Contact</a>
+            }
+            <AuthorizeView>
+                <Authorized>
+                    <a href="/account" @onclick="ToggleMenu">My Account</a>
+                    <AuthorizeView Roles="super_admin,admin,operations,faculty,franchise_admin" Context="adm2">
+                        <a href="/admin/dashboard" @onclick="ToggleMenu">Admin Dashboard</a>
+                    </AuthorizeView>
+                    <form method="post" action="/account/logout" data-enhance="false" style="margin:0">
+                        <button type="submit" class="btn btn-outline" style="width:100%">Logout</button>
+                    </form>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/login" class="btn btn-primary" @onclick="ToggleMenu">Login / Register</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </nav>
+    </aside>
+}
+@code {
+    private bool MenuOpen;
+    private bool profileOpen;
+    private bool searchOpen;
+    private bool _focusSearch;
+    private string searchTerm = "";
+    private ElementReference searchInput;
+    private int cartCount;
+    private List<MenuItemNode>? menu;
+    private string? customLogoUrl;
+    private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
+    private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
+    private void ToggleMenu() => MenuOpen = !MenuOpen;
+    private void ToggleProfile() => profileOpen = !profileOpen;
+    private void CloseProfile() => profileOpen = false;
+
+    private void ToggleSearch()
+    {
+        // Submit whenever there's a term. On desktop the field can only hold text while
+        // it's open, so behaviour there is unchanged; on mobile the field is always
+        // expanded, so this makes the magnifier submit on the first tap.
+        if (!string.IsNullOrWhiteSpace(searchTerm)) { SubmitSearch(); return; }
+        searchOpen = !searchOpen;
+        if (searchOpen) _focusSearch = true;
+    }
+
+    private void SubmitSearch()
+    {
+        var t = searchTerm?.Trim();
+        searchOpen = false;
+        if (!string.IsNullOrWhiteSpace(t)) Nav.NavigateTo($"/search?q={Uri.EscapeDataString(t)}");
+    }
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") SubmitSearch();
+        else if (e.Key == "Escape") searchOpen = false;
+    }
+
+    /// <summary>Dismisses the desktop/tablet search overlay. Deliberately leaves
+    /// searchTerm alone — Escape already behaved this way, so the ✕ just gives that
+    /// same action a visible affordance. No navigation, no service call.</summary>
+    private void CloseSearch() => searchOpen = false;
+
+    /// <summary>Empties the field, returns the caret to it, and — when the user is
+    /// already looking at results — resets them via client-side navigation (no reload).
+    /// Uses the same /search route as normal submission; no new API.</summary>
+    private void ClearSearch()
+    {
+        searchTerm = string.Empty;
+        _focusSearch = true;          // OnAfterRenderAsync puts the cursor back
+
+        var current = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].Trim('/');
+        if (string.Equals(current, "search", StringComparison.OrdinalIgnoreCase))
+            Nav.NavigateTo("/search");
+    }
+
+    // Mobile accordion: which nodes are expanded (by id).
+    private readonly HashSet<Guid> _expanded = new();
+    private bool IsExpanded(Guid id) => _expanded.Contains(id);
+    private void ToggleExpand(Guid id) { if (!_expanded.Remove(id)) _expanded.Add(id); }
+
+    // Recursive desktop dropdown/flyout node (level 2+). Items with children get a flyout to the side.
+    private RenderFragment DropNode(MenuItemNode n) => __builder =>
+    {
+        if (n.Children.Count > 0)
+        {
+            <div class="hnav-sub">
+                <a href="@n.Url" class="hnav-drop__link hnav-drop__link--parent @(IsActiveBranch(n) ? "active" : "")" target="@(n.OpenInNewTab ? "_blank" : null)" role="menuitem" aria-haspopup="true">
+                    @n.Title <span class="hnav-fly-caret" aria-hidden="true">›</span>
+                </a>
+                <div class="hnav-fly" role="menu">
+                    @foreach (var c in n.Children) { @DropNode(c) }
+                </div>
+            </div>
+        }
+        else
+        {
+            <a href="@n.Url" class="hnav-drop__link @(IsActive(n.Url) ? "active" : "")" target="@(n.OpenInNewTab ? "_blank" : null)" role="menuitem">@n.Title</a>
+        }
+    };
+
+    // An item is in the "active path" if it — or any descendant — matches the current URL.
+    // Highlights the whole hierarchy (e.g. Courses ▸ CA Intermediate ▸ Faculty) without touching Home.
+    private bool IsActiveBranch(MenuItemNode n) => IsActive(n.Url) || n.Children.Any(IsActiveBranch);
+
+    // Recursive mobile accordion node. Tapping the ± toggle expands children; the label still links out.
+    private RenderFragment DrawerNode(MenuItemNode n, int depth) => __builder =>
+    {
+        <div class="dnav-item">
+            <div class="dnav-row" style="padding-left:@(14 + depth * 16)px">
+                <a href="@n.Url" class="dnav-link" @onclick="ToggleMenu" target="@(n.OpenInNewTab ? "_blank" : null)">@n.Title</a>
+                @if (n.Children.Count > 0)
+                {
+                    <button type="button" class="dnav-toggle @(IsExpanded(n.Id) ? "open" : "")" @onclick="() => ToggleExpand(n.Id)" @onclick:stopPropagation aria-label="Expand submenu" aria-expanded="@IsExpanded(n.Id)">
+                        <span class="dnav-toggle__ico"></span>
+                    </button>
+                }
+            </div>
+            @if (n.Children.Count > 0 && IsExpanded(n.Id))
+            {
+                <div class="dnav-children">
+                    @foreach (var c in n.Children) { @DrawerNode(c, depth + 1) }
+                </div>
+            }
+        </div>
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusSearch) { _focusSearch = false; try { await searchInput.FocusAsync(); } catch { } }
+        // Keep multi-level flyouts inside the viewport (idempotent; re-scans new nodes each render).
+        try { await JS.InvokeVoidAsync("hjc.megaFlyout"); } catch { }
+    }
+
+    protected override void OnInitialized() => Nav.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        // Close any open menus when the user navigates.
+        if (MenuOpen || profileOpen || searchOpen) { MenuOpen = false; profileOpen = false; searchOpen = false; InvokeAsync(StateHasChanged); }
+        else InvokeAsync(StateHasChanged);   // refresh active-link highlight
+
+        // The desktop dropdowns are CSS-only (:hover / :focus-within), so no
+        // Blazor state controls them — the clicked link keeps focus and the
+        // pointer keeps hovering, leaving the panel open after navigation.
+        // hjc.closeNav drops focus and suppresses the panels until the pointer
+        // moves away.
+        InvokeAsync(async () =>
+        {
+            try { await JS.InvokeVoidAsync("hjc.closeNav"); } catch { /* prerender / JS unavailable */ }
+        });
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    // Is the current page at (or under) this menu link's URL?
+    private bool IsActive(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || url == "#" || url.StartsWith("http")) return false;
+        var target = url.Split('?')[0].Trim('/');
+        var current = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].Trim('/');
+        if (target.Length == 0) return current.Length == 0;            // home
+        return current == target || current.StartsWith(target + "/");
+    }
+
+    private static string RoleLabel(System.Security.Claims.ClaimsPrincipal user) =>
+        user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value switch
+        {
+            "super_admin" => "Super Admin",
+            "admin" => "Administrator",
+            "operations" => "Operations",
+            "faculty" => "Faculty",
+            "franchise_admin" => "Franchise Admin",
+            "student" => "Student",
+            _ => "Member"
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { menu = await Menu.GetTreeAsync(enabledOnly: true); } catch { }
+        try { customLogoUrl = (await Settings.GetAsync()).LogoUrl; } catch { }
+        try
+        {
+            var state = await AuthProvider.GetAuthenticationStateAsync();
+            var id = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(id, out var userId))
+            {
+                cartCount = await Cart.CountAsync(userId);
+            }
+        }
+        catch { }
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "RC";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
+                                 : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+}

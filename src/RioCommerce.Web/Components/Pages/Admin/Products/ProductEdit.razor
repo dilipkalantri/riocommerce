@@ -1,0 +1,2015 @@
+@page "/admin/products/new"
+@page "/admin/products/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IProductAdminService Svc
+@inject IProductRecommendationAdminService RecoSvc
+@inject IFranchiseService FranchiseSvc
+@inject IFacultySharingService FacultyShareSvc
+@inject IBookPreviewService BookPreviewSvc
+@inject AuthenticationStateProvider AuthProvider
+@inject ToastService Toast
+@inject NavigationManager Nav
+@using RioCommerce.Web.Components.Shared
+@using RioCommerce.Core.DTOs.Faculty
+<PageTitle>@(IsNew ? "Add" : "Edit") Product — RioCommerce Admin</PageTitle>
+
+<style>
+    .pe-bar{position:sticky;top:52px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border:1px solid var(--gray-200);border-radius:14px;padding:10px 14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 24px -16px rgba(15,23,42,.35)}
+    .pe-bar__title{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .pe-bar__title h1{font-size:clamp(15px,1.8vw,19px);font-weight:800;color:var(--navy);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw}
+    .pe-bar__title a{font-size:12px;color:var(--orange);font-weight:600}
+    .pe-bar__actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+    .pe-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    /* Batch Status premium dropdown */
+    .bs-select{border-radius:14px;padding:11px 14px;border:1.5px solid var(--gray-200);font-weight:600;color:var(--navy);background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:border-color .2s,box-shadow .2s,transform .2s}
+    .bs-select:hover{transform:translateY(-1px)}
+    .bs-select:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.18)}
+    /* ── 📦 Estimated Delivery Information inputs — match the bs-select look so the panel feels consistent. ── */
+    .ed-input{border-radius:14px;padding:11px 14px;border:1.5px solid var(--gray-200);font-weight:600;color:var(--navy);background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:border-color .2s,box-shadow .2s,transform .2s}
+    .ed-input:hover{transform:translateY(-1px)}
+    .ed-input:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.18)}
+    textarea.ed-input{font-family:inherit;line-height:1.55;resize:vertical}
+    /* ── 🎓 Faculty Share: allocation meter + compact editable grid ── */
+    .fs-meter{border:1px solid var(--gray-200);border-radius:12px;padding:13px 15px;margin-bottom:14px;background:#F8FAFC}
+    .fs-meter--over{border-color:#FCA5A5;background:#FEF2F2}
+    .fs-meter__head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--navy)}
+    .fs-meter__rem{color:var(--gray-500);font-weight:600}
+    .fs-meter--over .fs-meter__rem{color:#B91C1C}
+    .fs-meter__track{height:7px;border-radius:99px;background:var(--gray-200);margin:9px 0 7px;overflow:hidden}
+    .fs-meter__fill{height:100%;border-radius:99px;background:var(--orange);transition:width .25s}
+    .fs-meter--over .fs-meter__fill{background:#DC2626}
+    .fs-meter__foot{font-size:12px;color:var(--gray-500);line-height:1.5}
+    .fs-meter__warn{margin-top:9px;font-size:12.5px;font-weight:600;color:#991B1B;line-height:1.5}
+    .fs-grid table{font-size:12.5px}
+    .fs-grid th,.fs-grid td{padding:7px 8px;vertical-align:middle}
+    .fs-grid .ta-r{text-align:right}
+    .fs-row--idle{opacity:.58}
+    .fs-sub{font-size:11px;color:var(--gray-500);margin-top:2px;display:flex;align-items:center;gap:5px}
+    .fs-sub--warn{color:#B45309;font-weight:600}
+    .fs-tag{font-size:9.5px;font-weight:700;letter-spacing:.03em;padding:1px 5px;border-radius:5px;background:var(--gray-200);color:var(--gray-600)}
+    .fs-tag--gst{background:#D1FAE5;color:#065F46}
+    .form-input--sm{padding:5px 7px;font-size:12.5px;border-radius:7px}
+    .fs-err{color:var(--error);font-size:13px;font-weight:600;margin:10px 0 0}
+    /* ── Offer / Combo Recommendation picker ── */
+    .reco-picker{position:relative;margin-bottom:18px}
+    .reco-picker__searchwrap{position:relative;display:flex;align-items:center;background:#fff;border:1.5px solid var(--gray-200);border-radius:14px;padding:4px 4px 4px 14px;transition:border-color .2s,box-shadow .2s}
+    .reco-picker__searchwrap:focus-within{border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.16),0 6px 16px -8px rgba(232,114,42,.35)}
+    .reco-picker__searchico{font-size:14px;color:var(--gray-400);flex-shrink:0}
+    .reco-picker__searchinput{flex:1;border:0;outline:0;padding:11px 12px;font-size:14px;background:transparent;min-width:0;font-weight:500;color:var(--navy)}
+    .reco-picker__toggle{background:var(--gray-50);border:1px solid var(--gray-200);color:var(--navy);font-size:11px;font-weight:700;padding:8px 14px;border-radius:10px;cursor:pointer;flex-shrink:0;transition:background .2s,transform .2s}
+    .reco-picker__toggle:hover{background:var(--orange);color:#fff;border-color:var(--orange);transform:translateY(-1px)}
+    .reco-picker__panel{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:30;background:#fff;border:1px solid var(--gray-200);border-radius:14px;box-shadow:0 18px 40px -12px rgba(15,23,42,.3);max-height:430px;display:flex;flex-direction:column;overflow:hidden;animation:reco-fade .18s ease-out}
+    @@keyframes reco-fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+    .reco-picker__panel-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--gray-50);border-bottom:1px solid var(--gray-100);font-size:12px;color:var(--gray-500);font-weight:600}
+    .reco-picker__close{background:transparent;border:0;color:var(--gray-500);cursor:pointer;font-size:11.5px;font-weight:700}
+    .reco-picker__close:hover{color:var(--navy)}
+    .reco-picker__list{flex:1;overflow-y:auto;max-height:380px}
+    .reco-picker__status{padding:24px;text-align:center;color:var(--gray-400);font-size:13px}
+    .reco-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--gray-100);transition:background .12s}
+    .reco-row:last-child{border-bottom:0}
+    .reco-row:hover{background:var(--gray-50)}
+    .reco-row.is-selected{background:#FFF7ED}
+    .reco-row__thumb{width:46px;height:46px;border-radius:9px;overflow:hidden;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid var(--gray-200)}
+    .reco-row__thumb img{width:100%;height:100%;object-fit:cover}
+    .reco-row__body{flex:1;min-width:0}
+    .reco-row__title{font-weight:700;color:var(--navy);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.1px}
+    .reco-row__meta{font-size:11.5px;color:var(--gray-500);display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+    .reco-row__meta strong{color:var(--gray-700)}
+    .reco-row__price{font-weight:800;color:var(--navy);font-size:13.5px;white-space:nowrap}
+    .reco-row__addbtn{padding:7px 14px;font-size:11.5px;font-weight:800;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,#E8722A,#ff9d4d);border:0;border-radius:9px;cursor:pointer;flex-shrink:0;box-shadow:0 6px 14px -8px rgba(232,114,42,.55);transition:transform .2s,box-shadow .2s,filter .2s}
+    .reco-row__addbtn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 22px -8px rgba(232,114,42,.7);filter:brightness(1.05)}
+    .reco-row__addbtn.is-added{background:#dcfce7;color:#15803d;box-shadow:none;cursor:default}
+
+    /* selected list */
+    .reco-listhead{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:var(--navy);letter-spacing:-.2px;margin:18px 0 10px}
+    .reco-listhead__count{font-size:11.5px;font-weight:700;background:var(--orange);color:#fff;padding:3px 10px;border-radius:999px}
+    .reco-empty{padding:28px;text-align:center;border:2px dashed var(--gray-200);border-radius:14px;background:linear-gradient(180deg,#fff,var(--gray-50))}
+    .reco-empty__ico{font-size:34px;margin-bottom:6px}
+    .reco-empty__title{font-weight:800;color:var(--navy);font-size:15px;letter-spacing:-.2px}
+    .reco-empty__sub{font-size:12.5px;color:var(--gray-500);margin-top:4px}
+    .reco-selected{display:flex;flex-direction:column;gap:10px}
+    .reco-pick{display:flex;align-items:center;gap:12px;padding:12px;background:rgba(255,255,255,.95);backdrop-filter:blur(6px);border:1px solid var(--gray-200);border-radius:14px;box-shadow:0 4px 12px -6px rgba(15,23,42,.18);position:relative;isolation:isolate;transition:transform .25s,box-shadow .25s,border-color .25s}
+    .reco-pick::before{content:"";position:absolute;inset:0;border-radius:14px;padding:1px;pointer-events:none;background:linear-gradient(135deg,#E8722A,#ff9d4d 35%,#2563eb 100%);opacity:0;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;transition:opacity .25s}
+    .reco-pick:hover{transform:translateY(-2px);box-shadow:0 12px 24px -10px rgba(15,23,42,.3);border-color:transparent}
+    .reco-pick:hover::before{opacity:.7}
+    .reco-pick.is-dragging{opacity:.4}
+    .reco-pick.is-dragover{border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.18)}
+    .reco-pick__drag{font-size:18px;color:var(--gray-300);cursor:grab;user-select:none;padding:0 4px;line-height:1}
+    .reco-pick__drag:active{cursor:grabbing}
+    .reco-pick:hover .reco-pick__drag{color:var(--orange)}
+    .reco-pick__thumb{width:46px;height:46px;border-radius:9px;overflow:hidden;background:var(--gray-100);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid var(--gray-200)}
+    .reco-pick__thumb img{width:100%;height:100%;object-fit:cover}
+    .reco-pick__body{flex:1;min-width:0}
+    .reco-pick__title{font-weight:700;color:var(--navy);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .reco-pick__meta{font-size:11.5px;color:var(--gray-500);display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+    .reco-pick__more{flex-shrink:0}
+    .reco-pick__more>summary{list-style:none;cursor:pointer;font-size:11.5px;font-weight:700;color:var(--gray-500);padding:6px 10px;border:1px solid var(--gray-200);border-radius:8px;background:#fff;transition:background .2s,color .2s,border-color .2s}
+    .reco-pick__more>summary::-webkit-details-marker{display:none}
+    .reco-pick__more[open]>summary{background:var(--orange);color:#fff;border-color:var(--orange)}
+    .reco-pick__advanced{position:absolute;right:60px;top:calc(100% + 4px);z-index:5;display:grid;grid-template-columns:repeat(2,minmax(160px,1fr));gap:10px;padding:14px;background:#fff;border:1px solid var(--gray-200);border-radius:12px;box-shadow:0 14px 30px -10px rgba(15,23,42,.3);min-width:380px}
+    .reco-pick__advanced label{display:flex;flex-direction:column;font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.6px;gap:4px}
+    .reco-pick__advanced .reco-pick__active{flex-direction:row;align-items:center;text-transform:none;letter-spacing:0;font-size:12px;color:var(--navy);font-weight:600}
+    .form-input--sm{padding:7px 10px;font-size:13px}
+    .reco-pick__rm{width:32px;height:32px;border-radius:50%;border:1px solid var(--gray-200);background:#fff;color:var(--gray-400);cursor:pointer;font-size:13px;font-weight:700;flex-shrink:0;transition:transform .2s,color .2s,background .2s,border-color .2s,box-shadow .2s}
+    .reco-pick__rm:hover{color:#fff;background:#dc2626;border-color:#dc2626;transform:scale(1.1);box-shadow:0 8px 18px -6px rgba(220,38,38,.5)}
+
+    /* save spinner */
+    .reco-spin{display:inline-block;width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;margin-right:6px;vertical-align:middle;animation:reco-spin .7s linear infinite}
+    @@keyframes reco-spin{to{transform:rotate(360deg)}}
+
+    @@media(max-width:639px){
+      .reco-row{flex-wrap:wrap}
+      .reco-row__price{order:3}
+      .reco-pick{flex-wrap:wrap}
+      .reco-pick__more{order:99;flex-basis:100%}
+      .reco-pick__advanced{position:static;width:100%;min-width:0;grid-template-columns:1fr}
+    }
+    .pe-card__head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;cursor:pointer;font-weight:700;color:var(--navy);font-size:14px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,var(--gray-50))}
+    .pe-card__head .chev{color:var(--gray-400);font-size:11px;transition:transform .18s}
+    .pe-card.is-collapsed .pe-card__head{border-bottom:0}
+    .pe-card.is-collapsed .chev{transform:rotate(-90deg)}
+    .pe-card__body{padding:clamp(14px,1.6vw,20px)}
+    .pe-card.is-collapsed .pe-card__body{display:none}
+    .pe-chk{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--gray-700);cursor:pointer}
+    .pe-checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px 18px;margin-top:6px}
+    .pe-pics th,.pe-pics td{border:1px solid var(--gray-200);padding:8px 10px;font-size:13px;text-align:left;vertical-align:middle}
+    .pe-pics th{background:var(--gray-50);font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500)}
+    .pe-thumb{width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);display:block}
+    .pe-addpic{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;align-items:end;margin-top:14px;padding-top:14px;border-top:1px dashed var(--gray-200)}
+    .pe-primary{font-size:10.5px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.4px}
+    .row-edit{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+    .row-edit .form-input{padding:8px 12px;font-size:13px}
+    .attr-card{border:1px solid var(--gray-200);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--gray-50)}
+    .richtext .ql-container{min-height:160px;font-family:inherit;font-size:14px}
+    .richtext .ql-toolbar,.richtext .ql-container{border-color:var(--gray-200)}
+    /* Home/Category card image */
+    .hc-card{display:grid;grid-template-columns:minmax(220px,360px) 1fr;gap:18px;align-items:start}
+    .hc-card__preview{position:relative;aspect-ratio:4/3;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#f1f4f9,#e2e8f0);border:1px solid var(--gray-200)}
+    .hc-card__preview img{width:100%;height:100%;object-fit:cover}
+    .hc-card__empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--gray-400);font-size:13px;font-weight:600}
+    .hc-card__empty svg{width:42px;height:42px}
+    .hc-card__controls{display:flex;flex-direction:column;gap:10px}
+    .hc-card__upload{cursor:pointer;align-self:flex-start}
+    .hc-card__upload input[type="file"]{display:none}
+    .hc-card__hints{margin:8px 0 0;padding:0 0 0 18px;color:var(--gray-500);font-size:12.5px;line-height:1.7}
+    @@media(max-width:680px){.hc-card{grid-template-columns:1fr}}
+    @@media(max-width:560px){.pe-bar{top:0;border-radius:0;margin:-4px -4px 14px}.pe-bar__title h1{max-width:70vw}.pe-bar__actions .btn{flex:1}}
+
+    /* ── Multi-select checkbox dropdown ── */
+    .ms-wrap{position:relative}
+    .ms-trigger{display:flex;align-items:center;gap:6px;cursor:pointer;padding:9px 12px;border:1.5px solid var(--gray-200);border-radius:10px;background:#fff;font-size:13px;color:var(--navy);min-height:40px;flex-wrap:wrap;transition:border-color .2s}
+    .ms-trigger:hover{border-color:var(--gray-300)}
+    .ms-trigger:focus-within{border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.16)}
+    .ms-trigger__tag{display:inline-flex;align-items:center;gap:4px;background:var(--gray-100);color:var(--navy);font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:6px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+    .ms-trigger__tag button{background:none;border:0;color:var(--gray-400);cursor:pointer;font-size:13px;font-weight:700;padding:0;line-height:1}
+    .ms-trigger__tag button:hover{color:var(--red)}
+    .ms-trigger__ph{color:var(--gray-400);font-weight:500}
+    .ms-trigger__arrow{margin-left:auto;color:var(--gray-400);font-size:10px;transition:transform .2s}
+    .ms-wrap.is-open .ms-trigger__arrow{transform:rotate(180deg)}
+    .ms-panel{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;background:#fff;border:1px solid var(--gray-200);border-radius:12px;box-shadow:0 12px 30px -8px rgba(15,23,42,.25);max-height:280px;overflow-y:auto;padding:6px 0;animation:ms-fade .15s ease-out}
+    @@keyframes ms-fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+    .ms-panel label{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;font-size:13px;color:var(--navy);transition:background .1s}
+    .ms-panel label:hover{background:var(--gray-50)}
+    .ms-panel label.is-checked{background:#FFF7ED;font-weight:600}
+    .ms-panel__empty{padding:14px;text-align:center;color:var(--gray-400);font-size:12px}
+
+    /* ── Special Price audit table ── */
+    .sp-audit{margin-top:14px;border-top:1px dashed var(--gray-200);padding-top:14px}
+    .sp-audit__title{font-weight:700;color:var(--navy);font-size:13px;margin-bottom:8px}
+    .sp-audit table{width:100%;border-collapse:collapse;font-size:12px}
+    .sp-audit th,.sp-audit td{padding:6px 10px;border:1px solid var(--gray-200);text-align:left;vertical-align:top}
+    .sp-audit th{background:var(--gray-50);font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--gray-500);font-weight:700}
+    .sp-audit .sp-val--old{color:var(--gray-400);text-decoration:line-through}
+    .sp-audit .sp-val--new{color:var(--green);font-weight:600}
+    .sp-audit .sp-val--cleared{color:var(--gray-400);font-style:italic}
+</style>
+
+@if (notFound)
+{
+    <div class="pe-card"><div class="pe-card__body">Product not found. <a href="/admin/products">Back to products</a></div></div>
+}
+else if (model == null)
+{
+    <div class="pe-card"><div class="pe-card__body">
+        <div class="skel" style="height:18px;width:240px;margin-bottom:14px"></div>
+        @for (var i = 0; i < 5; i++) { <div class="skel" style="height:14px;width:@(70 - i * 8)%;margin-bottom:10px"></div> }
+    </div></div>
+}
+else
+{
+    @* ── sticky action bar ── *@
+    <div class="pe-bar">
+        <div class="pe-bar__title">
+            <h1 title="@model.Title">@(IsNew ? "Add a new product" : $"Edit — {model.Title}")</h1>
+            <a href="/admin/products">← back to product list</a>
+        </div>
+        <div class="pe-bar__actions">
+            @if (!IsNew && !string.IsNullOrWhiteSpace(model.Slug)) { <a href="/@model.Slug" target="_blank" class="btn btn-outline btn-sm">👁 Preview</a> }
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "💾 Save")</button>
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="SaveContinue">Save &amp; continue edit</button>
+            @if (!IsNew)
+            {
+                <button class="btn btn-success btn-sm" disabled="@saving" @onclick="Copy">⧉ Copy product</button>
+                <button class="btn btn-danger btn-sm" @onclick="Delete">🗑 Delete</button>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error)) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@error</div> }
+
+    @* ── Product info ── *@
+    <div class="pe-card @(IsCollapsed("info") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("info")'><span>ℹ️ Product info</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group form-group--full"><label class="form-label">Product name <span class="required">*</span></label><input class="form-input" @bind="model.Title" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Short description</label><textarea class="form-input" rows="2" @bind="model.ShortDesc"></textarea></div>
+                <div class="form-group form-group--full"><label class="form-label">Full description</label><RichText @bind-Value="model.FullDesc" /></div>
+                <div class="form-group"><label class="form-label">SKU</label><input class="form-input" @bind="model.Sku" placeholder="e.g. HJ-CLA-01" /></div>
+                <div class="form-group"><label class="form-label">Categories</label>
+                    <div class="ms-wrap @(catOpen ? "is-open" : "")">
+                        <div class="ms-trigger" @onclick="() => catOpen = !catOpen" tabindex="0">
+                            @if (model.CategoryIds.Count == 0) { <span class="ms-trigger__ph">Select categories…</span> }
+                            else { @foreach (var cid in model.CategoryIds) { var cn = pmeta?.Categories.FirstOrDefault(c => c.Id == cid)?.Name ?? "…";
+                                <span class="ms-trigger__tag">@cn <button type="button" @onclick:stopPropagation @onclick="() => ToggleCategoryId(cid)">×</button></span> } }
+                            <span class="ms-trigger__arrow">▾</span>
+                        </div>
+                        @if (catOpen && pmeta != null)
+                        {
+                            <div class="ms-panel">
+                                @if (pmeta.Categories.Count == 0) { <div class="ms-panel__empty">No categories found.</div> }
+                                else { @foreach (var c in pmeta.Categories) { var isChecked = model.CategoryIds.Contains(c.Id);
+                                    <label class="@(isChecked ? "is-checked" : "")">
+                                        <input type="checkbox" checked="@isChecked" @onchange="() => ToggleCategoryId(c.Id)" /> @c.Name
+                                    </label> } }
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="form-group"><label class="form-label">Faculty</label>
+                    <div class="ms-wrap @(facOpen ? "is-open" : "")">
+                        <div class="ms-trigger" @onclick="() => facOpen = !facOpen" tabindex="0">
+                            @if (model.FacultyIds.Count == 0) { <span class="ms-trigger__ph">Select faculty…</span> }
+                            else { @foreach (var fid in model.FacultyIds) { var fn = pmeta?.Faculties.FirstOrDefault(f => f.Id == fid)?.Name ?? "…";
+                                <span class="ms-trigger__tag">@fn <button type="button" @onclick:stopPropagation @onclick="() => ToggleFacultyId(fid)">×</button></span> } }
+                            <span class="ms-trigger__arrow">▾</span>
+                        </div>
+                        @if (facOpen && pmeta != null)
+                        {
+                            <div class="ms-panel">
+                                @if (pmeta.Faculties.Count == 0) { <div class="ms-panel__empty">No faculty found.</div> }
+                                else { @foreach (var f in pmeta.Faculties) { var isChecked = model.FacultyIds.Contains(f.Id);
+                                    <label class="@(isChecked ? "is-checked" : "")">
+                                        <input type="checkbox" checked="@isChecked" @onchange="() => ToggleFacultyId(f.Id)" /> @f.Name
+                                    </label> } }
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">📅 Batch Status <span class="required">*</span></label>
+                    <select class="form-input bs-select" @bind="model.BatchStatus">
+                        @foreach (var s in (BatchStatus[])System.Enum.GetValues(typeof(BatchStatus)))
+                        { <option value="@s">@BatchStatusLabel(s)</option> }
+                    </select>
+                    <div class="form-hint">Drives the public storefront badge + the OutOfStock add-to-cart guard.</div>
+                </div>
+                <div class="form-group"><label class="form-label">Subject</label>
+                    <div class="ms-wrap @(subOpen ? "is-open" : "")">
+                        <div class="ms-trigger" @onclick="() => subOpen = !subOpen" tabindex="0">
+                            @if (model.SubjectIds.Count == 0) { <span class="ms-trigger__ph">Select subject…</span> }
+                            else { @foreach (var sid in model.SubjectIds) { var sn = pmeta?.Subjects.FirstOrDefault(x => x.Id == sid)?.Name ?? "…";
+                                <span class="ms-trigger__tag">@sn <button type="button" @onclick:stopPropagation @onclick="() => ToggleSubjectId(sid)">×</button></span> } }
+                            <span class="ms-trigger__arrow">▾</span>
+                        </div>
+                        @if (subOpen && pmeta != null)
+                        {
+                            <div class="ms-panel">
+                                @if (pmeta.Subjects.Count == 0) { <div class="ms-panel__empty">No subjects found.</div> }
+                                else { @foreach (var s in pmeta.Subjects) { var isChecked = model.SubjectIds.Contains(s.Id);
+                                    <label class="@(isChecked ? "is-checked" : "")">
+                                        <input type="checkbox" checked="@isChecked" @onchange="() => ToggleSubjectId(s.Id)" /> @s.Name
+                                    </label> } }
+                            </div>
+                        }
+                    </div>
+                    <div class="form-hint">A combo can cover several. The first is the primary — it shows on the course card and drives financial reports.</div>
+                </div>
+                <div class="form-group"><label class="form-label">Course level</label>
+                    <select class="form-input" @bind="model.Level"><option value="CaFoundation">CA Foundation</option><option value="CaIntermediate">CA Intermediate</option><option value="CaFinal">CA Final</option><option value="Books">Books</option><option value="TestSeries">Test Series</option></select></div>
+                <div class="form-group"><label class="form-label">Product type</label>
+                    @* Fastrack was removed as a product type; migration 0034 moved the nine products
+                       that carried it to Exam Oriented, so no product can still be on it and no
+                       "legacy" option is needed to keep @@bind from rewriting one. CourseType.Fastrack
+                       itself deliberately remains in the C# enum — deleting the member would renumber
+                       Combo/FaceToFace/ExamOriented, and the public search filter puts those ordinals
+                       in its URL. Do not re-add an option here. *@
+                    <select class="form-input" @bind="model.CourseType"><option value="Regular">Regular</option><option value="Combo">Combo</option><option value="FaceToFace">Face to Face</option><option value="ExamOriented">Exam Oriented</option></select></div>
+                <div class="form-group"><label class="form-label">Product tags</label><input class="form-input" @bind="model.Tags" placeholder="comma, separated, tags" /></div>
+                <div class="form-group"><label class="form-label">GTIN</label><input class="form-input" @bind="model.Gtin" placeholder="global trade item number" /></div>
+                <div class="form-group"><label class="form-label">Applicable attempts</label><input class="form-input" @bind="model.ApplicableAttemptsCsv" placeholder="Sept 2026, Jan 2027" /></div>
+                <div class="form-group"><label class="form-label">Available start date</label><input type="date" class="form-input" @bind="model.AvailableStartUtc" /></div>
+                <div class="form-group"><label class="form-label">Available end date</label><input type="date" class="form-input" @bind="model.AvailableEndUtc" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Admin comment (internal)</label><textarea class="form-input" rows="2" @bind="model.AdminComment"></textarea></div>
+            </div>
+            <div class="pe-checks">
+                <label class="pe-chk"><input type="checkbox" @bind="Published" /> Published</label>
+                <label class="pe-chk"><input type="checkbox" @bind="model.IsFeatured" /> Show on home page</label>
+                <label class="pe-chk"><input type="checkbox" @bind="model.MarkAsNew" /> Mark as new</label>
+                <label class="pe-chk"><input type="checkbox" @bind="model.AllowReviews" /> Allow customer reviews</label>
+            </div>
+            @if (model.IsFeatured)
+            {
+                <div class="form-group" style="margin-top:12px;max-width:300px">
+                    <label class="form-label">Homepage Display Order</label>
+                    <input type="number" class="form-input" @bind="model.HomePageDisplayOrder" />
+                    <small style="display:block;color:var(--gray-500);font-size:12px;margin-top:4px">Controls the product position in the homepage Trending Courses section. Lower numbers appear first.</small>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Prices ── *@
+    <div class="pe-card @(IsCollapsed("prices") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("prices")'><span>💲 Prices</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid form-grid--3col">
+                <div class="form-group"><label class="form-label">Price (₹) <span class="required">*</span></label><input type="number" class="form-input" @bind="model.SellingPrice" /></div>
+                <div class="form-group"><label class="form-label">Old price / MRP (₹)</label><input type="number" class="form-input" @bind="model.Mrp" /></div>
+                <div class="form-group"><label class="form-label">Product cost (₹)</label><input type="number" class="form-input" @bind="model.ProductCost" /></div>
+                <div class="form-group"><label class="form-label">GST rate (%)</label><input type="number" class="form-input" @bind="model.GstRate" /></div>
+                <div class="form-group" style="display:flex;align-items:flex-end"><label class="pe-chk"><input type="checkbox" @bind="model.GstInclusive" /> Price includes GST</label></div>
+            </div>
+
+            <div class="pe-subsection">
+                <div class="pe-subsection__title">Default Franchise Share</div>
+                <div class="form-grid form-grid--3col">
+                    <div class="form-group" style="display:flex;align-items:flex-end">
+                        <label class="pe-chk"><input type="checkbox" @bind="model.EnableDefaultFranchiseShare" /> Enable default franchise share</label>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Share type</label>
+                        <select class="form-input" @bind="model.DefaultFranchiseShareType" disabled="@(!model.EnableDefaultFranchiseShare)">
+                            <option value="@CommissionType.Percent">Percentage (%)</option>
+                            <option value="@CommissionType.Fixed">Fixed amount (₹)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Share value</label>
+                        <input type="number" step="0.01" min="0" class="form-input" @bind="model.DefaultFranchiseShareValue" disabled="@(!model.EnableDefaultFranchiseShare)" />
+                    </div>
+                </div>
+                <div class="form-hint">
+                    Applied to every franchise assigned to this product (a per-franchise override takes precedence).
+                    Percentage is calculated on the effective price — special price while active, otherwise the regular price.
+                </div>
+            </div>
+
+            <div class="pe-subsection">
+                <div class="pe-subsection__title">Default Faculty Share</div>
+                <div class="form-grid form-grid--3col">
+                    <div class="form-group" style="display:flex;align-items:flex-end">
+                        <label class="pe-chk"><input type="checkbox" @bind="model.EnableDefaultFacultyShare" /> Enable default faculty share</label>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Share type</label>
+                        <select class="form-input" @bind="model.DefaultFacultyShareType" disabled="@(!model.EnableDefaultFacultyShare)">
+                            <option value="@SharingType.Percentage">Percentage (%)</option>
+                            <option value="@SharingType.FixedAmount">Fixed amount (₹)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Share value</label>
+                        <input type="number" step="0.01" min="0" class="form-input" @bind="model.DefaultFacultyShareValue" disabled="@(!model.EnableDefaultFacultyShare)" />
+                    </div>
+                </div>
+                <div class="form-hint">
+                    The <strong>fallback rate per faculty</strong> — every faculty on this product who has no
+                    share of their own earns this. It is not a pool that gets divided, so three faculty on a
+                    10% default cost 30% in total. Percentage applies to the <strong>pre-GST base</strong> of the
+                    effective price, and GST is added on top only for GST-registered faculty.
+                    Set individual rates in the <strong>🎓 Faculty Share</strong> section below.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── 🎓 Faculty Share (per-faculty, multi-faculty aware) ── *@
+    <div class="pe-card @(IsCollapsed("faculty-share") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("faculty-share")'><span>🎓 Faculty Share</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            @if (IsNew)
+            {
+                <div class="form-hint">Save the product first — per-faculty shares attach to a saved product.
+                    The default rate above applies to every faculty until you set individual rates here.</div>
+            }
+            else if (facShare == null)
+            {
+                <div class="form-hint">Loading faculty shares…</div>
+            }
+            else if (facShare.Rows.Count == 0)
+            {
+                <div class="form-hint">
+                    No faculty are attached to this product yet. Add them in <strong>Faculty</strong> under
+                    Organization above, save, then set their shares here.
+                </div>
+            }
+            else
+            {
+                @* Allocation meter — the whole point of the multi-faculty view: the combined cost of this
+                   product's faculty, against the configured ceiling, before it is saved. *@
+                var pct = facShare.TotalSharePctOfBase;
+                var over = pct > facShare.MaxTotalSharePct;
+                var barPct = facShare.MaxTotalSharePct <= 0 ? 0d
+                    : (double)Math.Min(100m, pct * 100m / facShare.MaxTotalSharePct);
+                var earning = facShare.Rows.Count(r => r.TotalPayout > 0);
+                <div class="fs-meter @(over ? "fs-meter--over" : "")">
+                    <div class="fs-meter__head">
+                        <span><strong>@pct.ToString("0.##")%</strong> of the taxable base allocated across @earning faculty</span>
+                        <span class="fs-meter__rem">
+                            @if (over)
+                            {
+                                <text>over by @((pct - facShare.MaxTotalSharePct).ToString("0.##"))%</text>
+                            }
+                            else
+                            {
+                                <text>@((facShare.MaxTotalSharePct - pct).ToString("0.##"))% remaining of @facShare.MaxTotalSharePct.ToString("0.##")%</text>
+                            }
+                        </span>
+                    </div>
+                    <div class="fs-meter__track"><div class="fs-meter__fill" style="width:@barPct.ToString("0.##")%"></div></div>
+                    <div class="fs-meter__foot">
+                        Taxable base ₹@facShare.TaxableBase.ToString("N2") of effective price ₹@facShare.EffectivePrice.ToString("N2")
+                        @@ @facShare.GstRate.ToString("0.##")% GST
+                        · total payout <strong>₹@facShare.TotalPayout.ToString("N2")</strong>/unit (share + GST on it)
+                    </div>
+                    @if (over)
+                    {
+                        <div class="fs-meter__warn">
+                            @if (facShare.EnforceMaxTotalShare)
+                            {
+                                <text>⚠ Over the @facShare.MaxTotalSharePct.ToString("0.##")% limit — this will be rejected on save.
+                                    Reduce a share, or raise the limit in Faculty Share Settings.</text>
+                            }
+                            else
+                            {
+                                <text>⚠ Over the @facShare.MaxTotalSharePct.ToString("0.##")% limit. Enforcement is off, so this will
+                                    save — but the combined share is still capped at the taxable base when it is earned.</text>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="table-wrap fs-grid">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:170px">Faculty</th>
+                                <th style="width:80px" title="Ticked = this faculty has their own rate. Unticked = they inherit the product default.">Own rate</th>
+                                <th style="width:130px">Type</th>
+                                <th style="width:110px">Value</th>
+                                <th style="width:145px">Effective from</th>
+                                <th style="width:145px">Effective to</th>
+                                <th style="width:70px">Active</th>
+                                <th style="width:100px" class="ta-r">Share (₹)</th>
+                                <th style="width:90px" class="ta-r">GST (₹)</th>
+                                <th style="width:105px" class="ta-r">Payout (₹)</th>
+                                <th style="width:110px">Source</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in facShare.Rows)
+                            {
+                                <tr class="@(row.TotalPayout <= 0 ? "fs-row--idle" : "")">
+                                    <td>
+                                        <strong>@row.FacultyName</strong>
+                                        <div class="fs-sub">
+                                            @row.FacultyShortCode
+                                            @if (row.FacultyIsGstRegistered) { <span class="fs-tag fs-tag--gst" title="GST-registered — GST is added on top of their share">GST</span> }
+                                            else { <span class="fs-tag" title="No GSTIN and no registration flag — no GST on their share">No GST</span> }
+                                        </div>
+                                    </td>
+                                    <td><input type="checkbox" checked="@row.HasExplicitRule" @onchange="e => ToggleFacultyRule(row, e)" /></td>
+                                    <td>
+                                        <select class="form-input form-input--sm" @bind="row.ShareType" disabled="@(!row.HasExplicitRule)">
+                                            <option value="@SharingType.Percentage">%</option>
+                                            <option value="@SharingType.FixedAmount">₹ / unit</option>
+                                        </select>
+                                    </td>
+                                    <td><input type="number" step="0.01" min="0" class="form-input form-input--sm" @bind="row.ShareValue" disabled="@(!row.HasExplicitRule)" /></td>
+                                    <td><input type="date" class="form-input form-input--sm" @bind="row.EffectiveFrom" disabled="@(!row.HasExplicitRule)" /></td>
+                                    <td><input type="date" class="form-input form-input--sm" @bind="row.EffectiveTo" disabled="@(!row.HasExplicitRule)" /></td>
+                                    <td><input type="checkbox" @bind="row.IsActive" disabled="@(!row.HasExplicitRule)" /></td>
+                                    <td class="ta-r">@row.ShareAmount.ToString("N2")</td>
+                                    <td class="ta-r">@row.GstOnShare.ToString("N2")</td>
+                                    <td class="ta-r"><strong>@row.TotalPayout.ToString("N2")</strong></td>
+                                    <td>
+                                        @switch (row.Source)
+                                        {
+                                            case FacultyShareSource.FacultyRule:
+                                                <span class="status status--processing">Own rate</span>
+                                                break;
+                                            case FacultyShareSource.ProductDefault:
+                                                <span class="status status--pending">Default</span>
+                                                break;
+                                            default:
+                                                <span class="status status--cancelled">None</span>
+                                                break;
+                                        }
+                                        @if (row.WasCapped) { <div class="fs-sub fs-sub--warn" title="Scaled down because the combined faculty share exceeded the taxable base">capped</div> }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="form-hint">
+                    Amounts refresh when you press <strong>Recalculate</strong>, and are recomputed
+                    authoritatively on save. Untick <em>Own rate</em> to delete a faculty's rule and let them
+                    inherit the product default. Leave <em>Effective from/to</em> blank for "always".
+                </div>
+
+                @if (!string.IsNullOrEmpty(facShareError)) { <p class="fs-err">@facShareError</p> }
+
+                <div class="form-actions">
+                    <button class="btn btn-primary" @onclick="SaveFacultyShares" disabled="@facShareSaving">
+                        @(facShareSaving ? "Saving…" : "Save Faculty Shares")
+                    </button>
+                    <button class="btn btn-ghost" @onclick="RecalculateFacultyShares" disabled="@facShareSaving">Recalculate</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── 🏷️ Special Price ── *@
+    <div class="pe-card @(IsCollapsed("special-price") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("special-price")'><span>🏷️ Special Price</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid form-grid--3col">
+                <div class="form-group">
+                    <label class="form-label">Special price (₹)</label>
+                    <input type="number" class="form-input" @bind="model.SpecialPrice" placeholder="Leave blank to disable" />
+                    <div class="form-hint">Time-limited promotional price. When active, overrides the regular selling price on the storefront.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Start date</label>
+                    <input type="datetime-local" class="form-input" @bind="model.SpecialPriceStartDateUtc" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End date</label>
+                    <input type="datetime-local" class="form-input" @bind="model.SpecialPriceEndDateUtc" />
+                </div>
+                <div class="form-group form-group--full">
+                    <label class="form-label">Remarks (optional — for audit log)</label>
+                    <input class="form-input" @bind="model.SpecialPriceRemarks" placeholder="e.g. Independence Day sale, Flash promo…" maxlength="500" />
+                    <div class="form-hint">Recorded in the audit trail when the special price is created or changed.</div>
+                </div>
+            </div>
+
+            @* ── Audit log (only for existing products) ── *@
+            @if (!IsNew)
+            {
+                <div class="sp-audit">
+                    <div class="sp-audit__title">📋 Special Price Change History</div>
+                    @if (spAudit == null) { <p style="color:var(--gray-400);font-size:12px">Loading…</p> }
+                    else if (spAudit.Count == 0) { <p style="color:var(--gray-400);font-size:12px">No changes recorded yet.</p> }
+                    else
+                    {
+                        <div class="table-wrap"><table>
+                            <thead><tr><th>Date</th><th>Old Price</th><th>New Price</th><th>Old Period</th><th>New Period</th><th>Changed By</th><th>Remarks</th></tr></thead>
+                            <tbody>
+                                @foreach (var a in spAudit)
+                                {
+                                    <tr>
+                                        <td>@a.ModifiedAt.ToString("dd MMM yyyy HH:mm")</td>
+                                        <td>@(a.OldPrice.HasValue ? $"₹{a.OldPrice:N2}" : "—")</td>
+                                        <td class="@(a.NewPrice.HasValue ? "sp-val--new" : "sp-val--cleared")">@(a.NewPrice.HasValue ? $"₹{a.NewPrice:N2}" : "Cleared")</td>
+                                        <td style="font-size:11px">@(a.OldStartDate.HasValue ? a.OldStartDate.Value.ToString("dd MMM yy") : "—") → @(a.OldEndDate.HasValue ? a.OldEndDate.Value.ToString("dd MMM yy") : "—")</td>
+                                        <td style="font-size:11px">@(a.NewStartDate.HasValue ? a.NewStartDate.Value.ToString("dd MMM yy") : "—") → @(a.NewEndDate.HasValue ? a.NewEndDate.Value.ToString("dd MMM yy") : "—")</td>
+                                        <td>@a.ModifiedByName</td>
+                                        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="@a.Remarks">@(a.Remarks ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table></div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── 📦 Estimated Delivery Information — per-product copy shown on Product Detail, Cart, Checkout. ── *@
+    <div class="pe-card @(IsCollapsed("delivery") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("delivery")'><span>📦 Estimated Delivery Information</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid form-grid--2col">
+                <div class="form-group">
+                    <label class="form-label">⚡ Lecture Access Timing <span class="required">*</span></label>
+                    <input class="form-input ed-input" maxlength="100" @bind="model.LectureAccessTiming"
+                           placeholder="e.g. Instant Access, Within 2 Hours, Within 24 Hours, Within 48 Hours"
+                           title="When the buyer's lecture access activates after payment." />
+                    <div class="form-hint">Required · max 100 characters · shown on Detail / Cart / Checkout.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">📦 Notes Dispatch Timeline <span class="required">*</span></label>
+                    <input class="form-input ed-input" maxlength="100" @bind="model.NotesDispatchTimeline"
+                           placeholder="e.g. Dispatched within 24 Hours, Dispatched within 48 Hours, Delivered in 3–5 Days"
+                           title="When the hardcopy/notes ship after payment." />
+                    <div class="form-hint">Required · max 100 characters.</div>
+                </div>
+                <div class="form-group form-group--full">
+                    <label class="form-label">ℹ Additional Delivery Message</label>
+                    <textarea class="form-input ed-input" rows="3" maxlength="500" @bind="model.EstimatedDeliveryMessage"
+                              placeholder="e.g. Hardcopy books will be dispatched within 48 hours after successful payment.&#10;Lecture access will be activated within 2 hours."
+                              title="Multi-line notes shown under the delivery card. Optional."></textarea>
+                    <div class="form-hint">Optional · max 500 characters · supports multiple lines.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Pictures ── *@
+    <div class="pe-card @(IsCollapsed("pics") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("pics")'><span>🖼 Pictures</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            @if (IsNew) { <p style="color:var(--gray-400);font-size:13px">Save the product first, then you can upload pictures.</p> }
+            else
+            {
+                <div class="table-wrap"><table class="pe-pics" style="width:100%;border-collapse:collapse">
+                    <thead><tr><th>Picture</th><th>Alt</th><th>Title</th><th>Order</th><th></th></tr></thead>
+                    <tbody>
+                        @if (images == null) { <tr><td colspan="5"><div class="skel" style="height:40px"></div></td></tr> }
+                        else if (images.Count == 0) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No pictures yet.</td></tr> }
+                        else
+                        {
+                            @foreach (var img in images)
+                            {
+                                <tr>
+                                    <td><img class="pe-thumb" src="@img.ImageUrl" alt="@img.AltText" /> @if (img.IsPrimary) { <div class="pe-primary">Primary</div> }</td>
+                                    <td>@(string.IsNullOrEmpty(img.AltText) ? "—" : img.AltText)</td>
+                                    <td>@(string.IsNullOrEmpty(img.Title) ? "—" : img.Title)</td>
+                                    <td>@img.DisplayOrder</td>
+                                    <td><button class="btn btn-danger btn-sm" @onclick="() => DeletePicture(img.Id)">🗑 Delete</button></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table></div>
+                <div class="pe-addpic">
+                    <div class="form-group" style="margin:0"><label class="form-label">Picture</label><InputFile OnChange="OnPicSelected" accept="image/*" /></div>
+                    <div class="form-group" style="margin:0"><label class="form-label">Alt</label><input class="form-input" @bind="newPicAlt" /></div>
+                    <div class="form-group" style="margin:0"><label class="form-label">Title</label><input class="form-input" @bind="newPicTitle" /></div>
+                    <button class="btn btn-primary" disabled="@picBusy" @onclick="AddPicture">@(picBusy ? "Uploading…" : "Add product picture")</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Home & Category card image (dedicated single picture used only by storefront cards) ── *@
+    <div class="pe-card @(IsCollapsed("homecard") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("homecard")'><span>🏠 Home page &amp; Category card image</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <p style="color:var(--gray-500);font-size:13px;margin-bottom:14px">
+                This image is shown <strong>only</strong> on Homepage Featured / Trending Courses and Category Listing cards.
+                The product detail page, cart and checkout continue to use the Pictures gallery above.
+                If you leave this empty, cards fall back to the primary gallery picture.
+            </p>
+            @if (IsNew)
+            {
+                <p style="color:var(--gray-400);font-size:13px">Save the product first, then you can upload the card image.</p>
+            }
+            else
+            {
+                <div class="hc-card">
+                    <div class="hc-card__preview">
+                        @if (!string.IsNullOrWhiteSpace(model.HomeCardImageUrl))
+                        {
+                            <img src="@model.HomeCardImageUrl" alt="Home card preview" />
+                        }
+                        else
+                        {
+                            <div class="hc-card__empty">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m3 16 5-4 4 3 4-3 5 4"/></svg>
+                                <span>No card image yet</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="hc-card__controls">
+                        @if (hcMsg != null) { <div class="inline-alert @(hcOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:10px">@hcMsg</div> }
+                        <label class="btn btn-primary btn-sm hc-card__upload">
+                            <InputFile OnChange="OnHomeCardUpload" accept=".jpg,.jpeg,.png,.webp" hidden />
+                            @(hcUploading ? "Uploading…" : (string.IsNullOrWhiteSpace(model.HomeCardImageUrl) ? "📤 Choose & upload" : "🔁 Replace image"))
+                        </label>
+                        @if (!string.IsNullOrWhiteSpace(model.HomeCardImageUrl))
+                        {
+                            <button type="button" class="btn btn-ghost btn-sm" @onclick="DeleteHomeCard" disabled="@hcUploading">🗑 Delete</button>
+                        }
+                        <ul class="hc-card__hints">
+                            <li>Recommended size: <strong>800 × 600</strong> (4:3) or wider 16:9</li>
+                            <li>Allowed: JPG · PNG · WEBP — max <strong>5 MB</strong></li>
+                            <li>Used by: Homepage Trending, Featured products, Category cards</li>
+                        </ul>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Offer / Profile picture (recommendation cards) ── *@
+    <div class="pe-card @(IsCollapsed("offerimg") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("offerimg")'><span>🎁 Offer / Profile picture</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <p style="color:var(--gray-500);font-size:13px;margin-bottom:14px">
+                A dedicated picture used by <strong>combo recommendation cards</strong> on the Cart, Checkout and
+                "Students Also Added" sections. Fallback chain when empty: Home-card image → primary gallery picture.
+            </p>
+            @if (IsNew)
+            {
+                <p style="color:var(--gray-400);font-size:13px">Save the product first, then you can upload the offer image.</p>
+            }
+            else
+            {
+                <div class="hc-card">
+                    <div class="hc-card__preview">
+                        @if (!string.IsNullOrWhiteSpace(model.OfferImageUrl))
+                        {
+                            <img src="@model.OfferImageUrl" alt="Offer image preview" />
+                        }
+                        else
+                        {
+                            <div class="hc-card__empty">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 9.5 4.5 6 4l-.5 3.5L2 9l1.5 3-1.5 3 3.5 1.5L6 20l3.5-.5L12 22l2.5-2.5 3.5.5.5-3.5L22 15l-1.5-3 1.5-3-3.5-1.5L18 4l-3.5.5L12 2Z"/></svg>
+                                <span>No offer image yet</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="hc-card__controls">
+                        @if (oiMsg != null) { <div class="inline-alert @(oiOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:10px">@oiMsg</div> }
+                        <label class="btn btn-primary btn-sm hc-card__upload">
+                            <InputFile OnChange="OnOfferImageUpload" accept=".jpg,.jpeg,.png,.webp" hidden />
+                            @(oiUploading ? "Uploading…" : (string.IsNullOrWhiteSpace(model.OfferImageUrl) ? "📤 Choose & upload" : "🔁 Replace image"))
+                        </label>
+                        @if (!string.IsNullOrWhiteSpace(model.OfferImageUrl))
+                        {
+                            <button type="button" class="btn btn-ghost btn-sm" @onclick="DeleteOfferImage" disabled="@oiUploading">🗑 Delete</button>
+                        }
+                        <ul class="hc-card__hints">
+                            <li>Recommended size: <strong>800 × 600</strong> landscape</li>
+                            <li>Allowed: JPG · PNG · WEBP — max <strong>5 MB</strong></li>
+                            <li>Used by: Cart recommendation, Checkout last-chance, "Students Also Added"</li>
+                        </ul>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Offer / Combo Recommendation (curated cross-sells) ── *@
+    <div class="pe-card @(IsCollapsed("reco") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("reco")'><span>💡 Offer / Combo Recommendation</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <p style="color:var(--gray-500);font-size:13px;margin-bottom:14px">
+                Select courses that should be recommended together with this one. They appear on the Product Detail page,
+                in the Cart, and on Checkout. Only Published products are surfaced to customers.
+            </p>
+            @if (IsNew)
+            {
+                <p style="color:var(--gray-400);font-size:13px">Save the product first, then you can add recommendations.</p>
+            }
+            else
+            {
+                @if (recoMsg != null) { <div class="inline-alert @(recoOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:10px">@recoMsg</div> }
+
+                <div class="reco-picker">
+                    <div class="reco-picker__searchwrap" @onfocusin="() => recoDropOpen = true">
+                        <span class="reco-picker__searchico">🔍</span>
+                        <input class="reco-picker__searchinput" placeholder="Search product name, SKU, faculty or category…"
+                               @bind="recoQuery" @bind:event="oninput" />
+                        <button type="button" class="reco-picker__toggle" @onclick="ToggleRecoDropdown" title="Browse all products">
+                            @(recoDropOpen ? "▲" : "▼")
+                        </button>
+                    </div>
+                    @if (recoDropOpen)
+                    {
+                        <div class="reco-picker__panel">
+                            <div class="reco-picker__panel-head">
+                                <span>@(recoAllProducts == null ? "Loading…" : $"Showing {VisibleHits.Count} of {recoAllProducts.Count} products")</span>
+                                <button type="button" class="reco-picker__close" @onclick="() => recoDropOpen = false">✕ Close</button>
+                            </div>
+                            <div class="reco-picker__list">
+                                @if (recoAllProducts == null)
+                                {
+                                    <div class="reco-picker__status">Loading products…</div>
+                                }
+                                else if (VisibleHits.Count == 0)
+                                {
+                                    <div class="reco-picker__status">No matching products. Try a different keyword.</div>
+                                }
+                                else
+                                {
+                                    @foreach (var h in VisibleHits)
+                                    {
+                                        var selected = recoItems.Any(i => i.RecommendedProductId == h.Id);
+                                        <div class="reco-row @(selected ? "is-selected" : "")">
+                                            <div class="reco-row__thumb">
+                                                @if (!string.IsNullOrEmpty(h.ThumbUrl)) { <img src="@h.ThumbUrl" alt="" /> } else { <span>📚</span> }
+                                            </div>
+                                            <div class="reco-row__body">
+                                                <div class="reco-row__title">@h.Title</div>
+                                                <div class="reco-row__meta">
+                                                    @if (!string.IsNullOrEmpty(h.Sku)) { <span>SKU: <strong>@h.Sku</strong></span> }
+                                                    @if (!string.IsNullOrEmpty(h.FacultyName)) { <span>👤 @h.FacultyName</span> }
+                                                    @if (!string.IsNullOrEmpty(h.CategoryName)) { <span>· @h.CategoryName</span> }
+                                                </div>
+                                            </div>
+                                            @if (h.Price.HasValue) { <span class="reco-row__price">₹@h.Price.Value.ToString("N0")</span> }
+                                            <button type="button" class="reco-row__addbtn @(selected ? "is-added" : "")"
+                                                    disabled="@selected" @onclick="() => AddRecoHit(h)">
+                                                @(selected ? "✓ Added" : "+ Add")
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <h4 class="reco-listhead">
+                    Recommended Products
+                    @if (recoItems.Count > 0) { <span class="reco-listhead__count">@recoItems.Count selected</span> }
+                </h4>
+
+                @if (recoItems.Count == 0)
+                {
+                    <div class="reco-empty">
+                        <div class="reco-empty__ico">📚</div>
+                        <div class="reco-empty__title">No Offer / Combo products selected</div>
+                        <div class="reco-empty__sub">Search above and add products. They'll appear on the Product Detail, Cart and Checkout pages.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="reco-selected" @ondragover:preventDefault="true">
+                        @foreach (var item in recoItems)
+                        {
+                            var idx = recoItems.IndexOf(item);
+                            var dragOver = recoDragOverIdx == idx;
+                            <div class="reco-pick @(dragOver ? "is-dragover" : "") @(recoDraggingIdx == idx ? "is-dragging" : "")"
+                                 draggable="true"
+                                 @ondragstart="@(() => OnRecoDragStart(idx))"
+                                 @ondragenter="@(() => recoDragOverIdx = idx)"
+                                 @ondragleave="@(() => { if (recoDragOverIdx == idx) recoDragOverIdx = null; })"
+                                 @ondrop="@(() => OnRecoDrop(idx))"
+                                 @ondragend="OnRecoDragEnd">
+                                <span class="reco-pick__drag" title="Drag to reorder">☰</span>
+                                <div class="reco-pick__thumb">
+                                    @if (!string.IsNullOrEmpty(item.RecommendedThumbUrl)) { <img src="@item.RecommendedThumbUrl" alt="" /> }
+                                    else { <span>📚</span> }
+                                </div>
+                                <div class="reco-pick__body">
+                                    <div class="reco-pick__title">@item.RecommendedTitle</div>
+                                    <div class="reco-pick__meta">
+                                        @if (!string.IsNullOrEmpty(item.RecommendedFacultyName)) { <span>👤 @item.RecommendedFacultyName</span> }
+                                        @if (item.RecommendedPrice.HasValue) { <span>· ₹@item.RecommendedPrice.Value.ToString("N0")</span> }
+                                    </div>
+                                </div>
+                                <details class="reco-pick__more">
+                                    <summary>⚙ Advanced</summary>
+                                    <div class="reco-pick__advanced">
+                                        <label>Type
+                                            <select class="form-input form-input--sm" @bind="item.Type">
+                                                @foreach (var t in (RecommendationType[])System.Enum.GetValues(typeof(RecommendationType)))
+                                                { <option value="@t">@RecoTypeLabel(t)</option> }
+                                            </select>
+                                        </label>
+                                        <label>Badge text<input class="form-input form-input--sm" maxlength="40" placeholder="Most Popular" @bind="item.BadgeText" /></label>
+                                        <label>Badge colour<input class="form-input form-input--sm" maxlength="20" placeholder="#16A34A" @bind="item.BadgeColor" /></label>
+                                        <label>Priority<input type="number" class="form-input form-input--sm" @bind="item.Priority" /></label>
+                                        <label class="reco-pick__active"><input type="checkbox" @bind="item.IsActive" /> Active</label>
+                                    </div>
+                                </details>
+                                <button type="button" class="reco-pick__rm" title="Remove" @onclick="() => recoItems.RemoveAt(idx)">✕</button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="form-actions" style="margin-top:14px">
+                    <button class="btn btn-primary" disabled="@recoSaving" @onclick="SaveRecommendations">
+                        @if (recoSaving) { <span class="reco-spin"></span> }
+                        @(recoSaving ? "Saving…" : "💾 Save recommendations")
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Demo videos (YouTube) ── *@
+    <div class="pe-card @(IsCollapsed("videos") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("videos")'><span>🎬 Demo videos (YouTube)</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            @if (IsNew) { <p style="color:var(--gray-400);font-size:13px">Save the product first, then you can add demo videos.</p> }
+            else
+            {
+                <p style="color:var(--gray-400);font-size:12.5px;margin-bottom:10px">Shown in the storefront media gallery, right after the product image. Paste a YouTube link (watch, youtu.be, or embed).</p>
+                <div class="table-wrap"><table class="pe-pics" style="width:100%;border-collapse:collapse">
+                    <thead><tr><th>YouTube URL</th><th>Title</th><th>Order</th><th></th></tr></thead>
+                    <tbody>
+                        @if (videos == null) { <tr><td colspan="4"><div class="skel" style="height:34px"></div></td></tr> }
+                        else if (videos.Count == 0) { <tr><td colspan="4" style="text-align:center;color:var(--gray-400)">No demo videos yet.</td></tr> }
+                        else
+                        {
+                            @foreach (var v in videos)
+                            {
+                                <tr>
+                                    <td style="word-break:break-all"><a href="@v.YoutubeUrl" target="_blank">@v.YoutubeUrl</a></td>
+                                    <td>@(string.IsNullOrEmpty(v.Title) ? "—" : v.Title)</td>
+                                    <td>@v.DisplayOrder</td>
+                                    <td><button class="btn btn-danger btn-sm" @onclick="() => DeleteVideo(v.Id)">🗑 Delete</button></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table></div>
+                <div class="pe-addpic">
+                    <div class="form-group" style="margin:0;grid-column:span 2"><label class="form-label">YouTube URL</label><input class="form-input" @bind="newVideoUrl" placeholder="https://www.youtube.com/watch?v=…" /></div>
+                    <div class="form-group" style="margin:0"><label class="form-label">Title (optional)</label><input class="form-input" @bind="newVideoTitle" /></div>
+                    <button class="btn btn-primary" disabled="@vidBusy" @onclick="AddVideo">@(vidBusy ? "Adding…" : "Add video")</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Lecture modes ── *@
+    <div class="pe-card @(IsCollapsed("modes") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("modes")'><span>🎥 Lecture modes</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            @foreach (var m in model.Modes)
+            {
+                <div class="row-edit">
+                    <input class="form-input" placeholder="Mode name" @bind="m.ModeName" />
+                    <input type="number" class="form-input" style="width:120px" placeholder="Price" @bind="m.Price" />
+                    <label class="toggle-switch"><input type="checkbox" @bind="m.IsEnabled" /><span class="toggle-slider"></span></label>
+                    <button class="btn btn-danger btn-sm" @onclick="() => model.Modes.Remove(m)">✕</button>
+                </div>
+            }
+            <button class="btn btn-ghost btn-sm" style="color:var(--orange);margin-top:8px" @onclick="@(() => model.Modes.Add(new ProductModeEdit()))">+ Add mode</button>
+        </div>
+    </div>
+
+    @* ── Purchase options (configurable groups: Books, Test Series, etc.) ── *@
+    <div class="pe-card @(IsCollapsed("optiongroups") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("optiongroups")'><span>🛒 Purchase options</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-hint" style="margin-bottom:10px">
+                Add option groups (e.g. "Books", "Test Series"). The customer picks one option per group;
+                each option's price is <strong>added</strong> to the product price. Leave a group empty to hide it.
+            </div>
+            @foreach (var g in model.OptionGroups)
+            {
+                <div class="pe-subcard" style="border:1px solid var(--gray-200);border-radius:8px;padding:12px;margin-bottom:12px">
+                    <div class="row-edit" style="margin-bottom:8px">
+                        <input class="form-input" placeholder="Group name (e.g. Books)" @bind="g.Name" style="font-weight:600" />
+                        <label class="toggle-switch" title="Active"><input type="checkbox" @bind="g.IsActive" /><span class="toggle-slider"></span></label>
+                        <button class="btn btn-danger btn-sm" @onclick="() => model.OptionGroups.Remove(g)" title="Remove group">✕ Group</button>
+                    </div>
+                    @foreach (var it in g.Items)
+                    {
+                        <div class="row-edit" style="margin-left:16px">
+                            <input class="form-input" placeholder="Option name (e.g. Hardcopy Notes)" @bind="it.Name" />
+                            <input type="number" class="form-input" style="width:130px" placeholder="Add-on ₹" @bind="it.PriceAddOn" />
+                            <label class="toggle-switch" title="Active"><input type="checkbox" @bind="it.IsActive" /><span class="toggle-slider"></span></label>
+                            <button class="btn btn-danger btn-sm" @onclick="() => g.Items.Remove(it)">✕</button>
+                        </div>
+                    }
+                    <button class="btn btn-ghost btn-sm" style="color:var(--orange);margin-top:6px;margin-left:16px"
+                            @onclick="@(() => g.Items.Add(new ProductOptionItemEdit()))">+ Add option</button>
+                </div>
+            }
+            <button class="btn btn-ghost btn-sm" style="color:var(--orange);margin-top:4px"
+                    @onclick="@(() => model.OptionGroups.Add(new ProductOptionGroupEdit()))">+ Add group</button>
+        </div>
+    </div>
+
+    @* ── Course content ── *@
+    <div class="pe-card @(IsCollapsed("content") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("content")'><span>📋 Course content &amp; inclusions</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div style="font-weight:600;color:var(--navy);margin-bottom:8px">This course includes</div>
+            @foreach (var i in model.Inclusions)
+            {
+                <div class="row-edit">
+                    <input class="form-input" style="width:80px" placeholder="Icon" @bind="i.Icon" />
+                    <input class="form-input" placeholder="Inclusion title" @bind="i.Title" />
+                    <button class="btn btn-danger btn-sm" @onclick="() => model.Inclusions.Remove(i)">✕</button>
+                </div>
+            }
+            <button class="btn btn-ghost btn-sm" style="color:var(--orange);margin:8px 0 14px" @onclick="@(() => model.Inclusions.Add(new ProductInclusionEdit()))">+ Add inclusion</button>
+            <div class="form-grid">
+                <div class="form-group"><label class="form-label">Total lectures</label><input class="form-input" @bind="model.TotalLectures" /></div>
+                <div class="form-group"><label class="form-label">Total hours</label><input class="form-input" @bind="model.TotalHours" /></div>
+                <div class="form-group"><label class="form-label">Books provided</label><input class="form-input" @bind="model.BooksInfo" /></div>
+                <div class="form-group"><label class="form-label">Views</label><input class="form-input" @bind="model.Views" placeholder="e.g. 1.5x / 500 hrs" /></div>
+                <div class="form-group"><label class="form-label">Validity</label><input class="form-input" @bind="model.Validity" placeholder="e.g. 1 year / till attempt" /></div>
+                <div class="form-group"><label class="form-label">Language</label><input class="form-input" @bind="model.Language" placeholder="e.g. Hindi / English" /></div>
+                <div class="form-group"><label class="form-label">Course schedule</label><input class="form-input" @bind="model.CourseSchedule" placeholder="e.g. Mon–Fri, 6–8 PM" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Additional details</label><textarea class="form-input" rows="3" @bind="model.AdditionalDetails"></textarea></div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Product attributes ── *@
+    <div class="pe-card @(IsCollapsed("attrs") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("attrs")'>
+            <span>🏷 Product attributes</span>
+            <span style="display:flex;align-items:center;gap:10px">
+                <button class="btn btn-ghost btn-sm" style="color:var(--orange)" @onclick:stopPropagation="true" @onclick="AddMapping">+ Add attribute</button>
+                <span class="chev">▾</span>
+            </span>
+        </div>
+        <div class="pe-card__body">
+            @if (meta == null) { <p style="color:var(--gray-400)">Loading…</p> }
+            else if (meta.Attributes.Count == 0) { <p style="color:var(--gray-400)">No product attributes defined yet. Create them under <a href="/admin/catalog/product-attributes">Catalog → Attributes → Product Attributes</a>.</p> }
+            else if (model.AttributeMappings.Count == 0) { <p style="color:var(--gray-400)">No attributes mapped. Buyers will see these as selectable options on the course page.</p> }
+            @foreach (var am in model.AttributeMappings)
+            {
+                <div class="attr-card">
+                    <div class="form-grid form-grid--3col">
+                        <div class="form-group"><label class="form-label">Attribute</label>
+                            <select class="form-input" value="@am.ProductAttributeId" @onchange="e => OnMappingAttr(am, e)">
+                                <option value="@Guid.Empty">— select —</option>
+                                @foreach (var a in meta!.Attributes) { <option value="@a.Id" selected="@(a.Id == am.ProductAttributeId)">@a.Name</option> }
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Control type</label>
+                            <select class="form-input" @bind="am.ControlType">
+                                @foreach (var ct in Enum.GetValues<AttributeControlType>()) { <option value="@ct">@CtLabel(ct)</option> }
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Prompt / label</label><input class="form-input" @bind="am.TextPrompt" placeholder="e.g. Choose validity" /></div>
+                    </div>
+                    <div style="display:flex;gap:16px;align-items:center;margin:6px 0 10px;flex-wrap:wrap">
+                        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" @bind="am.IsRequired" /> Required</label>
+                        @if (HasValues(am.ControlType))
+                        {
+                            <button class="btn btn-ghost btn-sm" @onclick="() => AddMappingValue(am)">+ Add value</button>
+                            <button class="btn btn-ghost btn-sm" @onclick="() => LoadPredefined(am)">⤵ Load predefined values</button>
+                        }
+                        <button class="btn btn-danger btn-sm" style="margin-left:auto" @onclick="() => model.AttributeMappings.Remove(am)">Remove attribute</button>
+                    </div>
+                    @if (HasValues(am.ControlType))
+                    {
+                        <div class="table-wrap"><table>
+                            <thead><tr><th>Value</th><th>Price adj. (₹)</th><th>%?</th><th>Pre-selected</th><th></th></tr></thead>
+                            <tbody>
+                                @if (am.Values.Count == 0) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No values — add some or load predefined.</td></tr> }
+                                @foreach (var v in am.Values)
+                                {
+                                    <tr>
+                                        <td><input class="form-input" @bind="v.Name" style="min-width:150px" /></td>
+                                        <td><input type="number" step="0.01" class="form-input" @bind="v.PriceAdjustment" style="width:100px" /></td>
+                                        <td style="text-align:center"><input type="checkbox" @bind="v.PriceAdjustmentUsePercentage" /></td>
+                                        <td style="text-align:center"><input type="checkbox" @bind="v.IsPreSelected" /></td>
+                                        <td><button class="btn btn-danger btn-sm" @onclick="() => am.Values.Remove(v)">✕</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table></div>
+                    }
+                    else { <p style="color:var(--gray-400);font-size:13px">Free-form input — no predefined values.</p> }
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Specification attributes ── *@
+    <div class="pe-card @(IsCollapsed("specs") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("specs")'>
+            <span>⚙️ Specification attributes</span>
+            <span style="display:flex;align-items:center;gap:10px">
+                <button class="btn btn-ghost btn-sm" style="color:var(--orange)" @onclick:stopPropagation="true" @onclick="AddSpec">+ Add spec</button>
+                <span class="chev">▾</span>
+            </span>
+        </div>
+        <div class="pe-card__body">
+            @if (meta == null) { <p style="color:var(--gray-400)">Loading…</p> }
+            else if (meta.SpecAttributes.Count == 0) { <p style="color:var(--gray-400)">No specification attributes defined yet. Create them under <a href="/admin/catalog/specification-attributes">Catalog → Attributes → Specification Attributes</a>.</p> }
+            else if (model.SpecificationAttributes.Count == 0) { <p style="color:var(--gray-400)">No specs assigned. These appear on the course page and can power storefront filters.</p> }
+            @foreach (var sa in model.SpecificationAttributes)
+            {
+                <div class="row-edit">
+                    <select class="form-input" value="@sa.SpecificationAttributeId" @onchange="e => OnSpecAttr(sa, e)">
+                        <option value="@Guid.Empty">— attribute —</option>
+                        @foreach (var s in meta!.SpecAttributes) { <option value="@s.Id" selected="@(s.Id == sa.SpecificationAttributeId)">@s.Name</option> }
+                    </select>
+                    <select class="form-input" @bind="sa.SpecificationAttributeOptionId">
+                        <option value="@Guid.Empty">— option —</option>
+                        @foreach (var o in OptionsFor(sa.SpecificationAttributeId)) { <option value="@o.Id">@o.Name</option> }
+                    </select>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap"><input type="checkbox" @bind="sa.AllowFiltering" /> Filterable</label>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap"><input type="checkbox" @bind="sa.ShowOnProductPage" /> Show on page</label>
+                    <button class="btn btn-danger btn-sm" @onclick="() => model.SpecificationAttributes.Remove(sa)">✕</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── SEO ── *@
+    <div class="pe-card @(IsCollapsed("seo") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("seo")'><span>🔍 SEO</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group form-group--full"><label class="form-label">Search engine friendly page name (slug)</label><input class="form-input" @bind="model.Slug" placeholder="auto-generated from name if blank" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Meta title</label><input class="form-input" @bind="model.SeoTitle" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Meta description</label><textarea class="form-input" rows="2" @bind="model.SeoDescription"></textarea></div>
+                <div class="form-group"><label class="form-label">Status</label><select class="form-input" @bind="model.Status"><option value="Active">Active — Visible</option><option value="Draft">Draft — Hidden</option><option value="Archived">Archived</option></select></div>
+                <div class="form-group"><label class="form-label">Badge</label><input class="form-input" @bind="model.Badge" placeholder="New Batch / Bestseller" /></div>
+                <div class="form-group"><label class="form-label">Display order</label><input type="number" class="form-input" @bind="model.DisplayOrder" /></div>
+            </div>
+        </div>
+    </div>
+
+    @* ── 🔑 Serial Key Configuration — per-product API parameters for the configured provider.
+          Loads + saves independently of the main product Save button. Shown only for saved
+          products since the inner component queries by ProductId. ── *@
+    @if (!IsNew)
+    {
+        <div class="pe-card @(IsCollapsed("serial-key") ? "is-collapsed" : "")">
+            <div class="pe-card__head" @onclick='() => Toggle("serial-key")'>
+                <span>🔑 Serial Key Configuration</span>
+                <span class="chev">▾</span>
+            </div>
+            <div class="pe-card__body">
+                <ProductSerialKeySection ProductId="@Id" AvailableModes="@model.Modes" />
+            </div>
+        </div>
+    }
+
+    @* ── Course detail page enhancements (storefront tabs + cross-sell) ── *@
+    <div class="pe-card @(IsCollapsed("cdetail") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("cdetail")'><span>📑 Course detail page (tabs &amp; cross-sell)</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group form-group--full">
+                    <label class="form-label">About the lectures — YouTube video URL</label>
+                    <input class="form-input" @bind="model.LecturesVideoUrl" placeholder="https://www.youtube.com/watch?v=…" />
+                    <div class="form-hint">Shown in the storefront's <strong>About the Lectures</strong> tab. Leave blank to hide the tab.</div>
+                </div>
+                <div class="form-group form-group--full">
+                    <label class="form-label">Book preview — PDF embed URL</label>
+                    <input class="form-input" @bind="model.BookPreviewPdfUrl" placeholder="https://drive.google.com/file/d/…/preview" />
+                    <div class="form-hint">Use a Google Drive <em>preview</em> link so students can read it on-site but can't download. Leave blank to hide.</div>
+                </div>
+                @* Legacy textarea — kept hidden so existing data round-trips. The new
+                   entity-based Testimonials section below replaces this on the storefront. *@
+                <input type="hidden" @bind="model.TestimonialVideoUrls" />
+                <div class="form-group form-group--full">
+                    <label class="form-label">Students also enrolled for — related product slugs</label>
+                    <input class="form-input" @bind="model.RelatedProductSlugs" placeholder="ca-inter-law, ca-inter-audit, ca-inter-costing" />
+                    <div class="form-hint">Comma-separated product slugs. Each appears as a card in the cross-sell strip on this product's page.</div>
+                </div>
+                <div class="form-group form-group--full">
+                    <label class="form-label">FAQs</label>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                        @for (var i = 0; i < model.Faqs.Count; i++)
+                        {
+                            var idx = i;
+                            <div style="display:grid;grid-template-columns:1fr 2fr auto;gap:8px;align-items:start">
+                                <input class="form-input" placeholder="Question" value="@model.Faqs[idx].Question" @oninput="e => model.Faqs[idx].Question = e.Value?.ToString() ?? string.Empty" />
+                                <textarea class="form-input" rows="2" placeholder="Answer" value="@model.Faqs[idx].Answer" @oninput="e => model.Faqs[idx].Answer = e.Value?.ToString() ?? string.Empty"></textarea>
+                                <button type="button" class="btn btn-ghost btn-sm" @onclick="() => model.Faqs.RemoveAt(idx)" title="Remove">✕</button>
+                            </div>
+                        }
+                        <button type="button" class="btn btn-outline btn-sm" style="align-self:flex-start" @onclick="() => model.Faqs.Add(new FaqEdit())">＋ Add FAQ</button>
+                    </div>
+                    <div class="form-hint">Common questions ("How many views?", "Refund policy?", "Books delivery?"). Shown in the storefront's <strong>FAQs</strong> tab.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Book Preview — secure sample-pages preview shown on the public course page ── *@
+    @if (!IsNew)
+    {
+        <div class="pe-card @(IsCollapsed("bookprev") ? "is-collapsed" : "")">
+            <div class="pe-card__head" @onclick='() => Toggle("bookprev")'>
+                <span>
+                    📚 Book Preview
+                    @if (bookPreview is { IsEnabled: true, PdfRelativePath: { Length: > 0 } })
+                    {
+                        <span style="font-size:11px;font-weight:700;color:#15803D;background:#DCFCE7;border-radius:999px;padding:2px 8px;margin-left:8px">ENABLED</span>
+                    }
+                    else if (bookPreview is { PdfRelativePath: { Length: > 0 } })
+                    {
+                        <span style="font-size:11px;font-weight:700;color:#B45309;background:#FEF3C7;border-radius:999px;padding:2px 8px;margin-left:8px">PDF ATTACHED · DISABLED</span>
+                    }
+                </span>
+                <span class="chev">▾</span>
+            </div>
+            <div class="pe-card__body">
+                @if (bookPreview == null)
+                {
+                    <p style="color:var(--gray-400)">Loading…</p>
+                }
+                else
+                {
+                    @if (bpMsg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:12px">@bpMsg</div> }
+                    @* ── Admin-side guardrail: an enabled preview with no PDF would render the
+                          fallback panel on the storefront. Surface the gap right here so the admin
+                          can't accidentally publish an empty preview. ── *@
+                    @if (bookPreview.IsEnabled && string.IsNullOrWhiteSpace(bookPreview.PdfRelativePath))
+                    {
+                        <div class="inline-alert inline-alert--warn" style="margin-bottom:12px;background:#FEF3C7;border:1px solid #FCD34D;color:#92400E">
+                            ⚠ <strong>Preview PDF is not uploaded.</strong> The student-facing Book Preview tab will be hidden until you attach a PDF below.
+                        </div>
+                    }
+                    <div class="form-grid">
+                        <div class="form-group form-group--full">
+                            <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
+                                <input type="checkbox" @bind="bookPreview.IsEnabled" /> Enable Book Preview
+                            </label>
+                            <div class="form-hint">When OFF, the public course page hides the Book Preview tab even if a PDF is attached.</div>
+                        </div>
+                        <div class="form-group"><label class="form-label">Book Title</label><input class="form-input" @bind="bookPreview.Title" placeholder="Sample Chapter — Economics Part 1" /></div>
+                        <div class="form-group"><label class="form-label">Display Order</label><input type="number" class="form-input" @bind="bookPreview.DisplayOrder" /></div>
+                        <div class="form-group form-group--full">
+                            <label class="form-label">Short Description</label>
+                            <textarea class="form-input" rows="3" @bind="bookPreview.Description"
+                                      placeholder="Preview the actual RioCommerce study material — explore a sample chapter before you enrol."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Max Pages Allowed <span class="form-hint" style="font-weight:400">(optional UI hint)</span></label>
+                            <input type="number" class="form-input" @bind="bookPreview.MaxPagesAllowed" min="1" placeholder="e.g. 10" />
+                            <div class="form-hint">UI-only — caps the visible page count in the modal viewer. The signed-token endpoint still streams the full file you uploaded.</div>
+                        </div>
+
+                        @* ── Book Cover image ── *@
+                        <div class="form-group">
+                            <label class="form-label">Book Cover Image</label>
+                            <div class="fac-photo">
+                                @if (!string.IsNullOrWhiteSpace(bookPreview.CoverImageUrl))
+                                {
+                                    <img class="fac-photo__preview" src="@bookPreview.CoverImageUrl" alt="Cover preview" />
+                                }
+                                else
+                                {
+                                    <div class="fac-photo__preview fac-photo__preview--empty">📚</div>
+                                }
+                                <div class="fac-photo__controls">
+                                    <input class="form-input" @bind="bookPreview.CoverImageUrl" placeholder="Paste a URL or use Upload →" />
+                                    <label class="btn btn-outline btn-sm fac-photo__upload">
+                                        <InputFile OnChange="OnBookPreviewCoverUpload" accept=".jpg,.jpeg,.png,.webp" hidden />
+                                        @(bpUploadingCover ? "Uploading…" : "📤 Upload cover")
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* ── Preview PDF (secure, never directly linked) ── *@
+                        <div class="form-group form-group--full">
+                            <label class="form-label">Upload Preview PDF</label>
+                            <div style="display:flex;flex-direction:column;gap:8px">
+                                @if (string.IsNullOrWhiteSpace(bookPreview.PdfRelativePath))
+                                {
+                                    <div style="padding:14px;background:#FFF7ED;border:1px dashed #FED7AA;border-radius:10px;color:#9A3412;font-size:13px">
+                                        No preview PDF attached yet. Upload a PDF below — it will be saved to a private folder outside the public webroot and only served through the signed-token viewer.
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;font-size:13px;color:#166534">
+                                        <span style="font-size:18px">✅</span>
+                                        <span>PDF attached · <code style="font-size:11.5px;background:rgba(0,0,0,.04);padding:2px 6px;border-radius:4px">@System.IO.Path.GetFileName(bookPreview.PdfRelativePath)</code></span>
+                                    </div>
+                                }
+                                <label class="btn btn-outline btn-sm" style="align-self:flex-start">
+                                    <InputFile OnChange="OnBookPreviewPdfUpload" accept=".pdf" hidden />
+                                    @(bpUploadingPdf ? "Uploading…" : (string.IsNullOrWhiteSpace(bookPreview.PdfRelativePath) ? "📤 Upload PDF" : "♻ Replace PDF"))
+                                </label>
+                            </div>
+                            <div class="form-hint">PDF only · max 50 MB · stored at <code>{ContentRoot}/secure-files/book-previews/</code> (never reachable by URL).</div>
+                        </div>
+
+                        <div class="form-group form-group--full" style="display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--gray-100);padding-top:14px">
+                            <button class="btn btn-primary" disabled="@bpSaving" @onclick="SaveBookPreview">@(bpSaving ? "Saving…" : "Save Book Preview")</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ── Testimonials — minimal: YouTube URL + optional thumbnail. Saves with the main Save button. ── *@
+    <div class="pe-card @(IsCollapsed("testimonials") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("testimonials")'>
+            <span>🎥 Testimonials @(model.Testimonials.Count > 0 ? $"({model.Testimonials.Count})" : "")</span>
+            <span class="chev">▾</span>
+        </div>
+        <div class="pe-card__body">
+            <p class="form-hint" style="margin:0 0 14px">
+                Paste any YouTube link — <code>youtu.be/&lt;id&gt;</code>, <code>youtube.com/watch?v=&lt;id&gt;</code>,
+                or <code>youtube.com/shorts/&lt;id&gt;</code>. Thumbnail auto-fetches when left blank.
+            </p>
+            @if (!string.IsNullOrEmpty(testimonialError))
+            {
+                <div class="inline-alert inline-alert--err" style="margin-bottom:12px">@testimonialError</div>
+            }
+            @for (var i = 0; i < model.Testimonials.Count; i++)
+            {
+                var idx = i;
+                var t = model.Testimonials[idx];
+                <div class="form-card" style="padding:14px;margin-bottom:10px;background:#FAFBFC">
+                    <div class="form-group">
+                        <label class="form-label">YouTube URL <span class="required">*</span></label>
+                        <input class="form-input" placeholder="https://youtu.be/… or youtube.com/watch?v=… or shorts/…"
+                               value="@t.YoutubeUrl"
+                               @oninput="e => model.Testimonials[idx].YoutubeUrl = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Thumbnail URL (optional)</label>
+                        <input class="form-input" placeholder="Leave blank to automatically fetch from YouTube"
+                               value="@t.ThumbnailUrl"
+                               @oninput="e => model.Testimonials[idx].ThumbnailUrl = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+                    <div style="display:flex;justify-content:flex-end">
+                        <button type="button" class="btn btn-danger btn-sm" @onclick="() => model.Testimonials.RemoveAt(idx)">Remove</button>
+                    </div>
+                </div>
+            }
+            <button type="button" class="btn btn-outline btn-sm" @onclick="AddTestimonial">＋ Add testimonial</button>
+        </div>
+    </div>
+
+    @* ── Purchased with orders ── *@
+    @if (!IsNew)
+    {
+        <div class="pe-card @(IsCollapsed("orders") ? "is-collapsed" : "")">
+            <div class="pe-card__head" @onclick='() => Toggle("orders")'><span>🛒 Purchased with orders @(purchased?.Count > 0 ? $"({purchased.Count})" : "")</span><span class="chev">▾</span></div>
+            <div class="pe-card__body" style="padding:0">
+                <div class="ag__wrap"><table class="ag__table" style="min-width:560px">
+                    <thead><tr><th>Order #</th><th>Email</th><th>Order status</th><th>Payment</th><th>Created</th><th></th></tr></thead>
+                    <tbody>
+                        @if (purchased == null) { <tr><td colspan="6"><div class="skel" style="height:30px;margin:10px"></div></td></tr> }
+                        else if (purchased.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400);padding:18px">This product hasn't been purchased yet.</td></tr> }
+                        else
+                        {
+                            @foreach (var o in purchased)
+                            {
+                                <tr>
+                                    <td data-label="Order #"><strong>#@o.OrderNumber</strong></td>
+                                    <td data-label="Email">@(o.Email ?? "—")</td>
+                                    <td data-label="Order status">@o.OrderStatus</td>
+                                    <td data-label="Payment">@o.PaymentStatus</td>
+                                    <td data-label="Created">@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</td>
+                                    <td data-label="" class="ag-right"><a href="/admin/orders/@o.OrderId" class="btn btn-ghost btn-sm">View</a></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+
+    private ProductEditModel? model;
+    private ProductFilterMeta? pmeta;
+    private ProductAttributeMeta? meta;
+    private List<ProductImageEdit>? images;
+    private List<ProductVideoEdit>? videos;
+    private List<PurchasedOrderRow>? purchased;
+    private bool saving, notFound, picBusy, vidBusy;
+    private string? error;
+    // Home/Category card image state
+    private bool hcUploading, hcOk;
+    private string? hcMsg;
+    // Offer / Profile image state
+    private bool oiUploading, oiOk;
+    private string? oiMsg;
+    // ── Offer / Combo Recommendation state ──
+    private List<ProductRecommendationItem> recoItems = new();
+    // Loaded once when the page opens — everything filters client-side after that. No per-keystroke DB hit.
+    private List<RecommendationSearchHit>? recoAllProducts;
+    private string recoQuery = "";
+    private bool recoSaving, recoOk, recoDropOpen;
+    private string? recoMsg;
+    // Drag & drop state
+    private int? recoDraggingIdx, recoDragOverIdx;
+    // ── Multi-select dropdown state ──
+    private bool catOpen, facOpen;
+    // ── Special price audit ──
+    private List<SpecialPriceAuditItem>? spAudit;
+
+    // Live filter — case-insensitive across title, sku, faculty, category. Always excludes already-selected products.
+    private List<RecommendationSearchHit> VisibleHits
+    {
+        get
+        {
+            if (recoAllProducts == null) return new();
+            IEnumerable<RecommendationSearchHit> q = recoAllProducts;
+            var term = (recoQuery ?? "").Trim();
+            if (term.Length > 0)
+            {
+                var lc = term.ToLowerInvariant();
+                q = q.Where(h =>
+                    h.Title.ToLowerInvariant().Contains(lc)
+                    || (h.Sku ?? "").ToLowerInvariant().Contains(lc)
+                    || (h.FacultyName ?? "").ToLowerInvariant().Contains(lc)
+                    || (h.CategoryName ?? "").ToLowerInvariant().Contains(lc)
+                    || h.Id.ToString().StartsWith(lc));
+            }
+            return q.Take(60).ToList();   // cap visible to keep DOM cheap; users narrow with search
+        }
+    }
+    private readonly HashSet<string> collapsed = new();
+
+    // new-picture form
+    private IBrowserFile? newPicFile;
+    private string newPicAlt = "", newPicTitle = "";
+    // new-video form
+    private string newVideoUrl = "", newVideoTitle = "";
+
+    private bool Published
+    {
+        get => model?.Status == ProductStatus.Active;
+        set { if (model != null) model.Status = value ? ProductStatus.Active : ProductStatus.Draft; }
+    }
+
+    private void Toggle(string key) { if (!collapsed.Remove(key)) collapsed.Add(key); }
+    private bool IsCollapsed(string key) => collapsed.Contains(key);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { pmeta = await Svc.GetFilterMetaAsync(); } catch { }
+        try { meta = await Svc.GetAttributeMetaAsync(); } catch { }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        images = null; videos = null; purchased = null;
+        bookPreview = null; spAudit = null;
+        catOpen = false; facOpen = false;
+        if (IsNew)
+        {
+            model = new ProductEditModel
+            {
+                // Default "This course includes" rows for a brand-new product (icons + labels).
+                Inclusions = new List<ProductInclusionEdit>
+                {
+                    new() { Icon = "🎥", Title = "Video Lectures" },
+                    new() { Icon = "📝", Title = "Test Series" },
+                    new() { Icon = "📣", Title = "Telegram Community" },
+                    new() { Icon = "📕", Title = "Hardcopy Notes" },
+                    new() { Icon = "⚡", Title = "Fastrack Lectures For Revision" },
+                },
+            };
+            notFound = false;
+        }
+        else
+        {
+            model = await Svc.GetForEditAsync(Id);
+            notFound = model == null;
+            if (model != null)
+            {
+                images = await Svc.ListImagesAsync(Id);
+                videos = await Svc.ListVideosAsync(Id);
+                purchased = await Svc.PurchasedWithOrdersAsync(Id);
+                spAudit = await Svc.GetSpecialPriceAuditAsync(Id);
+                await LoadRecommendationsAsync();
+                // Book Preview lives in its own table and is saved through its own service so a
+                // PDF upload doesn't have to re-save the whole product. Initialise an empty editor
+                // when the product hasn't had a preview attached yet.
+                bookPreview = await BookPreviewSvc.GetForAdminAsync(Id)
+                              ?? new ProductBookPreviewEdit { IsEnabled = true, Title = "Book Preview" };
+                await LoadFacultySharesAsync();
+            }
+        }
+    }
+
+    // ── 🎓 Faculty Share state ─────────────────────────────────────────────
+    // Loaded and saved through IFacultySharingService rather than ProductEditModel: the rows are
+    // per-faculty rules in their own table, and keeping them off the product save means a share edit
+    // doesn't have to re-validate and re-write the entire product.
+    private ProductFacultyShareEditModel? facShare;
+    private bool facShareSaving;
+    private string? facShareError;
+
+    private async Task LoadFacultySharesAsync()
+    {
+        facShareError = null;
+        try { facShare = await FacultyShareSvc.GetProductShareEditModelAsync(Id); }
+        catch (Exception ex) { facShare = null; facShareError = ex.Message; }
+    }
+
+    /// <summary>
+    /// Toggles a faculty between their own rate and the product default. Switching ON seeds the row
+    /// from whatever they are currently earning, so ticking the box never silently drops someone's
+    /// rate to zero.
+    /// </summary>
+    private void ToggleFacultyRule(ProductFacultyShareEditRow row, ChangeEventArgs e)
+    {
+        row.HasExplicitRule = e.Value is true;
+        if (!row.HasExplicitRule) return;
+        if (row.ShareValue <= 0 && facShare != null)
+        {
+            row.ShareType = facShare.DefaultFacultyShareType;
+            row.ShareValue = facShare.DefaultFacultyShareValue;
+        }
+        row.IsActive = true;
+    }
+
+    private async Task RecalculateFacultyShares()
+    {
+        if (IsNew || facShare == null) return;
+        facShareError = null;
+        try
+        {
+            var updated = await FacultyShareSvc.PreviewProductSharesAsync(Id, facShare);
+            if (updated != null) facShare = updated;
+        }
+        catch (Exception ex) { facShareError = ex.Message; }
+    }
+
+    private async Task SaveFacultyShares()
+    {
+        if (IsNew || facShare == null) return;
+        facShareSaving = true; facShareError = null;
+        try
+        {
+            var (ok, err) = await FacultyShareSvc.SaveProductSharesAsync(Id, facShare, await GetActorIdAsync());
+            if (!ok)
+            {
+                facShareError = err;
+                Toast.Error(err ?? "Could not save faculty shares.");
+                // Re-price the rejected form so the meter shows WHY it was rejected instead of the
+                // stale pre-edit totals.
+                await RecalculateFacultyShares();
+                return;
+            }
+            await LoadFacultySharesAsync();
+            Toast.Success("Faculty shares saved.");
+        }
+        catch (Exception ex) { facShareError = ex.Message; Toast.Error(ex.Message); }
+        finally { facShareSaving = false; }
+    }
+
+    // ── Book Preview state ─────────────────────────────────────────────────
+    private ProductBookPreviewEdit? bookPreview;
+    private bool bpSaving, bpUploadingCover, bpUploadingPdf;
+    private string? bpMsg;
+
+    private async Task SaveBookPreview()
+    {
+        if (IsNew || bookPreview == null) return;
+        bpSaving = true; bpMsg = null;
+        try
+        {
+            var (ok, err) = await BookPreviewSvc.SaveAsync(Id, bookPreview);
+            if (ok) { bpMsg = "Book preview saved."; Toast.Success("Book preview saved."); }
+            else   { bpMsg = err; Toast.Error(err ?? "Save failed."); }
+        }
+        finally { bpSaving = false; }
+    }
+
+    // ── Testimonials editor ─────────────────────────────────────────────────
+    // Validation error surfaced at the top of the section when DoSave() detects
+    // an invalid URL. Cleared on every save attempt before re-checking.
+    private string? testimonialError;
+
+    private void AddTestimonial()
+    {
+        if (model == null) return;
+        model.Testimonials.Add(new ProductTestimonialEdit
+        {
+            DisplayOrder = model.Testimonials.Count + 1,
+            IsActive = true,
+        });
+    }
+
+    /// <summary>
+    /// Pre-flight validation called by <see cref="DoSave"/> before invoking
+    /// the service. Rejects rows whose URL doesn't parse to a YouTube video id.
+    /// </summary>
+    private bool ValidateTestimonials(out string? err)
+    {
+        if (model == null) { err = null; return true; }
+        for (var i = 0; i < model.Testimonials.Count; i++)
+        {
+            var t = model.Testimonials[i];
+            if (string.IsNullOrWhiteSpace(t.YoutubeUrl)) continue;   // blank rows get skipped on save
+            var (id, _) = YouTubeUrlHelpers.Parse(t.YoutubeUrl);
+            if (id == null)
+            {
+                err = $"Row {i + 1}: Please enter a valid YouTube video URL.";
+                return false;
+            }
+        }
+        err = null;
+        return true;
+    }
+
+    private async Task OnBookPreviewPdfUpload(InputFileChangeEventArgs e)
+    {
+        if (IsNew || bookPreview == null) return;
+        var file = e.File;
+        if (file == null) return;
+        const long maxBytes = 50 * 1024 * 1024;   // 50 MB — configurable later via Settings
+        if (file.Size > maxBytes) { bpMsg = "PDF too large — max 50 MB."; return; }
+
+        bpUploadingPdf = true; bpMsg = null;
+        StateHasChanged();                       // make "Uploading…" appear immediately
+
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            var (ok, err) = await BookPreviewSvc.AttachPdfAsync(Id, stream, file.Name);
+            if (!ok)
+            {
+                bpMsg = err;
+                Toast.Error(err ?? "Upload failed.");
+                return;
+            }
+            // Re-fetch so the editor reflects the new PdfRelativePath.
+            bookPreview = await BookPreviewSvc.GetForAdminAsync(Id) ?? bookPreview;
+            bpMsg = "Book Preview updated successfully.";
+            Toast.Success("Book Preview updated successfully.");
+        }
+        catch (Exception ex)
+        {
+            // Surface the failure instead of letting Blazor swallow it — without this,
+            // an exception thrown during AttachPdfAsync would leave the upload button
+            // stuck on "Uploading…" because the finally would never run if the page
+            // was disposed mid-flight.
+            bpMsg = $"Upload failed: {ex.Message}";
+            Toast.Error(bpMsg);
+            Console.Error.WriteLine($"[hjc.bp] Upload exception: {ex}");
+        }
+        finally
+        {
+            bpUploadingPdf = false;
+            StateHasChanged();                   // force the button back to "Upload PDF"
+        }
+    }
+
+    private async Task OnBookPreviewCoverUpload(InputFileChangeEventArgs e)
+    {
+        if (IsNew || bookPreview == null) return;
+        var file = e.File;
+        if (file == null) return;
+        const long maxBytes = 4 * 1024 * 1024;
+        if (file.Size > maxBytes) { bpMsg = "Cover too large — max 4 MB."; return; }
+        var ext = System.IO.Path.GetExtension(file.Name);
+        bpUploadingCover = true; bpMsg = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            // Cover reuses the existing product-asset uploader so the URL is directly browser-renderable.
+            var (ok, err, url) = await Svc.UploadHomeCardImageAsync(Id, ext, stream);
+            if (ok && !string.IsNullOrWhiteSpace(url)) { bookPreview.CoverImageUrl = url; bpMsg = "Cover updated."; }
+            else { bpMsg = err ?? "Upload failed."; }
+        }
+        finally { bpUploadingCover = false; }
+    }
+
+    private void OnCategory(ChangeEventArgs e) { if (model != null) model.CategoryId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; }
+    private bool subOpen;
+
+    /// <summary>Add/remove a subject. The first in the list is the primary, so SubjectId — which the
+    /// storefront card and every financial report still read — is kept in step with it here, exactly
+    /// as ToggleFacultyId does for PrimaryFacultyId.</summary>
+    private void ToggleSubjectId(Guid id)
+    {
+        if (model == null) return;
+        if (!model.SubjectIds.Remove(id)) model.SubjectIds.Add(id);
+        model.SubjectId = model.SubjectIds.Count > 0 ? model.SubjectIds[0] : null;
+    }
+    private void OnFaculty(ChangeEventArgs e) { if (model != null) model.PrimaryFacultyId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; }
+
+    // ── Multi-select toggle helpers ──
+    private void ToggleCategoryId(Guid id)
+    {
+        if (model == null) return;
+        if (!model.CategoryIds.Remove(id)) model.CategoryIds.Add(id);
+        // Keep legacy FK in sync — first selected = primary.
+        model.CategoryId = model.CategoryIds.Count > 0 ? model.CategoryIds[0] : null;
+    }
+
+    private void ToggleFacultyId(Guid id)
+    {
+        if (model == null) return;
+        if (!model.FacultyIds.Remove(id)) model.FacultyIds.Add(id);
+        // Keep legacy FK in sync — first selected = primary.
+        model.PrimaryFacultyId = model.FacultyIds.Count > 0 ? model.FacultyIds[0] : null;
+    }
+
+    private Task Save() => DoSave(stay: false);
+    private Task SaveContinue() => DoSave(stay: true);
+
+    private async Task DoSave(bool stay)
+    {
+        if (model == null) return;
+        if (string.IsNullOrWhiteSpace(model.Title)) { error = "Product name is required."; if (!IsCollapsed("info")) {} collapsed.Remove("info"); return; }
+        if (model.SellingPrice <= 0) { error = "Price must be greater than 0."; collapsed.Remove("prices"); return; }
+        // ── 📦 Estimated Delivery Information validation (matches the spec: required + max lengths). ──
+        if (string.IsNullOrWhiteSpace(model.LectureAccessTiming)) { error = "Lecture Access Timing is required."; collapsed.Remove("delivery"); return; }
+        if (model.LectureAccessTiming.Trim().Length > 100) { error = "Lecture Access Timing is too long (max 100 characters)."; collapsed.Remove("delivery"); return; }
+        if (string.IsNullOrWhiteSpace(model.NotesDispatchTimeline)) { error = "Notes Dispatch Timeline is required."; collapsed.Remove("delivery"); return; }
+        if (model.NotesDispatchTimeline.Trim().Length > 100) { error = "Notes Dispatch Timeline is too long (max 100 characters)."; collapsed.Remove("delivery"); return; }
+        if (model.EstimatedDeliveryMessage is { Length: > 500 }) { error = "Additional Delivery Message is too long (max 500 characters)."; collapsed.Remove("delivery"); return; }
+        if (!ValidateTestimonials(out var tErr))
+        {
+            testimonialError = tErr;
+            collapsed.Remove("testimonials");
+            error = tErr;
+            return;
+        }
+        testimonialError = null;
+        error = null; saving = true;
+        try
+        {
+            var newId = await Svc.SaveAsync(model);
+            // New product with default share enabled → auto-assign to franchises (honours settings).
+            if (IsNew && model.EnableDefaultFranchiseShare)
+            {
+                try { await FranchiseSvc.AutoAssignProductToFranchisesAsync(newId); } catch { }
+            }
+            saving = false;
+            Toast.Success("Product saved.");
+            if (!stay) { Nav.NavigateTo("/admin/products"); return; }
+            if (IsNew) Nav.NavigateTo($"/admin/products/{newId}");        // switch into edit mode
+            else { model = await Svc.GetForEditAsync(Id); images = await Svc.ListImagesAsync(Id); spAudit = await Svc.GetSpecialPriceAuditAsync(Id); }
+        }
+        catch (Exception ex)
+        {
+            // Walk inner exceptions — EF wraps the real DB error (e.g. NOT NULL / FK violation) inside its generic message.
+            var msg = ex.Message;
+            var inner = ex.InnerException;
+            while (inner != null) { msg += "  →  " + inner.Message; inner = inner.InnerException; }
+            error = msg; saving = false; Toast.Error(msg);
+        }
+    }
+
+    private async Task Copy()
+    {
+        if (IsNew) return;
+        try { var id = await Svc.CopyProductAsync(Id); Toast.Success("Product copied — editing the copy."); Nav.NavigateTo($"/admin/products/{id}"); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Delete()
+    {
+        if (model?.Id is Guid id) { await Svc.DeleteAsync(id); Toast.Info("Product deleted."); Nav.NavigateTo("/admin/products"); }
+    }
+
+    // ── Pictures ──
+    private void OnPicSelected(InputFileChangeEventArgs e) => newPicFile = e.File;
+
+    private async Task AddPicture()
+    {
+        if (model?.Id is not Guid pid) { Toast.Error("Save the product before adding pictures."); return; }
+        if (newPicFile == null) { Toast.Error("Choose an image file."); return; }
+        if (!newPicFile.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) { Toast.Error("Only image files are allowed."); return; }
+        picBusy = true;
+        try
+        {
+            var ext = Path.GetExtension(newPicFile.Name);
+            await using var s = newPicFile.OpenReadStream(8 * 1024 * 1024);
+            await Svc.AddImageAsync(pid, ext, s, string.IsNullOrWhiteSpace(newPicAlt) ? null : newPicAlt, string.IsNullOrWhiteSpace(newPicTitle) ? null : newPicTitle);
+            images = await Svc.ListImagesAsync(pid);
+            newPicFile = null; newPicAlt = ""; newPicTitle = "";
+            Toast.Success("Picture added.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        picBusy = false;
+    }
+
+    private async Task DeletePicture(Guid imageId)
+    {
+        await Svc.DeleteImageAsync(imageId);
+        if (model?.Id is Guid pid) images = await Svc.ListImagesAsync(pid);
+        Toast.Info("Picture removed.");
+    }
+
+    // ── Demo videos ──
+    private async Task AddVideo()
+    {
+        if (model?.Id is not Guid pid) { Toast.Error("Save the product before adding videos."); return; }
+        vidBusy = true;
+        var (ok, err, _) = await Svc.AddVideoAsync(pid, newVideoUrl, newVideoTitle);
+        vidBusy = false;
+        if (ok) { videos = await Svc.ListVideosAsync(pid); newVideoUrl = ""; newVideoTitle = ""; Toast.Success("Demo video added."); }
+        else Toast.Error(err ?? "Could not add video.");
+    }
+
+    private async Task DeleteVideo(Guid videoId)
+    {
+        await Svc.DeleteVideoAsync(videoId);
+        if (model?.Id is Guid pid) videos = await Svc.ListVideosAsync(pid);
+        Toast.Info("Video removed.");
+    }
+
+    // ── Home/Category card image ──
+    private async Task OnHomeCardUpload(InputFileChangeEventArgs e)
+    {
+        if (model?.Id is not Guid pid) { hcMsg = "Save the product first."; hcOk = false; return; }
+        var file = e.File;
+        if (file == null) return;
+        const long maxBytes = 5 * 1024 * 1024;
+        if (file.Size > maxBytes) { hcMsg = "Image too large — max 5 MB."; hcOk = false; return; }
+        var ext = System.IO.Path.GetExtension(file.Name);
+        hcMsg = null;
+        hcUploading = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            var (ok, err, url) = await Svc.UploadHomeCardImageAsync(pid, ext, stream);
+            if (ok && !string.IsNullOrWhiteSpace(url)) { model.HomeCardImageUrl = url; hcOk = true; hcMsg = "Card image uploaded."; }
+            else { hcOk = false; hcMsg = err ?? "Upload failed."; }
+        }
+        finally { hcUploading = false; }
+    }
+
+    private async Task DeleteHomeCard()
+    {
+        if (model?.Id is not Guid pid) return;
+        var ok = await Svc.DeleteHomeCardImageAsync(pid);
+        if (ok) { model.HomeCardImageUrl = null; hcOk = true; hcMsg = "Card image removed."; }
+        else { hcOk = false; hcMsg = "Could not remove the image."; }
+    }
+
+    // ── Offer / Profile picture upload ──
+    private async Task OnOfferImageUpload(InputFileChangeEventArgs e)
+    {
+        if (model?.Id is not Guid pid) { oiMsg = "Save the product first."; oiOk = false; return; }
+        var file = e.File;
+        if (file == null) return;
+        const long maxBytes = 5 * 1024 * 1024;
+        if (file.Size > maxBytes) { oiMsg = "Image too large — max 5 MB."; oiOk = false; return; }
+        var ext = System.IO.Path.GetExtension(file.Name);
+        oiMsg = null; oiUploading = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxBytes);
+            var (ok, err, url) = await Svc.UploadOfferImageAsync(pid, ext, stream);
+            if (ok && !string.IsNullOrWhiteSpace(url)) { model.OfferImageUrl = url; oiOk = true; oiMsg = "Offer image uploaded."; }
+            else { oiOk = false; oiMsg = err ?? "Upload failed."; }
+        }
+        finally { oiUploading = false; }
+    }
+
+    private async Task DeleteOfferImage()
+    {
+        if (model?.Id is not Guid pid) return;
+        var ok = await Svc.DeleteOfferImageAsync(pid);
+        if (ok) { model.OfferImageUrl = null; oiOk = true; oiMsg = "Offer image removed."; }
+        else { oiOk = false; oiMsg = "Could not remove the image."; }
+    }
+
+    // ── Offer / Combo Recommendation handlers ──
+    private async Task LoadRecommendationsAsync()
+    {
+        if (model?.Id is not Guid pid || pid == Guid.Empty) return;
+        recoItems = await RecoSvc.ListAsync(pid);
+        // Bulk-load every Active product once so the picker is instant from here on.
+        try { recoAllProducts = await RecoSvc.ListAllActiveAsync(pid, 1000); }
+        catch { recoAllProducts = new(); }
+    }
+
+    private void ToggleRecoDropdown() => recoDropOpen = !recoDropOpen;
+
+    private void AddRecoHit(RecommendationSearchHit h)
+    {
+        if (recoItems.Any(x => x.RecommendedProductId == h.Id)) return;   // already selected — guarded by UI too
+        var nextOrder = recoItems.Count == 0 ? 1 : recoItems.Max(x => x.DisplayOrder) + 1;
+        recoItems.Add(new ProductRecommendationItem
+        {
+            Id = Guid.Empty,
+            RecommendedProductId = h.Id,
+            RecommendedTitle = h.Title,
+            RecommendedThumbUrl = h.ThumbUrl,
+            RecommendedFacultyName = h.FacultyName,
+            RecommendedPrice = h.Price,
+            DisplayOrder = nextOrder,
+            Type = RecommendationType.StudentsAlsoAdded,
+            IsActive = true
+        });
+        // Multi-select UX: keep the dropdown open + keep the query so the admin can add a few in a row.
+    }
+
+    // ── HTML5 drag & drop on the selected list ──
+    private void OnRecoDragStart(int idx) => recoDraggingIdx = idx;
+
+    private void OnRecoDrop(int targetIdx)
+    {
+        if (recoDraggingIdx is not int from || from == targetIdx) { recoDragOverIdx = null; return; }
+        var moving = recoItems[from];
+        recoItems.RemoveAt(from);
+        var to = targetIdx > from ? targetIdx - 1 : targetIdx;
+        if (to < 0) to = 0; if (to > recoItems.Count) to = recoItems.Count;
+        recoItems.Insert(to, moving);
+        // Renumber DisplayOrder by new visual position so the saved set keeps the dragged order on reload.
+        for (int i = 0; i < recoItems.Count; i++) recoItems[i].DisplayOrder = i + 1;
+        recoDraggingIdx = null; recoDragOverIdx = null;
+    }
+
+    private void OnRecoDragEnd() { recoDraggingIdx = null; recoDragOverIdx = null; }
+
+    private async Task SaveRecommendations()
+    {
+        if (model?.Id is not Guid pid) return;
+        recoSaving = true; recoMsg = null;
+        var actor = await GetActorIdAsync();
+        var (ok, err) = await RecoSvc.SaveAsync(pid, recoItems, actor);
+        recoSaving = false;
+        recoOk = ok;
+        recoMsg = ok ? "Offer / Combo Recommendations saved successfully." : (err ?? "Could not save recommendations.");
+        if (ok)
+        {
+            await LoadRecommendationsAsync();   // refresh server-assigned ids
+            try { Toast.Success("Offer / Combo Recommendations saved successfully."); } catch { /* host not mounted */ }
+        }
+        else
+        {
+            try { Toast.Error(err ?? "Could not save recommendations."); } catch { }
+        }
+    }
+
+    private async Task<Guid?> GetActorIdAsync()
+    {
+        try
+        {
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            return System.Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        }
+        catch { return null; }
+    }
+
+    private static string BatchStatusLabel(BatchStatus s) => s switch
+    {
+        BatchStatus.Upcoming => "Upcoming Batch",
+        BatchStatus.Ongoing => "Ongoing Batch",
+        BatchStatus.PreRecorded => "Pre-Recorded",
+        BatchStatus.OutOfStock => "Out Of Stock",
+        BatchStatus.ComingSoon => "Coming Soon",
+        _ => s.ToString()
+    };
+
+    private static string RecoTypeLabel(RecommendationType t) => t switch
+    {
+        RecommendationType.StudentsAlsoAdded => "Students Also Added",
+        RecommendationType.FrequentlyBoughtTogether => "Frequently Bought Together",
+        RecommendationType.CompleteYourPreparation => "Complete Your Preparation",
+        RecommendationType.CompleteYourCaKit => "Complete Your CA Kit",
+        RecommendationType.RecommendedForYou => "Recommended For You",
+        RecommendationType.Custom => "Custom",
+        _ => t.ToString()
+    };
+
+    // ── Attributes & specs helpers ──
+    private static bool HasValues(AttributeControlType ct) =>
+        ct is AttributeControlType.DropdownList or AttributeControlType.RadioList or AttributeControlType.Checkboxes;
+
+    private static string CtLabel(AttributeControlType ct) => ct switch
+    {
+        AttributeControlType.DropdownList => "Dropdown",
+        AttributeControlType.RadioList => "Radio buttons",
+        AttributeControlType.Checkboxes => "Checkboxes",
+        AttributeControlType.TextBox => "Text box",
+        AttributeControlType.MultilineTextBox => "Multiline text",
+        AttributeControlType.Datepicker => "Date picker",
+        _ => ct.ToString()
+    };
+
+    private void AddMapping() => model?.AttributeMappings.Add(new ProductAttributeMappingEdit());
+    private void AddMappingValue(ProductAttributeMappingEdit m) => m.Values.Add(new ProductAttributeValueEdit());
+
+    private void OnMappingAttr(ProductAttributeMappingEdit m, ChangeEventArgs e)
+        => m.ProductAttributeId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : Guid.Empty;
+
+    private void LoadPredefined(ProductAttributeMappingEdit m)
+    {
+        var attr = meta?.Attributes.FirstOrDefault(a => a.Id == m.ProductAttributeId);
+        if (attr == null) return;
+        foreach (var pv in attr.PredefinedValues)
+            if (!m.Values.Any(v => string.Equals(v.Name, pv.Name, StringComparison.OrdinalIgnoreCase)))
+                m.Values.Add(new ProductAttributeValueEdit { Name = pv.Name, PriceAdjustment = pv.PriceAdjustment, PriceAdjustmentUsePercentage = pv.PriceAdjustmentUsePercentage });
+    }
+
+    private void AddSpec() => model?.SpecificationAttributes.Add(new ProductSpecEdit());
+
+    private void OnSpecAttr(ProductSpecEdit s, ChangeEventArgs e)
+    {
+        s.SpecificationAttributeId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : Guid.Empty;
+        s.SpecificationAttributeOptionId = Guid.Empty;
+    }
+
+    private List<SpecOptionPick> OptionsFor(Guid specAttrId)
+        => meta?.SpecAttributes.FirstOrDefault(s => s.Id == specAttrId)?.Options ?? new();
+}

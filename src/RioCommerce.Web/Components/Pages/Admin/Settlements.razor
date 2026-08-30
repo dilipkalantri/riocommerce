@@ -1,0 +1,276 @@
+@page "/admin/settlements"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@implements IDisposable
+@inject ISettlementService Svc
+@inject IJSRuntime JS
+@inject ToastService Toast
+@inject IRealtimeBus Bus
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>Settlements — RioCommerce Admin</PageTitle>
+
+<style>
+    .stl-gen{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+    .stl-gen .fg{display:flex;flex-direction:column;gap:4px;min-width:150px}
+    .stl-gen label{font-size:12px;font-weight:600;color:var(--gray-500)}
+    .stl-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+    .stl-detail__totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px}
+    .stl-tot{background:var(--gray-50);border-radius:8px;padding:8px 10px}
+    .stl-tot .l{font-size:11px;color:var(--gray-400)}
+    .stl-tot .v{font-weight:700;color:var(--navy)}
+</style>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <h1 style="display:flex;align-items:center;gap:10px">Settlement Batches <span class="live-dot">● Live</span></h1>
+    <a href="/admin/payouts" class="btn btn-outline btn-sm">💸 All Payouts</a>
+</div>
+
+@* ── Generate batch ── *@
+<div class="data-card" style="padding:16px">
+    <div class="data-card__title" style="margin-bottom:12px">Generate a settlement batch</div>
+    <div class="stl-gen">
+        <div class="fg"><label>Beneficiary type</label>
+            <select class="form-input" @bind="genType">@foreach (var t in Enum.GetValues<PayoutType>()) { <option value="@t">@t</option> }</select>
+        </div>
+        <div class="fg"><label>From</label><input type="date" class="form-input" @bind="genFrom" /></div>
+        <div class="fg"><label>To</label><input type="date" class="form-input" @bind="genTo" /></div>
+        <button class="btn btn-primary" disabled="@busy" @onclick="Generate">@(busy ? "Working…" : "⚙ Generate")</button>
+    </div>
+    <p style="font-size:12px;color:var(--gray-400);margin-top:8px">Earnings are netted against refunds and exclude anything already settled. Zero/negative beneficiaries are skipped.</p>
+</div>
+
+@* ── Batch list ── *@
+<div class="data-card" style="margin-top:16px">
+    <div class="data-card__title">Batches</div>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Batch #</th><th>Type</th><th class="col-hide-md">Period</th><th>Beneficiaries</th><th>Net</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+            @if (batches == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:20px">Loading…</td></tr> }
+            else if (batches.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400);padding:20px">No settlement batches yet.</td></tr> }
+            else
+            {
+                @foreach (var b in batches)
+                {
+                    <tr>
+                        <td><strong>@b.BatchNumber</strong></td>
+                        <td>@b.BeneficiaryType</td>
+                        <td class="col-hide-md">@b.PeriodStartUtc.ToLocalTime().ToString("dd MMM")–@b.PeriodEndUtc.ToLocalTime().ToString("dd MMM")</td>
+                        <td>@b.BeneficiaryCount</td>
+                        <td><strong>₹@b.TotalNet.ToString("N0")</strong></td>
+                        <td><StatusBadge Label="@b.Status.ToString()" Variant="@Variant(b.Status)" /></td>
+                        <td>
+                            <div class="stl-actions">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenDetail(b.Id)">View</button>
+                                @if (b.Status == SettlementStatus.Draft)
+                                {
+                                    <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="() => Submit(b.Id)">Submit</button>
+                                    <button class="btn btn-outline btn-sm" disabled="@busy" @onclick="() => Recalculate(b.Id)">↻ Recalc</button>
+                                    <button class="btn btn-ghost btn-sm" style="color:var(--error)" disabled="@busy" @onclick="() => Cancel(b.Id)">Cancel</button>
+                                }
+                                else if (b.Status == SettlementStatus.PendingApproval)
+                                {
+                                    <span class="status status--pending">Awaiting approval</span>
+                                }
+                                else if (b.Status == SettlementStatus.Approved)
+                                {
+                                    <button class="btn btn-success btn-sm" disabled="@busy" @onclick="() => OpenMarkPaid(b.Id)">✓ Mark paid</button>
+                                    <button class="btn btn-outline btn-sm" @onclick="() => Export(b.Id)">⤓ Export</button>
+                                }
+                                else if (b.Status is SettlementStatus.Paid or SettlementStatus.Failed)
+                                {
+                                    <button class="btn btn-outline btn-sm" @onclick="() => Export(b.Id)">⤓ Export</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@* ── Detail modal ── *@
+<Modal @bind-Visible="showDetail" Title="@(detail?.Batch.BatchNumber ?? "Batch")" Size="lg">
+    <ChildContent>
+        @if (detail == null) { <div class="skel" style="height:80px"></div> }
+        else
+        {
+            <div class="stl-detail__totals">
+                <div class="stl-tot"><div class="l">Gross</div><div class="v">₹@detail.Batch.TotalGross.ToString("N0")</div></div>
+                <div class="stl-tot"><div class="l">Net</div><div class="v">₹@detail.Batch.TotalNet.ToString("N0")</div></div>
+                <div class="stl-tot"><div class="l">Beneficiaries</div><div class="v">@detail.Batch.BeneficiaryCount</div></div>
+                <div class="stl-tot"><div class="l">Status</div><div class="v"><StatusBadge Label="@detail.Batch.Status.ToString()" Variant="@Variant(detail.Batch.Status)" /></div></div>
+            </div>
+
+            <div class="table-wrap" style="max-height:300px;overflow:auto"><table>
+                <thead><tr><th>Beneficiary</th><th>Gross</th><th>Clawback</th><th>Adj</th><th>Tax</th><th>Net</th><th>Status</th></tr></thead>
+                <tbody>
+                    @foreach (var p in detail.Payouts)
+                    {
+                        <tr>
+                            <td><strong>@p.BeneficiaryName</strong></td>
+                            <td>₹@p.GrossAmount.ToString("N0")</td>
+                            <td>@(p.RefundAdjustments == 0 ? "—" : $"-₹{p.RefundAdjustments:N0}")</td>
+                            <td>@(p.Adjustments == 0 ? "—" : $"₹{p.Adjustments:N0}")</td>
+                            <td>@(p.TaxDeduction == 0 ? "—" : $"-₹{p.TaxDeduction:N0}")</td>
+                            <td><strong>₹@p.NetAmount.ToString("N0")</strong></td>
+                            <td><StatusBadge Label="@p.Status.ToString()" Variant="@Variant(p.Status)" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+
+            @if (detail.Adjustments.Count > 0)
+            {
+                <div style="margin-top:12px;font-size:13px;font-weight:600;color:var(--navy)">Adjustments</div>
+                @foreach (var a in detail.Adjustments)
+                {
+                    <div style="font-size:12.5px;color:var(--gray-500);padding:3px 0">@a.Type: ₹@a.Amount.ToString("N0") — @a.Reason <span style="color:var(--gray-400)">(@a.CreatedByName)</span></div>
+                }
+            }
+
+            @if (detail.Batch.Status == SettlementStatus.Draft)
+            {
+                <div style="margin-top:14px;border-top:1px solid var(--gray-100);padding-top:12px">
+                    <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:8px">Add batch adjustment</div>
+                    <div class="stl-gen">
+                        <div class="fg"><label>Type</label>
+                            <select class="form-input" @bind="adjType">@foreach (var t in Enum.GetValues<AdjustmentType>()) { <option value="@t">@t</option> }</select>
+                        </div>
+                        <div class="fg"><label>Amount (±)</label><input type="number" class="form-input" @bind="adjAmount" /></div>
+                        <div class="fg" style="flex:1"><label>Reason</label><input class="form-input" @bind="adjReason" /></div>
+                        <button class="btn btn-outline" disabled="@busy" @onclick="AddAdjustment">Add</button>
+                    </div>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showDetail = false">Close</button>
+        @if (detail != null) { <button class="btn btn-outline" @onclick="() => Export(detail.Batch.Id)">⤓ Export CSV</button> }
+    </Footer>
+</Modal>
+
+@* ── Mark paid modal ── *@
+<Modal @bind-Visible="showPaid" Title="Mark batch paid" Size="sm">
+    <ChildContent>
+        <div class="form-group form-group--full"><label class="form-label">Provider</label>
+            <select class="form-input" @bind="paidProvider"><option>Manual</option><option>BankTransfer</option><option>UPI</option><option>Razorpay</option></select>
+        </div>
+        <div class="form-group form-group--full"><label class="form-label">Payment reference / UTR</label><input class="form-input" @bind="paidReference" placeholder="e.g. UTR / batch transfer id" /></div>
+        <div class="form-group form-group--full"><label class="form-label">Notes (optional)</label><textarea class="form-input" rows="2" @bind="paidNotes"></textarea></div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showPaid = false">Cancel</button>
+        <button class="btn btn-success" disabled="@busy" @onclick="ConfirmMarkPaid">Confirm paid</button>
+    </Footer>
+</Modal>
+
+@code {
+    private List<SettlementBatchListItem>? batches;
+    private SettlementBatchDetailDto? detail;
+    private bool showDetail, showPaid, busy;
+    private Guid? actorId; private string actorName = "admin";
+    private int reloadToken;
+
+    // generate form
+    private PayoutType genType = PayoutType.Faculty;
+    private DateTime genFrom = new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private DateTime genTo = DateTime.UtcNow.Date.AddDays(1);
+
+    // mark-paid form
+    private Guid markPaidId;
+    private string paidProvider = "Manual", paidReference = "", paidNotes = "";
+
+    // adjustment form
+    private AdjustmentType adjType = AdjustmentType.ManualDeduction;
+    private decimal adjAmount;
+    private string adjReason = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+        await Load();
+        Bus.DataChanged += OnData;
+    }
+
+    private async Task Load() => batches = await Svc.ListBatchesAsync();
+
+    private void OnData(RealtimeEvent e) { if (e.Scope is "payouts") _ = Debounced(); }
+    private async Task Debounced()
+    {
+        var token = ++reloadToken;
+        await Task.Delay(400);
+        if (token != reloadToken) return;
+        await InvokeAsync(async () => { await Load(); if (showDetail && detail != null) detail = await Svc.GetBatchAsync(detail.Batch.Id); StateHasChanged(); });
+    }
+
+    public void Dispose() => Bus.DataChanged -= OnData;
+
+    private async Task Generate()
+    {
+        busy = true;
+        var from = DateTime.SpecifyKind(genFrom, DateTimeKind.Utc);
+        var to = DateTime.SpecifyKind(genTo, DateTimeKind.Utc);
+        var (ok, error, _) = await Svc.GenerateBatchAsync(genType, from, to, actorId, actorName);
+        busy = false;
+        if (ok) { await Load(); Toast.Success("Settlement batch generated."); } else Toast.Error(error ?? "Could not generate batch.");
+    }
+
+    private async Task OpenDetail(Guid id) { detail = await Svc.GetBatchAsync(id); showDetail = true; }
+
+    private async Task Submit(Guid id) => await Run(() => Svc.SubmitForApprovalAsync(id, actorId, actorName), "Submitted.");
+    private async Task Recalculate(Guid id) => await Run(() => Svc.RecalculateBatchAsync(id, actorId, actorName), "Recalculated.");
+    private async Task Cancel(Guid id) => await Run(() => Svc.CancelBatchAsync(id, null, actorId, actorName), "Cancelled.");
+
+    private void OpenMarkPaid(Guid id) { markPaidId = id; paidProvider = "Manual"; paidReference = ""; paidNotes = ""; showPaid = true; }
+    private async Task ConfirmMarkPaid()
+    {
+        showPaid = false;
+        await Run(() => Svc.MarkPaidAsync(markPaidId, new MarkPaidRequest(paidProvider, paidReference, paidNotes), actorId, actorName), "Batch marked paid.");
+    }
+
+    private async Task AddAdjustment()
+    {
+        if (detail == null) return;
+        await Run(() => Svc.AddAdjustmentAsync(detail.Batch.Id, new SettlementAdjustmentRequest(null, adjType, adjAmount, adjReason), actorId, actorName), "Adjustment added.");
+        adjAmount = 0; adjReason = "";
+        detail = await Svc.GetBatchAsync(detail.Batch.Id);
+    }
+
+    private async Task Run(Func<Task<(bool ok, string? error)>> action, string okMsg)
+    {
+        busy = true;
+        var (ok, error) = await action();
+        busy = false;
+        await Load();
+        if (ok) Toast.Success(okMsg); else Toast.Error(error ?? "Action failed.");
+    }
+
+    private async Task Export(Guid id)
+    {
+        var file = await Svc.ExportBatchCsvAsync(id);
+        if (file == null) { Toast.Error("Nothing to export."); return; }
+        await JS.InvokeVoidAsync("hjc.downloadCsv", file.Value.fileName, file.Value.csv);
+    }
+
+    private static string Variant(SettlementStatus s) => s switch
+    {
+        SettlementStatus.Paid => "confirmed",
+        SettlementStatus.Approved or SettlementStatus.Processing => "processing",
+        SettlementStatus.PendingApproval => "pending",
+        SettlementStatus.Failed => "danger",
+        SettlementStatus.Cancelled => "neutral",
+        _ => "neutral"
+    };
+    private static string Variant(PayoutStatus s) => s switch
+    {
+        PayoutStatus.Paid => "confirmed",
+        PayoutStatus.Approved or PayoutStatus.Processing => "processing",
+        PayoutStatus.PendingApproval => "pending",
+        PayoutStatus.Failed => "danger",
+        _ => "neutral"
+    };
+}

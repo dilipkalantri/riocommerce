@@ -1,0 +1,400 @@
+@page "/contact"
+@inject ILeadService Leads
+@inject ISiteSettingsService SettingsSvc
+
+<SeoHead Seo="@(new SeoMetadata { Title = $"Contact Us — {cfg?.CompanyName ?? "RioCommerce"}", Description = $"Get in touch with {cfg?.CompanyName ?? "us"}. Call, email or send an enquiry." })" />
+
+<style>
+    /* ── Contact page — premium redesign. Page-scoped .hj-contact-* prefix; reuses brand tokens. ── */
+    .hj-contact{padding:14px 20px 56px}
+    /* Hero */
+    .hj-contact-hero{position:relative;overflow:hidden;text-align:center;border-radius:24px;margin-top:8px;padding:clamp(34px,6vw,60px) 20px 30px;
+        background:radial-gradient(120% 130% at 50% 0%,rgba(10,199,229,.08),transparent 55%),linear-gradient(180deg,var(--gray-50),#fff);border:1px solid var(--gray-100)}
+    .hj-contact-hero__blob{position:absolute;border-radius:50%;filter:blur(52px);opacity:.5;pointer-events:none}
+    .hj-contact-hero__blob--o{width:260px;height:260px;top:-90px;left:8%;background:rgba(10,199,229,.35)}
+    .hj-contact-hero__blob--b{width:240px;height:240px;top:-70px;right:10%;background:rgba(11,69,171,.28)}
+    .hj-contact-hero__blob--g{width:200px;height:200px;bottom:-110px;left:44%;background:rgba(90,217,239,.26)}
+    .hj-contact-hero__grid{position:absolute;inset:0;background-image:radial-gradient(rgba(15,23,42,.06) 1px,transparent 1px);background-size:22px 22px;
+        -webkit-mask-image:radial-gradient(70% 70% at 50% 30%,#000,transparent 75%);mask-image:radial-gradient(70% 70% at 50% 30%,#000,transparent 75%);opacity:.7}
+    .hj-contact-hero__inner{position:relative;z-index:1}
+    .hj-contact-badge{display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:999px;font-size:11.5px;font-weight:800;letter-spacing:.8px;
+        color:var(--orange);background:rgba(10,199,229,.1);border:1px solid rgba(10,199,229,.24)}
+    .hj-contact-badge__dot{width:7px;height:7px;border-radius:50%;background:var(--orange)}
+    .hj-contact-hero h1{font-size:clamp(28px,4.4vw,42px);font-weight:800;color:var(--navy);letter-spacing:-.02em;margin:14px 0 8px;line-height:1.12}
+    .hj-contact-hero p{max-width:560px;margin:0 auto;color:var(--gray-500);font-size:clamp(14px,1.6vw,16px);line-height:1.6}
+
+    /* Quick contact cards */
+    .hj-contact-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:22px}
+    /* align-items centres the icon (a flex item); text-align centres the three
+       text lines. Applied at every width so the 4-up desktop grid, the 2-up
+       tablet grid and the stacked phone card all read the same. */
+    .hj-quick-card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;padding:18px;background:#fff;border:1px solid var(--gray-200);border-radius:18px;text-decoration:none;
+        box-shadow:0 1px 2px rgba(15,23,42,.04),0 12px 26px -18px rgba(15,23,42,.28);
+        transition:transform .35s var(--p-ease,cubic-bezier(.22,.7,.24,1)),box-shadow .35s ease,border-color .35s ease}
+    .hj-quick-card:hover,.hj-quick-card:focus-visible{transform:translateY(-6px);border-color:rgba(10,199,229,.4);outline:none;
+        box-shadow:0 6px 14px -8px rgba(15,23,42,.2),0 26px 44px -22px rgba(11,31,58,.4)}
+    .hj-quick-card__icon{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#fff;margin-bottom:8px;
+        background:linear-gradient(135deg,var(--navy),var(--navy-light));box-shadow:0 8px 18px -8px rgba(26,58,92,.55);
+        transition:transform .4s var(--p-ease,ease)}
+    .hj-quick-card:hover .hj-quick-card__icon{transform:scale(1.08) rotate(-4deg)}
+    .hj-quick-card--wa .hj-quick-card__icon{background:linear-gradient(135deg,#25d366,#128c4b)}
+    .hj-quick-card--loc .hj-quick-card__icon{background:linear-gradient(135deg,var(--orange),var(--orange-dark))}
+    .hj-quick-card__icon svg{width:22px;height:22px}
+    .hj-quick-card__label{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--gray-400)}
+    .hj-quick-card__value{font-size:15.5px;font-weight:800;color:var(--navy);line-height:1.3;word-break:break-word}
+    .hj-quick-card__hint{font-size:12.5px;color:var(--gray-500)}
+
+    /* Main two-column grid */
+    .hj-contact-main{display:grid;grid-template-columns:1.55fr 1fr;gap:22px;margin-top:22px;align-items:start}
+    .hj-contact-card{background:#fff;border:1px solid var(--gray-200);border-radius:22px;padding:clamp(20px,3vw,30px);
+        box-shadow:0 1px 2px rgba(15,23,42,.04),0 20px 46px -26px rgba(11,31,58,.4)}
+    .hj-contact-card__head{display:flex;align-items:flex-start;gap:13px;margin-bottom:20px}
+    .hj-contact-card__head-icon{flex-shrink:0;width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;color:#fff;
+        background:linear-gradient(135deg,var(--orange),var(--orange-dark));box-shadow:0 8px 18px -8px rgba(10,199,229,.6)}
+    .hj-contact-card__head-icon svg{width:22px;height:22px}
+    .hj-contact-card__title{font-size:19px;font-weight:800;color:var(--navy);line-height:1.2}
+    .hj-contact-card__sub{font-size:13px;color:var(--gray-500);margin-top:3px;line-height:1.5}
+
+    /* Form fields with leading icons */
+    .hj-field{margin-bottom:15px}
+    .hj-field__label{display:block;font-size:12.5px;font-weight:700;color:var(--gray-600);margin-bottom:7px}
+    .hj-field__label .hj-req{color:var(--orange)}
+    .hj-input-wrap{position:relative;display:flex;align-items:center}
+    .hj-input-wrap>svg{position:absolute;left:14px;width:17px;height:17px;color:var(--gray-400);pointer-events:none;transition:color .2s;z-index:1}
+    .hj-input-wrap--area>svg{top:14px}
+    .hj-input{width:100%;font-size:14px;font-family:inherit;color:var(--navy);background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:12px;
+        padding:12px 14px 12px 42px;outline:none;transition:border-color .2s,box-shadow .2s,background .2s}
+    .hj-input::placeholder{color:var(--gray-400)}
+    .hj-input:hover{border-color:var(--gray-300)}
+    .hj-input:focus{background:#fff;border-color:var(--orange);box-shadow:0 0 0 3px rgba(10,199,229,.14)}
+    .hj-input-wrap:focus-within>svg{color:var(--orange)}
+    textarea.hj-input{resize:vertical;min-height:104px;line-height:1.55}
+    select.hj-input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:34px}
+
+    /* Submit CTA */
+    .hj-submit{width:100%;display:inline-flex;align-items:center;justify-content:center;gap:9px;margin-top:6px;padding:14px 22px;border:none;border-radius:14px;cursor:pointer;
+        font-size:15px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--orange),var(--orange-dark));
+        box-shadow:0 12px 26px -10px rgba(10,199,229,.7);transition:transform .3s var(--p-ease,ease),box-shadow .3s ease,filter .3s ease}
+    .hj-submit svg{width:18px;height:18px;transition:transform .3s var(--p-ease,ease)}
+    .hj-submit:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 18px 34px -12px rgba(10,199,229,.8)}
+    .hj-submit:hover:not(:disabled) svg{transform:translateX(4px)}
+    .hj-submit:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(10,199,229,.3),0 12px 26px -10px rgba(10,199,229,.7)}
+    .hj-submit:disabled{opacity:.7;cursor:not-allowed;filter:saturate(.8)}
+
+    /* Reach-us information rows */
+    .hj-info-row{display:flex;gap:13px;padding:13px;border-radius:14px;border:1px solid transparent;text-decoration:none;
+        transition:background .25s,border-color .25s,transform .25s var(--p-ease,ease)}
+    .hj-info-row+.hj-info-row{margin-top:4px}
+    a.hj-info-row:hover,.hj-info-row--h:hover{background:var(--gray-50);border-color:var(--gray-200);transform:translateX(3px)}
+    .hj-info-row__icon{flex-shrink:0;width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--orange);
+        background:rgba(10,199,229,.1);transition:transform .3s var(--p-ease,ease)}
+    .hj-info-row:hover .hj-info-row__icon{transform:scale(1.06)}
+    .hj-info-row__icon svg{width:20px;height:20px}
+    .hj-info-row__label{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--gray-400)}
+    .hj-info-row__value{font-size:14.5px;font-weight:700;color:var(--navy);line-height:1.45;margin-top:2px}
+    .hj-info-row__value a{color:var(--navy)}
+    .hj-info-row__value a:hover{color:var(--orange)}
+    .hj-info-row__hint{font-size:12.5px;color:var(--gray-500);margin-top:2px}
+    .hj-status{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700}
+    .hj-status--open{color:#128c4b;background:rgba(37,211,102,.14)}
+    .hj-status--closed{color:var(--gray-500);background:var(--gray-100)}
+    .hj-status__dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+    .hj-status--open .hj-status__dot{animation:hj-pulse 1.8s ease-in-out infinite}
+
+    /* success + error states (kept functional) */
+    .hj-contact-ok{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:24px 8px}
+    .hj-contact-ok__icon{width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,#25d366,#128c4b);box-shadow:0 12px 26px -10px rgba(18,140,75,.7)}
+    .hj-contact-ok__icon svg{width:30px;height:30px}
+    .hj-contact-ok h3{font-size:18px;font-weight:800;color:var(--navy)}
+    .hj-contact-ok p{color:var(--gray-500);font-size:14px}
+    .hj-contact-err{display:flex;align-items:center;gap:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;padding:11px 14px;font-size:13.5px;margin-bottom:14px}
+
+    /* Entrance animations */
+    @@keyframes hj-fade-up{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+    @@keyframes hj-fade-left{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}
+    @@keyframes hj-fade-right{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
+    @@keyframes hj-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+    .hj-anim{opacity:0;animation:hj-fade-up .6s var(--p-ease,cubic-bezier(.22,.7,.24,1)) forwards}
+    .hj-contact-badge.hj-anim{animation-delay:.02s}
+    .hj-contact-hero h1.hj-anim{animation-delay:.1s}
+    .hj-contact-hero p.hj-anim{animation-delay:.2s}
+    .hj-quick-card{opacity:0;animation:hj-fade-up .55s var(--p-ease,cubic-bezier(.22,.7,.24,1)) forwards}
+    .hj-quick-card:nth-child(1){animation-delay:.24s}
+    .hj-quick-card:nth-child(2){animation-delay:.32s}
+    .hj-quick-card:nth-child(3){animation-delay:.40s}
+    .hj-quick-card:nth-child(4){animation-delay:.48s}
+    .hj-contact-main>.hj-anim--l{opacity:0;animation:hj-fade-left .6s var(--p-ease,cubic-bezier(.22,.7,.24,1)) .5s forwards}
+    .hj-contact-main>.hj-anim--r{opacity:0;animation:hj-fade-right .6s var(--p-ease,cubic-bezier(.22,.7,.24,1)) .58s forwards}
+
+    /* Responsive */
+    @@media(max-width:900px){
+        .hj-contact-quick{grid-template-columns:repeat(2,1fr)}
+        .hj-contact-main{grid-template-columns:1fr}
+        .hj-contact-main>.hj-anim--l,.hj-contact-main>.hj-anim--r{animation-name:hj-fade-up}
+    }
+    @@media(max-width:520px){
+        .hj-contact{padding:10px 14px 96px}   /* extra bottom padding so floating buttons never cover content */
+        .hj-contact-quick{gap:12px}
+        .hj-quick-card{padding:15px}
+    }
+    @@media(max-width:420px){
+        .hj-contact-quick{grid-template-columns:1fr}   /* narrow phones: full-width cards, nothing truncated */
+    }
+    /* Respect reduced-motion — show everything, no motion */
+    @@media(prefers-reduced-motion:reduce){
+        .hj-anim,.hj-quick-card,.hj-contact-main>.hj-anim--l,.hj-contact-main>.hj-anim--r{animation:none!important;opacity:1!important;transform:none!important}
+        .hj-status--open .hj-status__dot{animation:none}
+        .hj-quick-card,.hj-quick-card__icon,.hj-info-row,.hj-info-row__icon,.hj-submit,.hj-submit svg{transition:none}
+    }
+</style>
+
+<div class="container hj-contact">
+    @* ── 1. Hero ── *@
+    <section class="hj-contact-hero">
+        <span class="hj-contact-hero__blob hj-contact-hero__blob--o" aria-hidden="true"></span>
+        <span class="hj-contact-hero__blob hj-contact-hero__blob--b" aria-hidden="true"></span>
+        <span class="hj-contact-hero__blob hj-contact-hero__blob--g" aria-hidden="true"></span>
+        <span class="hj-contact-hero__grid" aria-hidden="true"></span>
+        <div class="hj-contact-hero__inner">
+            <span class="hj-contact-badge hj-anim"><span class="hj-contact-badge__dot"></span>LET'S CONNECT</span>
+            <h1 class="hj-anim">Get In Touch</h1>
+            <p class="hj-anim">Questions about courses, batches or admissions? Our team is here to help you.</p>
+        </div>
+    </section>
+
+    @* ── 2. Quick contact cards ── *@
+    <section class="hj-contact-quick">
+        @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone1))
+        {
+            <a class="hj-quick-card" href="tel:@cfg.ContactPhone1">
+                <span class="hj-quick-card__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                </span>
+                <span class="hj-quick-card__label">Call Our Team</span>
+                <span class="hj-quick-card__value">@string.Join(" / ", new[] { cfg.ContactPhone1, cfg.ContactPhone2, cfg.ContactPhone3 }.Where(p => !string.IsNullOrWhiteSpace(p)))</span>
+                @if (!string.IsNullOrWhiteSpace(cfg.BusinessHours)) { <span class="hj-quick-card__hint">@cfg.BusinessHours</span> }
+            </a>
+        }
+        @if (!string.IsNullOrWhiteSpace(cfg?.ContactEmail))
+        {
+            <a class="hj-quick-card" href="mailto:@cfg.ContactEmail">
+                <span class="hj-quick-card__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                </span>
+                <span class="hj-quick-card__label">Email Us</span>
+                <span class="hj-quick-card__value">@cfg.ContactEmail</span>
+                <span class="hj-quick-card__hint">We reply within a day</span>
+            </a>
+        }
+        @if (!string.IsNullOrWhiteSpace(waHref))
+        {
+            <a class="hj-quick-card hj-quick-card--wa" href="@waHref" target="_blank" rel="noopener">
+                <span class="hj-quick-card__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884"/></svg>
+                </span>
+                <span class="hj-quick-card__label">Chat With Us</span>
+                <span class="hj-quick-card__value">WhatsApp</span>
+                <span class="hj-quick-card__hint">Get a quick response</span>
+            </a>
+        }
+        @if (!string.IsNullOrWhiteSpace(cfg?.Address))
+        {
+            <a class="hj-quick-card hj-quick-card--loc" href="@(cfg.GoogleMapsUrl ?? $"https://maps.google.com/?q={Uri.EscapeDataString(cfg.Address)}")" target="_blank" rel="noopener">
+                <span class="hj-quick-card__icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                </span>
+                <span class="hj-quick-card__label">Visit Our Office</span>
+                <span class="hj-quick-card__value">@cfg.Address</span>
+            </a>
+        }
+    </section>
+
+    @* ── 3. Main grid: enquiry form + reach us ── *@
+    <div class="hj-contact-main">
+        @* Enquiry form card *@
+        <section class="hj-contact-card hj-anim--l">
+            <div class="hj-contact-card__head">
+                <span class="hj-contact-card__head-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H5.17L4 17.17V4Z"/><path d="M8 9h8M8 13h5"/></svg>
+                </span>
+                <div>
+                    <h2 class="hj-contact-card__title">Send An Enquiry</h2>
+                    <p class="hj-contact-card__sub">Tell us what you need and our team will get back to you.</p>
+                </div>
+            </div>
+
+            @if (sent)
+            {
+                <div class="hj-contact-ok">
+                    <span class="hj-contact-ok__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5"/></svg></span>
+                    <h3>Thanks @submittedName!</h3>
+                    <p>Our team will call you shortly.</p>
+                    <button class="btn btn-outline btn-sm" @onclick="Reset">Send another enquiry</button>
+                </div>
+            }
+            else
+            {
+                @if (error != null)
+                {
+                    <div class="hj-contact-err" role="alert">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                        @error
+                    </div>
+                }
+                <div class="hj-field">
+                    <label class="hj-field__label" for="hj-name">Name <span class="hj-req">*</span></label>
+                    <div class="hj-input-wrap">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4 20a8 8 0 0 1 16 0"/></svg>
+                        <input id="hj-name" class="hj-input" @bind="name" placeholder="Your full name" autocomplete="name" />
+                    </div>
+                </div>
+                <div class="hj-field">
+                    <label class="hj-field__label" for="hj-phone">Phone <span class="hj-req">*</span></label>
+                    <div class="hj-input-wrap">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        <input id="hj-phone" class="hj-input" @bind="phone" placeholder="10-digit mobile" inputmode="tel" autocomplete="tel" />
+                    </div>
+                </div>
+                <div class="hj-field">
+                    <label class="hj-field__label" for="hj-city">City</label>
+                    <div class="hj-input-wrap">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <input id="hj-city" class="hj-input" @bind="city" placeholder="e.g. Pune" autocomplete="address-level2" />
+                    </div>
+                </div>
+                <div class="hj-field">
+                    <label class="hj-field__label" for="hj-course">Course Interest</label>
+                    <div class="hj-input-wrap">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                        <select id="hj-course" class="hj-input" @bind="courseInterest">
+                            <option value="">Select…</option>
+                            <option value="Courses">Courses</option>
+                            <option value="Books / Study Material">Books / Study Material</option>
+                            <option value="General Enquiry">General Enquiry</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="hj-field">
+                    <label class="hj-field__label" for="hj-msg">Message</label>
+                    <div class="hj-input-wrap hj-input-wrap--area">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        <textarea id="hj-msg" class="hj-input" rows="4" @bind="message" placeholder="Tell us how we can help…"></textarea>
+                    </div>
+                </div>
+                <button class="hj-submit" disabled="@busy" @onclick="Submit">
+                    @if (busy)
+                    {
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>
+                        <span>Sending…</span>
+                    }
+                    else
+                    {
+                        <span>Submit Enquiry</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>
+                    }
+                </button>
+            }
+        </section>
+
+        @* Reach us card *@
+        <section class="hj-contact-card hj-anim--r">
+            <div class="hj-contact-card__head">
+                <span class="hj-contact-card__head-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                </span>
+                <div>
+                    <h2 class="hj-contact-card__title">Reach Us</h2>
+                    <p class="hj-contact-card__sub">We're always happy to help.</p>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(cfg?.Address))
+            {
+                <a class="hj-info-row" href="@(cfg.GoogleMapsUrl ?? $"https://maps.google.com/?q={Uri.EscapeDataString(cfg.Address)}")" target="_blank" rel="noopener">
+                    <span class="hj-info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
+                    <div>
+                        <div class="hj-info-row__label">Address</div>
+                        <div class="hj-info-row__value">@cfg.Address</div>
+                    </div>
+                </a>
+            }
+            @{ var phones = new[] { cfg?.ContactPhone1, cfg?.ContactPhone2, cfg?.ContactPhone3 }.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray(); }
+            @if (phones.Length > 0)
+            {
+                <div class="hj-info-row hj-info-row--h">
+                    <span class="hj-info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
+                    <div>
+                        <div class="hj-info-row__label">Phone</div>
+                        <div class="hj-info-row__value">@((MarkupString)string.Join(" · ", phones.Select(p => $"<a href=\"tel:{p}\">{p}</a>")))</div>
+                    </div>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(cfg?.ContactEmail))
+            {
+                <a class="hj-info-row" href="mailto:@cfg.ContactEmail">
+                    <span class="hj-info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></span>
+                    <div>
+                        <div class="hj-info-row__label">Email</div>
+                        <div class="hj-info-row__value">@cfg.ContactEmail</div>
+                    </div>
+                </a>
+            }
+            @if (!string.IsNullOrWhiteSpace(cfg?.BusinessHours))
+            {
+                <div class="hj-info-row hj-info-row--h">
+                    <span class="hj-info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+                    <div>
+                        <div class="hj-info-row__label">Business Hours</div>
+                        <div class="hj-info-row__value">@cfg.BusinessHours</div>
+                    </div>
+                </div>
+            }
+        </section>
+    </div>
+</div>
+
+@code {
+    private string name = "", phone = "", city = "", courseInterest = "", message = "";
+    private bool busy, sent;
+    private string? error, submittedName, waHref;
+    private SiteSettings? cfg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            cfg = await SettingsSvc.GetAsync();
+            if (!string.IsNullOrWhiteSpace(cfg.WhatsappNumber))
+            {
+                var num = cfg.WhatsappNumber.TrimStart('+');
+                if (!num.StartsWith("91")) num = "91" + num;
+                var msg = Uri.EscapeDataString(cfg.WhatsappMessage ?? "Hi! I'd like to enquire about your courses.");
+                waHref = $"https://wa.me/{num}?text={msg}";
+            }
+        }
+        catch { }
+    }
+
+    private async Task Submit()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(name)) { error = "Please enter your name."; return; }
+        if (string.IsNullOrWhiteSpace(phone) || phone.Trim().Length < 10) { error = "Please enter a valid 10-digit phone number."; return; }
+        busy = true;
+        try
+        {
+            await Leads.CaptureAsync(new CaptureLeadRequest(name.Trim(), phone.Trim(),
+                string.IsNullOrWhiteSpace(city) ? null : city.Trim(),
+                string.IsNullOrWhiteSpace(courseInterest) ? null : courseInterest, "contact_page",
+                string.IsNullOrWhiteSpace(message) ? null : message.Trim(),
+                LeadSource: LeadSource.ContactPage));
+            submittedName = name.Trim();
+            sent = true;
+        }
+        catch { error = "Something went wrong. Please call us instead."; }
+        busy = false;
+    }
+
+    private void Reset() { name = phone = city = courseInterest = message = ""; sent = false; error = null; }
+}

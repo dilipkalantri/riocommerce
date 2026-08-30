@@ -1,0 +1,83 @@
+@inject IJSRuntime JS
+
+@* Shared two-mode body editor for admin-authored content (CMS pages, blog posts, …).
+   Rich Text (Quill) ⇄ raw HTML / CSS. Advanced markup (<style>/<div>/<section>/tables/@media)
+   opens in HTML mode so the visual editor never loads — and therefore never strips — it. The HTML
+   textarea syncs on every keystroke (oninput), so Save always persists exactly what's on screen. *@
+
+<style>
+    .hce-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+    .hce-mode{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;color:var(--orange);background:rgba(232,114,42,.1);padding:2px 8px;border-radius:999px;vertical-align:middle}
+    .hce-area{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;white-space:pre;tab-size:2}
+</style>
+
+<div class="hce-head">
+    <label class="form-label" style="margin:0">@Label <span class="hce-mode">Editing mode: @(htmlMode ? "HTML / CSS" : "Rich Text")</span></label>
+    <button type="button" class="btn btn-ghost btn-sm" @onclick="Toggle">@(htmlMode ? "🖊 Visual editor" : "</> Edit HTML / CSS")</button>
+</div>
+@if (htmlMode)
+{
+    <textarea class="form-input hce-area" rows="@Rows" spellcheck="false" value="@Value" @oninput="OnInput"></textarea>
+    @if (!string.IsNullOrEmpty(Hint)) { <div class="form-hint">@((MarkupString)Hint)</div> }
+}
+else
+{
+    <RichText @key="editorKey" Value="@Value" ValueChanged="OnRich" MinHeight="@MinHeight" />
+}
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Body";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public int Rows { get; set; } = 16;
+    [Parameter] public string MinHeight { get; set; } = "280px";
+
+    private bool htmlMode;
+    private bool _inited;
+    private string editorKey = Guid.NewGuid().ToString();
+
+    protected override void OnParametersSet()
+    {
+        // Decide the initial mode ONCE from the first loaded value — never again, so it can't flip
+        // while the user types or after a Save & continue reload.
+        if (!_inited) { _inited = true; htmlMode = LooksAdvanced(Value); }
+    }
+
+    // Continuous sync so the model always holds the latest raw HTML/CSS before any Save.
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString();
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task OnRich(string? html)
+    {
+        Value = html;
+        await ValueChanged.InvokeAsync(html);
+    }
+
+    private async Task Toggle()
+    {
+        if (!htmlMode) { htmlMode = true; return; }   // Rich Text → HTML: always safe.
+        // HTML → Rich Text: the visual editor can't represent <style>/<div>/<section>/tables. Warn first.
+        if (LooksAdvanced(Value) &&
+            !await JS.InvokeAsync<bool>("confirm",
+                "This content contains custom HTML/CSS (e.g. <style> blocks, <div>/<section>, tables) that the visual editor cannot keep. Switching to Rich Text will remove it. Continue?"))
+            return;
+        htmlMode = false;
+        editorKey = Guid.NewGuid().ToString();   // re-init the visual editor from the current HTML
+    }
+
+    // Heuristic: markup the visual (Quill) editor can't round-trip → keep it in raw HTML mode.
+    private static bool LooksAdvanced(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return false;
+        return System.Text.RegularExpressions.Regex.IsMatch(body,
+                   @"<\s*(style|script|div|section|article|table|form|iframe|svg|figure|nav|header|footer|aside|main)\b",
+                   System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            || body.Contains("<!--")
+            || System.Text.RegularExpressions.Regex.IsMatch(body, @"@(media|keyframes|supports|font-face|import)\b",
+                   System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+}

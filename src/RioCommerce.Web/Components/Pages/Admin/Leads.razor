@@ -1,0 +1,279 @@
+@page "/admin/leads"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ILeadService Svc
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+<PageTitle>Leads — RioCommerce Admin</PageTitle>
+
+<style>
+    /* Only seven compact columns now, so drop the shared 720px floor that makes admin grids
+       scroll sideways. Everything fits down to the 640px card breakpoint. */
+    .ag__table{min-width:0}
+    .ag__wrap{overflow-x:visible}
+    .lead-interest{display:inline-block;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+    .lead-blog{display:inline-block;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+
+    /* Source tabs. Built from the admin's own tokens — no new palette. flex-wrap so they
+       stay usable on a narrow screen instead of forcing the page sideways. */
+    .lead-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+    .lead-tab{
+        display:inline-flex;align-items:center;gap:7px;
+        padding:9px 16px;border-radius:999px;cursor:pointer;
+        background:#fff;border:1px solid var(--gray-200);
+        font-family:inherit;font-size:13.5px;font-weight:700;color:var(--gray-600);
+        transition:background .2s,border-color .2s,color .2s;
+    }
+    .lead-tab:hover{border-color:var(--navy);color:var(--navy)}
+    .lead-tab.is-active{background:var(--navy);border-color:var(--navy);color:#fff}
+    .lead-tab__count{
+        display:inline-flex;align-items:center;justify-content:center;min-width:20px;
+        padding:0 6px;height:19px;border-radius:999px;font-size:11px;font-weight:800;
+        background:var(--gray-100);color:var(--gray-600);
+    }
+    .lead-tab.is-active .lead-tab__count{background:rgba(255,255,255,.22);color:#fff}
+
+    .lead-toolbar{display:flex;justify-content:flex-end;margin-bottom:10px}
+</style>
+
+<div class="page__header"><h1>Enquiries / Leads</h1></div>
+
+@* Origin tabs. Each one is a server-side LeadSource filter — nothing is filtered in the
+   browser, and each tab paginates independently because switching resets the page. *@
+<div class="lead-tabs" role="tablist">
+    @foreach (var t in Tabs)
+    {
+        <button type="button" role="tab" aria-selected="@(tab == t.Source)"
+                class="lead-tab @(tab == t.Source ? "is-active" : "")"
+                @onclick="() => SwitchTab(t.Source)">
+            @t.Label
+            <span class="lead-tab__count">@Count(t.Source)</span>
+        </button>
+    }
+</div>
+
+<div class="lead-toolbar">
+    <button class="btn btn-outline btn-sm" disabled="@exporting" @onclick="ExportExcel">
+        @(exporting ? "Exporting…" : "📊 Export Excel")
+    </button>
+</div>
+
+<AdminGrid TItem="LeadRow" GridId="leads" Items="items" Columns="cols" RowId="@(l => l.Id)"
+           Page="page" PageSize="pageSize" Total="total" OnPageChange="Go" OnPageSizeChange="SetPageSize"
+           OnRowClick="OpenLead" EmptyText="No leads found.">
+    <Filters>
+        <div class="fg"><label>Search</label>
+            <input type="text" class="form-input" placeholder="@(IsBlogTab ? "Name, phone or blog…" : "Name or phone…")"
+                   @bind="search" @bind:event="oninput" @onkeydown="OnKey" />
+        </div>
+        <div class="fg"><label>Stage</label>
+            <select class="form-input" @onchange="OnStatus">
+                <option value="">All Stages</option>
+                @foreach (var s in LeadStageMeta.Pipeline) { <option value="@((int)s)" selected="@(status == s)">@LeadStageMeta.Label(s)</option> }
+            </select>
+        </div>
+        <div class="fg"><label>Course</label>
+            <select class="form-input" @onchange="OnCourse">
+                <option value="">All Courses</option>
+                @foreach (var c in CourseOptions) { <option value="@c" selected="@(course == c)">@c</option> }
+            </select>
+        </div>
+        @* Blog dropdown is blog-tab only, and lists only blogs that actually produced leads,
+           so it can never offer an option that returns an empty table. *@
+        @if (IsBlogTab)
+        {
+            <div class="fg"><label>Blog</label>
+                <select class="form-input" @onchange="OnBlog">
+                    <option value="">All Blogs</option>
+                    @foreach (var b in blogOptions)
+                    {
+                        <option value="@b.BlogPostId" selected="@(blogId == b.BlogPostId)">@b.Title (@b.LeadCount)</option>
+                    }
+                </select>
+            </div>
+        }
+    </Filters>
+    <RowActions Context="l">
+        <a class="btn btn-ghost btn-sm ag-nowrap" href="@($"/admin/leads/{l.Id}")">Edit</a>
+    </RowActions>
+</AdminGrid>
+
+@code {
+    private List<LeadRow>? items;
+    private string search = "";
+    private LeadStatus? status;
+    private string? course;
+    private Guid? blogId;
+    private int page = 1, total;
+    private int pageSize = 20;
+    private bool exporting;
+    private List<AdminGridColumn<LeadRow>> cols = new();
+
+    private LeadSource tab = LeadSource.HomePage;
+    private LeadSourceCounts counts = new(0, 0, 0, 0);
+    private List<BlogLeadSourceOption> blogOptions = new();
+
+    private bool IsBlogTab => tab == LeadSource.Blog;
+
+    // ContactPage is a real, separately-identifiable origin (the /contact form writes it), so it
+    // gets its own tab rather than being folded into "Home Page" — mislabelling it there would be
+    // wrong, and dropping it would hide leads from the admin entirely.
+    private static readonly (LeadSource Source, string Label)[] Tabs =
+    {
+        (LeadSource.HomePage,    "Home Page Enquiries"),
+        (LeadSource.Blog,        "Blog Leads"),
+        (LeadSource.ContactPage, "Contact Page"),
+    };
+
+    private int Count(LeadSource s) => s switch
+    {
+        LeadSource.HomePage => counts.HomePage,
+        LeadSource.Blog => counts.Blog,
+        // Unclassified leads are surfaced here rather than left invisible.
+        LeadSource.ContactPage => counts.ContactPage + counts.Other,
+        _ => counts.Other,
+    };
+
+    // Same four categories the storefront forms offer.
+    private static readonly string[] CourseOptions =
+        { "Courses", "Books / Study Material", "General Enquiry", "Other" };
+
+    // No DbContext work during initialisation, on purpose.
+    //
+    // The scoped DbContext is shared by every component in the circuit, and both AdminGrid and
+    // AdminLayout's NotificationBell query it from their own OnInitializedAsync. As soon as this
+    // page also awaits a query there, two operations are in flight on one context and EF throws
+    // "a second operation was started on this context instance".
+    //
+    // That race already existed — the page's single unjoined query was just fast enough to slip
+    // through. Adding the blog join and the counts made it fire every time. Loading from
+    // OnAfterRenderAsync instead means every sibling component has finished initialising before
+    // the first query runs, so nothing overlaps. The proper cure is an IDbContextFactory, but
+    // that is a DI change across the whole app rather than something this page should do.
+    protected override void OnInitialized() => BuildColumns();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Load();
+        StateHasChanged();
+    }
+
+    private LeadFilter CurrentFilter() => new()
+    {
+        Search = search,
+        Status = status,
+        CourseInterest = course,
+        Source = tab,
+        BlogPostId = IsBlogTab ? blogId : null,
+        Page = page,
+        PageSize = pageSize,
+    };
+
+    // Deliberately compact: Message / Source / latest note / follow-up date all live on the lead
+    // detail page now, so the list stays readable without sideways scrolling. The Blog column is
+    // added only on the blog tab, where it is the point of the view.
+    private void BuildColumns()
+    {
+        cols = new()
+        {
+            new("Date") { Cell = l => @<div class="ag-stack ag-nowrap">@l.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")<span class="t">@l.CreatedAt.ToLocalTime().ToString("hh:mm tt")</span></div> },
+            new("Name") { Cell = l => @<div class="ag-cell"><span class="ag-avatar">@Initials(l.FullName)</span><span class="ag-name" title="@l.FullName">@l.FullName</span></div> },
+            new("Phone") { Cell = l => @<span class="ag-nowrap">@l.Phone</span> },
+            new("City") { Priority = GridPriority.Low, Cell = l => @<text>@(l.City ?? "—")</text> },
+            new(IsBlogTab ? "Course" : "Interest") { Priority = GridPriority.Medium, Cell = l => @<span class="lead-interest" title="@l.CourseInterest">@(l.CourseInterest ?? "—")</span> },
+        };
+
+        if (IsBlogTab)
+        {
+            cols.Add(new("Blog")
+            {
+                Priority = GridPriority.Medium,
+                // Title resolves from the BlogPost at query time. "—" means the lead predates the
+                // blog reference (migration 0030) — not that the blog is missing.
+                Cell = l => @<span class="lead-blog" title="@(l.BlogTitle ?? "Captured before blog tracking")">@(l.BlogTitle ?? "—")</span>
+            });
+        }
+
+        // Coloured badge that is still an inline stage picker. stopPropagation so changing the
+        // stage doesn't also navigate into the detail page.
+        cols.Add(new("Stage") { Cell = l => @<select class="stage-select @LeadStageMeta.Css(l.Status)" @onclick:stopPropagation="true" @onchange="e => SetStatus(l.Id, e)">@foreach (var s in LeadStageMeta.Pipeline) { <option value="@((int)s)" selected="@(s == l.Status)">@LeadStageMeta.Label(s)</option> }</select> });
+    }
+
+    private void OpenLead(LeadRow l) => Nav.NavigateTo($"/admin/leads/{l.Id}");
+
+    private async Task LoadRows()
+    {
+        var r = await Svc.ListAsync(CurrentFilter());
+        items = r.Items; total = r.TotalCount;
+    }
+
+    // Tab counts + blog dropdown. Sequential on purpose — never fire these in parallel, for the
+    // same shared-DbContext reason described in OnInitializedAsync.
+    private async Task LoadChrome()
+    {
+        counts = await Svc.CountsBySourceAsync();
+        if (blogOptions.Count == 0) blogOptions = await Svc.BlogsWithLeadsAsync();
+    }
+
+    private async Task Load()
+    {
+        await LoadRows();
+        await LoadChrome();
+    }
+
+    // Switching tabs clears the filters that do not apply and resets paging, so the two lists
+    // never share a page number or a stale blog selection.
+    private async Task SwitchTab(LeadSource s)
+    {
+        if (tab == s) return;
+        tab = s; page = 1; blogId = null; search = ""; status = null; course = null;
+        BuildColumns();
+        await Load();
+    }
+
+    private async Task ExportExcel()
+    {
+        exporting = true;
+        try
+        {
+            // Exports the CURRENT filter, minus paging — what you see is what you get.
+            var bytes = await Svc.ExportXlsxAsync(CurrentFilter());
+            var name = tab switch
+            {
+                LeadSource.Blog => "Blog_Leads",
+                LeadSource.HomePage => "Home_Page_Enquiries",
+                _ => "Contact_Page_Enquiries",
+            };
+            await Download(bytes, $"{name}_{DateTime.Now:yyyy-MM-dd}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        }
+        finally { exporting = false; }
+    }
+
+    // Same base64 anchor trick the other admin exports use.
+    private async Task Download(byte[] bytes, string fileName, string contentType)
+    {
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("eval",
+            $"(function(){{var a=document.createElement('a');a.href='data:{contentType};base64,{b64}';a.download='{fileName}';document.body.appendChild(a);a.click();a.remove();}})()");
+    }
+
+    private async Task SetStatus(Guid id, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v)) { await Svc.UpdateStatusAsync(id, (LeadStatus)v); await Load(); }
+    }
+    private async Task OnStatus(ChangeEventArgs e) { status = int.TryParse(e.Value?.ToString(), out var v) ? (LeadStatus)v : null; page = 1; await Load(); }
+    private async Task OnCourse(ChangeEventArgs e) { var v = e.Value?.ToString(); course = string.IsNullOrWhiteSpace(v) ? null : v; page = 1; await Load(); }
+    private async Task OnBlog(ChangeEventArgs e) { blogId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; page = 1; await Load(); }
+    private async Task OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") { page = 1; await Load(); } }
+    private async Task Go(int p) { page = p; await Load(); }
+    private async Task SetPageSize(int n) { pageSize = n; page = 1; await Load(); }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "–";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name.Trim()[..Math.Min(2, name.Trim().Length)].ToUpper();
+    }
+}

@@ -1,0 +1,206 @@
+@page "/admin/logs"
+@page "/admin/logs/{Id:guid}"
+@using RioCommerce.Core.DTOs.Logs
+@using RioCommerce.Core.Enums
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,support,backend_user")]
+@inject IAppLogService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+<PageTitle>Application Logs — RioCommerce Admin</PageTitle>
+
+@*
+    Persistent application log viewer. List view with filters on the left; expanded
+    detail panel when ?id= is in the URL or the user clicks a row.
+*@
+
+<style>
+    .lg-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:14px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; margin-bottom:14px }
+    .lg-toolbar .form-input, .lg-toolbar .form-select { font-size:13px; padding:7px 10px; min-width:140px }
+    .lg-toolbar .form-input[type="search"] { min-width:240px }
+    .lg-tbl { width:100%; border-collapse:collapse; font-size:13px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden }
+    .lg-tbl th, .lg-tbl td { padding:9px 11px; border-bottom:1px solid var(--gray-100); text-align:left; vertical-align:top }
+    .lg-tbl th { background:var(--gray-50); font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--gray-500); font-weight:700 }
+    .lg-tbl tbody tr { cursor:pointer }
+    .lg-tbl tbody tr:hover td { background:var(--gray-50) }
+    .lg-tbl tbody tr.is-active td { background:#FEF3C7 }
+    .lg-lvl { display:inline-block; padding:2px 8px; border-radius:6px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; white-space:nowrap }
+    .lg-lvl--trace       { background:var(--gray-100); color:var(--gray-500) }
+    .lg-lvl--debug       { background:#DBEAFE; color:#1E40AF }
+    .lg-lvl--information { background:#D1FAE5; color:#065F46 }
+    .lg-lvl--warning     { background:#FEF3C7; color:#92400E }
+    .lg-lvl--error       { background:#FEE2E2; color:#991B1B }
+    .lg-lvl--critical    { background:#7F1D1D; color:#fff }
+    .lg-cat { font-size:11.5px; font-weight:600; color:var(--gray-600); background:var(--gray-100); padding:2px 7px; border-radius:5px; display:inline-block }
+    .lg-evt { font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; color:var(--gray-500) }
+    .lg-msg { font-size:13px; color:var(--navy); max-width:680px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+    .lg-time { font-size:11.5px; color:var(--gray-500); white-space:nowrap }
+    .lg-empty { padding:50px 16px; text-align:center; color:var(--gray-400) }
+    .lg-card { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:18px; margin-top:14px }
+    .lg-card__head { display:flex; align-items:center; justify-content:space-between; padding-bottom:10px; margin-bottom:12px; border-bottom:1px solid var(--gray-100); gap:10px }
+    .lg-card__title { font-weight:700; color:var(--navy); font-size:14px }
+    .lg-kv { display:grid; grid-template-columns:140px 1fr; gap:6px 14px; font-size:13px; margin-bottom:14px }
+    .lg-kv dt { color:var(--gray-500); font-weight:600 }
+    .lg-kv dd { margin:0; color:var(--navy); word-break:break-word }
+    .lg-pre { background:#0F172A; color:#E2E8F0; padding:14px; border-radius:10px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11.5px; line-height:1.55; max-height:300px; overflow:auto; white-space:pre-wrap; word-break:break-all }
+    .lg-pre--err { background:#7F1D1D }
+</style>
+
+<div class="page__header">
+    <h1>Application Logs</h1>
+    <p style="color:var(--gray-500); font-size:13.5px; margin:4px 0 0">
+        Every event the system records — warnings, errors, and key info — across all features.
+    </p>
+</div>
+
+<div class="lg-toolbar">
+    <select class="form-select" @bind="levelFilter" @bind:after="Reload">
+        <option value="">All levels</option>
+        <option value="@AppLogLevel.Information">Information +</option>
+        <option value="@AppLogLevel.Warning">Warning +</option>
+        <option value="@AppLogLevel.Error">Error +</option>
+        <option value="@AppLogLevel.Critical">Critical only</option>
+    </select>
+    <select class="form-select" @bind="categoryFilter" @bind:after="Reload">
+        <option value="">All categories</option>
+        @if (categories != null)
+        {
+            @foreach (var c in categories) { <option value="@c">@c</option> }
+        }
+    </select>
+    <input type="search" class="form-input" placeholder="Search message / event / properties…" @bind="search" @bind:after="Reload" />
+    <input type="date" class="form-input" @bind="fromDate" @bind:after="Reload" title="From date" />
+    <input type="date" class="form-input" @bind="toDate" @bind:after="Reload" title="To date" />
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
+        <span style="font-size:12.5px; color:var(--gray-500)">@(items?.Count ?? 0) entries</span>
+        <button class="btn btn-ghost btn-sm" @onclick="Reload">↻ Refresh</button>
+    </div>
+</div>
+
+@if (items == null)
+{
+    <p style="color:var(--gray-400); padding:30px 0; text-align:center">Loading…</p>
+}
+else if (items.Count == 0)
+{
+    <div class="lg-empty">
+        <div style="font-size:32px">📋</div>
+        <div style="margin-top:8px; font-size:14px">No log entries match those filters.</div>
+        <div style="margin-top:4px; font-size:12.5px">Try widening the date range or clearing filters.</div>
+    </div>
+}
+else
+{
+    <table class="lg-tbl">
+        <thead>
+            <tr>
+                <th style="width:90px">Time</th>
+                <th style="width:100px">Level</th>
+                <th style="width:140px">Category</th>
+                <th>Message</th>
+                <th style="width:60px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in items)
+            {
+                <tr class="@(detail?.Id == l.Id ? "is-active" : "")" @onclick="() => OpenDetail(l.Id)">
+                    <td><span class="lg-time">@l.CreatedAt.ToLocalTime().ToString("HH:mm:ss")<br/><span style="color:var(--gray-400)">@l.CreatedAt.ToLocalTime().ToString("dd MMM")</span></span></td>
+                    <td><span class="lg-lvl lg-lvl--@l.Level.ToString().ToLowerInvariant()">@l.Level</span></td>
+                    <td>
+                        <div class="lg-cat">@l.Category</div>
+                        @if (!string.IsNullOrEmpty(l.EventCode)) { <div class="lg-evt" style="margin-top:3px">@l.EventCode</div> }
+                    </td>
+                    <td><div class="lg-msg" title="@l.Message">@l.Message</div></td>
+                    <td style="text-align:right; color:var(--gray-400); font-size:14px">›</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @if (detail != null)
+    {
+        <div class="lg-card">
+            <div class="lg-card__head">
+                <div>
+                    <div class="lg-card__title">
+                        <span class="lg-lvl lg-lvl--@detail.Level.ToString().ToLowerInvariant()" style="margin-right:8px">@detail.Level</span>
+                        @detail.Message
+                    </div>
+                </div>
+                <button class="btn btn-ghost btn-xs" @onclick="() => detail = null">Close</button>
+            </div>
+            <dl class="lg-kv">
+                <dt>Time (UTC)</dt><dd>@detail.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss") · <span style="color:var(--gray-500)">@detail.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm:ss") local</span></dd>
+                <dt>Category</dt><dd>@detail.Category</dd>
+                @if (!string.IsNullOrEmpty(detail.EventCode)) { <dt>Event code</dt><dd><code>@detail.EventCode</code></dd> }
+                @if (detail.OrderId.HasValue)   { <dt>Order</dt><dd><a href="/admin/orders/@detail.OrderId" style="color:var(--orange)">@detail.OrderId</a></dd> }
+                @if (detail.UserId.HasValue)    { <dt>User</dt><dd><code>@detail.UserId</code></dd> }
+                @if (!string.IsNullOrEmpty(detail.EntityType)) { <dt>Entity</dt><dd>@detail.EntityType <code>@detail.EntityId</code></dd> }
+                @if (!string.IsNullOrEmpty(detail.RequestPath)) { <dt>Path</dt><dd><code>@detail.RequestPath</code></dd> }
+                @if (!string.IsNullOrEmpty(detail.Source)) { <dt>Source</dt><dd>@detail.Source</dd> }
+            </dl>
+            @if (!string.IsNullOrEmpty(detail.Properties))
+            {
+                <div style="font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--gray-500); font-weight:700; margin-bottom:6px">Properties</div>
+                <pre class="lg-pre">@PrettyJson(detail.Properties)</pre>
+            }
+            @if (!string.IsNullOrEmpty(detail.Exception))
+            {
+                <div style="font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:#991B1B; font-weight:700; margin:14px 0 6px">Exception</div>
+                <pre class="lg-pre lg-pre--err">@detail.Exception</pre>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private List<AppLogItem>? items;
+    private List<string>? categories;
+    private AppLogItem? detail;
+
+    private string levelFilter = AppLogLevel.Information.ToString();
+    private string categoryFilter = "";
+    private string search = "";
+    private DateTime? fromDate;
+    private DateTime? toDate = DateTime.Today;
+
+    protected override async Task OnInitializedAsync()
+    {
+        categories = await Svc.ListCategoriesAsync();
+        await Reload();
+        if (Id.HasValue) await OpenDetail(Id.Value);
+    }
+
+    private async Task Reload()
+    {
+        var filter = new AppLogFilter
+        {
+            MinLevel = Enum.TryParse<AppLogLevel>(levelFilter, out var lv) ? lv : null,
+            Category = string.IsNullOrEmpty(categoryFilter) ? null : categoryFilter,
+            Query = string.IsNullOrWhiteSpace(search) ? null : search.Trim(),
+            FromUtc = fromDate?.ToUniversalTime(),
+            ToUtc = toDate.HasValue ? toDate.Value.AddDays(1).AddSeconds(-1).ToUniversalTime() : null,
+            Page = 1,
+            PageSize = 200,
+        };
+        items = await Svc.ListAsync(filter);
+    }
+
+    private async Task OpenDetail(Guid id)
+    {
+        detail = await Svc.GetAsync(id);
+    }
+
+    private static string PrettyJson(string raw)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            return System.Text.Json.JsonSerializer.Serialize(doc, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch { return raw; }
+    }
+}

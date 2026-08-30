@@ -1,0 +1,93 @@
+@page "/admin/orders/pay"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,franchise_admin,backend_user")]
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+<PageTitle>Collecting Payment — RioCommerce</PageTitle>
+
+@*
+    Opened in a new tab from admin Counter / franchise order create when an online gateway
+    (Razorpay/Easebuzz) mode was chosen. Initiates payment for the EXISTING Pending order via the
+    role-gated admin-initiate endpoints, then drives the gateway popup/redirect. On success the
+    gateway's verify/callback marks the order Paid and lands on /checkout/payment-success.
+    Query: ?order=RIO-1234&gateway=razorpay|easebuzz&name=&email=&phone=
+*@
+
+<div style="max-width:520px;margin:64px auto;text-align:center;font-family:system-ui">
+    <div style="font-size:40px;margin-bottom:8px">💳</div>
+    <h2 style="margin:0 0 6px">Collecting payment…</h2>
+    <p style="color:#64748b">Order <strong>@OrderNumber</strong> via <strong>@(Gateway == "easebuzz" ? "Easebuzz" : "Razorpay")</strong>.</p>
+    @if (errorMsg != null)
+    {
+        <div style="background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;border-radius:8px;padding:12px;margin-top:16px">
+            @errorMsg
+            <div style="margin-top:10px"><button class="btn btn-primary btn-sm" @onclick="Launch">Try again</button></div>
+        </div>
+    }
+    else
+    {
+        <p style="color:#94a3b8;font-size:13px;margin-top:20px">If the payment window doesn't open automatically, allow pop-ups and click below.</p>
+        <button class="btn btn-primary" @onclick="Launch">Open payment</button>
+    }
+</div>
+
+@code {
+    private string OrderNumber = "";
+    private string Gateway = "razorpay";
+    private string? CustName, CustEmail, CustPhone;
+    private string? errorMsg;
+    private bool launched;
+
+    protected override void OnInitialized()
+    {
+        var q = ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        OrderNumber = q.TryGetValue("order", out var o) ? o : "";
+        Gateway = (q.TryGetValue("gateway", out var g) ? g : "razorpay").ToLowerInvariant();
+        CustName = q.TryGetValue("name", out var n) ? n : null;
+        CustEmail = q.TryGetValue("email", out var e) ? e : null;
+        CustPhone = q.TryGetValue("phone", out var p) ? p : null;
+    }
+
+    // Minimal dependency-free query-string parser (avoids the WebUtilities package).
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(query)) return result;
+        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0) { result[Uri.UnescapeDataString(part)] = ""; continue; }
+            var key = Uri.UnescapeDataString(part[..eq]);
+            var val = Uri.UnescapeDataString(part[(eq + 1)..].Replace('+', ' '));
+            result[key] = val;
+        }
+        return result;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !launched && !string.IsNullOrWhiteSpace(OrderNumber))
+        {
+            launched = true;
+            await Launch();
+        }
+    }
+
+    private async Task Launch()
+    {
+        errorMsg = null;
+        if (string.IsNullOrWhiteSpace(OrderNumber)) { errorMsg = "Missing order reference."; return; }
+        try
+        {
+            if (Gateway == "easebuzz")
+                await JS.InvokeVoidAsync("hjc.adminPayEasebuzz", OrderNumber);
+            else
+                await JS.InvokeVoidAsync("hjc.adminPayRazorpay", OrderNumber,
+                    new { name = CustName, email = CustEmail, contact = CustPhone });
+        }
+        catch (Exception ex)
+        {
+            errorMsg = $"Could not start the payment: {ex.Message}";
+        }
+    }
+}

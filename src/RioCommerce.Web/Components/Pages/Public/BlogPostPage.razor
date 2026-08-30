@@ -1,0 +1,1378 @@
+@page "/blog/{Slug}"
+@using System.Text.RegularExpressions
+@inject HttpClient Http
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ILeadService Leads
+
+@*  ════════════════════════════════════════════════════════════════════════
+    BLOG DETAIL — premium RioCommerce article layout.
+
+    FRONTEND ONLY. Every value on this page comes from the existing
+    BlogPostView payload (/api/content/blog/{slug}) plus the existing list
+    endpoint (/api/content/blog) for the sidebar. No DTO, service, controller,
+    route or admin change. The stored Body HTML is never modified — the
+    Enhance* helpers below only add presentation classes to a COPY of it at
+    render time, and fall back to the untouched original on any failure.
+
+    RAZOR TRAP: the style block at the bottom is parsed as markup, so a literal
+    angle-bracket tag inside a CSS comment is read as an unclosed element and
+    fails the build with RZ9980. Comments there never name tags. Media queries
+    inside it need the doubled @@ escape.
+    ════════════════════════════════════════════════════════════════════════ *@
+
+@if (loading)
+{
+    <div class="blog-post__state">Loading…</div>
+}
+else if (post == null)
+{
+    <div class="blog-post__state">
+        <h1>Post Not Found</h1>
+        <a href="/blog" class="btn btn-primary blog-post__state-btn">Back To Blog</a>
+    </div>
+}
+else
+{
+    <SeoHead Seo="@(new SeoMetadata { Title = post.SeoTitle ?? $"{post.Title} — RioCommerce", Description = post.SeoDescription ?? post.Excerpt ?? "" })" />
+
+    <div class="hjb">
+        <div class="container hjb__wrap">
+
+            @* ── Top bar: breadcrumb + published date, matching the reference ── *@
+            <div class="hjb-top">
+                <nav class="hjb-crumb" aria-label="Breadcrumb">
+                    <a href="/">Home</a><span aria-hidden="true">›</span>
+                    <a href="/blog">Blogs</a><span aria-hidden="true">›</span>
+                    @if (!string.IsNullOrWhiteSpace(post.Category))
+                    {
+                        <a href="/blog">@post.Category</a><span aria-hidden="true">›</span>
+                    }
+                    <span class="hjb-crumb__current">@Shorten(post.Title, 42)</span>
+                </nav>
+                @if (post.PublishedAt is { } topDate)
+                {
+                    <span class="hjb-top__date">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                        @topDate.ToLocalTime().ToString("dd MMM yyyy")
+                    </span>
+                }
+            </div>
+
+            @* ── 3-column shell: share rail | article | sidebar.
+                 Collapses to article-only below 1180px, with the rail turning
+                 horizontal and the sidebar dropping under the article. ── *@
+            <div class="hjb-shell">
+
+                @* ── Sticky vertical share rail (desktop only).
+                     Not aria-hidden: below 1180px this is display:none and the
+                     horizontal row takes over, so exactly one share UI is in the
+                     accessibility tree at any width. Marking it hidden while it
+                     holds focusable links would strand keyboard users. ── *@
+                <div class="hjb-rail">
+                    <div class="hjb-rail__inner">
+                        <span class="hjb-rail__label">Share</span>
+                        @ShareLinks("hjb-rail__btn")
+                    </div>
+                </div>
+
+                <main class="hjb-main">
+
+                    @* ── Hero: featured image, category, title, byline ──
+                         The featured image was previously suppressed here and
+                         shown only on cards; the redesign brings it back as the
+                         article's lead visual. *@
+                    <header class="hjb-hero">
+                        @if (!string.IsNullOrWhiteSpace(post.FeaturedImage))
+                        {
+                            <figure class="hjb-hero__figure">
+                                <img class="hjb-hero__img" src="@post.FeaturedImage" alt="@post.Title" />
+                            </figure>
+                        }
+
+                        @* The category pill that used to sit here is removed by
+                           request. post.Category itself is untouched — it still
+                           feeds the breadcrumb above, the sidebar cards and the
+                           related-post cards, and the stored value is unchanged.
+                           Restoring the pill is one span:
+                           span class="hjb-hero__cat" holding post.Category. *@
+                        <h1 class="hjb-hero__title">@post.Title</h1>
+
+                        <div class="hjb-hero__meta">
+                            <span class="hjb-hero__by">By RioCommerce</span>
+                            @if (post.PublishedAt is { } published)
+                            {
+                                <span class="hjb-hero__dot" aria-hidden="true"></span>
+                                <span class="hjb-meta__item">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+                                    @published.ToLocalTime().ToString("dd MMM yyyy")
+                                </span>
+                            }
+                            <span class="hjb-hero__dot" aria-hidden="true"></span>
+                            <span class="hjb-meta__item">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                                @post.ReadMinutes Min Read
+                            </span>
+                            @if (post.Views > 0)
+                            {
+                                <span class="hjb-hero__dot" aria-hidden="true"></span>
+                                <span class="hjb-meta__item">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+                                    @post.Views Views
+                                </span>
+                            }
+                        </div>
+                    </header>
+
+                    @* ── ⚡ In A Hurry summary. Entirely backend-driven: the points
+                         come from BlogSummaryPoints via BlogPostView, and the
+                         service returns them only when the post has ShowSummary
+                         on. No text here is authored in the page — the numbers
+                         are the stored PointNumber. Nothing renders for a post
+                         with the section off or no points saved. ── *@
+                    @if (post.SummaryPoints is { Count: > 0 })
+                    {
+                        <section class="hjb-sumbox" aria-label="Article Summary">
+                            <h2 class="hjb-sum__head">
+                                <span aria-hidden="true">⚡</span> In A Hurry? Here's The Entire Blog In 30 Seconds
+                            </h2>
+                            <ol class="hjb-sum">
+                                @foreach (var sp in post.SummaryPoints)
+                                {
+                                    <li class="hjb-sum__card" style="--n:'@sp.Number'">
+                                        <span class="hjb-sum__num" aria-hidden="true">@sp.Number</span>
+                                        <strong class="hjb-sum__title">@sp.Title</strong>
+                                        <span class="hjb-sum__desc">@sp.Description</span>
+                                    </li>
+                                }
+                            </ol>
+
+                            @* Scroll cue below the cards. A button rather than an
+                               anchor: a #hash link would be picked up by Blazor's
+                               router and push a URL, whereas this just scrolls. *@
+                            <button type="button" class="hjb-dive" @onclick="ScrollToArticle"
+                                    aria-label="Scroll down to read the full blog">
+                                <svg class="hjb-dive__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                     stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m6 9 6 6 6-6" />
+                                </svg>
+                                <span class="hjb-dive__text">Got Few Minutes? Let's Dive In!</span>
+                            </button>
+                        </section>
+                    }
+
+                    @* ── Article body. data-blog-id keeps the per-post scoped CSS
+                         contract intact — server-side prefixing targets it. ── *@
+                    @* id is the scroll target for the "Dive In" indicator above. Purely a
+                       frontend anchor — no routing, no hash in the URL. *@
+                    <article id="hjb-article-start" class="hjb-article hj-blog-post" data-blog-id="@post.Id" data-blog-slug="@post.Slug">
+                        @if (!string.IsNullOrEmpty(post.ScopedCss))
+                        {
+                            @((MarkupString)($"<style>{post.ScopedCss}</style>"))
+                        }
+                        @((MarkupString)BodyHtml)
+                    </article>
+
+                    @* ── Horizontal share row (mobile / tablet) ── *@
+                    <div class="hjb-share">
+                        <span class="hjb-share__label">Share This Article</span>
+                        <div class="hjb-share__row">
+                            @ShareLinks("hjb-share__btn")
+                        </div>
+                    </div>
+
+                    @* ── Video + counselling. Sits between the article and Explore
+                         Our Courses. Both halves are independent CMS switches, and
+                         ShowVideo is only honoured when a usable embed URL actually
+                         came back — so a post can never render an empty video frame.
+                         The whole block is skipped when neither half is on. ── *@
+                    @{
+                        var showVideo = post.ShowVideoSection && !string.IsNullOrWhiteSpace(post.YoutubeEmbedUrl);
+                        var showForm  = post.ShowCounsellingForm;
+                    }
+                    @if (showVideo || showForm)
+                    {
+                        <section class="hjb-vc @(showVideo && showForm ? "" : "hjb-vc--single")" aria-label="Video And Counselling">
+                            @if (showVideo)
+                            {
+                                <div class="hjb-vc__video">
+                                    @if (!string.IsNullOrWhiteSpace(post.VideoHeading))
+                                    {
+                                        <h2 class="hjb-vc__heading">@post.VideoHeading</h2>
+                                    }
+                                    @* src is the server-built https://www.youtube.com/embed/{id};
+                                       nothing from the editor reaches this attribute verbatim. *@
+                                    <div class="hjb-vc__frame">
+                                        <iframe src="@post.YoutubeEmbedUrl" title="@(post.VideoHeading ?? post.Title)"
+                                                loading="lazy" allowfullscreen
+                                                referrerpolicy="strict-origin-when-cross-origin"
+                                                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+                                    </div>
+                                </div>
+                            }
+
+                            @if (showForm)
+                            {
+                                <div class="hjb-vc__form">
+                                    @if (counsellingDone)
+                                    {
+                                        <div class="hjb-vc__done">
+                                            <strong>Thank You@(string.IsNullOrWhiteSpace(counselling.Name) ? "" : $", {counselling.Name}")!</strong>
+                                            <span>Our Team Will Call You Shortly.</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <h3 class="hjb-vc__form-title">Get Free Counselling Today</h3>
+                                        <p class="hjb-vc__form-sub">And Clear Up All Your Doubts</p>
+
+                                        <label class="hjb-vc__label" for="hjbvc-name">Student Name</label>
+                                        <input id="hjbvc-name" class="hjb-vc__input" maxlength="120"
+                                               @bind="counselling.Name" placeholder="Your Full Name" />
+
+                                        <label class="hjb-vc__label" for="hjbvc-phone">Mobile Number</label>
+                                        <input id="hjbvc-phone" class="hjb-vc__input" type="tel" inputmode="numeric" maxlength="15"
+                                               @bind="counselling.Phone" placeholder="10-Digit Mobile Number" />
+
+                                        <label class="hjb-vc__label" for="hjbvc-course">Course</label>
+                                        <select id="hjbvc-course" class="hjb-vc__input" @bind="counselling.Course">
+                                            @foreach (var c in CourseLinks)
+                                            {
+                                                <option value="@c.Name">@c.Name</option>
+                                            }
+                                        </select>
+
+                                        @if (counsellingError != null)
+                                        {
+                                            <div class="hjb-vc__err">@counsellingError</div>
+                                        }
+
+                                        <button type="button" class="hjb-vc__submit" disabled="@counsellingBusy"
+                                                @onclick="SubmitCounselling">
+                                            @(counsellingBusy ? "Submitting…" : "Submit")
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </section>
+                    }
+
+                    @* ── Explore Our Courses. Fully CMS-driven: titles, sub text and
+                         links come from BlogPostView.CourseCards, which the service has
+                         already filtered to enabled cards with allowlisted URLs. Nothing
+                         is hardcoded here, and the section is skipped when the post has
+                         it switched off or every card disabled — no empty block. ── *@
+                    @if (post.ShowExploreCourses && post.CourseCards is { Count: > 0 })
+                    {
+                        <section class="hjb-courses" aria-label="Explore Courses">
+                            <h2 class="hjb-courses__heading">Explore Our Courses</h2>
+                            <div class="hjb-courses__grid">
+                                @foreach (var c in post.CourseCards)
+                                {
+                                    @* Title/SubText render as plain text — never MarkupString.
+                                       External links get target/rel; internal ones stay same-tab
+                                       so Blazor's client-side navigation still applies. *@
+                                    @* An image card renders ONLY the artwork, on a transparent
+                                       container — no blue fill, gradient, overlay or filter — so
+                                       the GIF's own colours are the only ones on screen. A card
+                                       without artwork keeps the original text tile. *@
+                                    <a href="@c.Url" class="hjb-course @(c.IsImage ? "hjb-course--img" : "")"
+                                       target="@(c.IsExternal ? "_blank" : null)"
+                                       rel="@(c.IsExternal ? "noopener noreferrer" : null)">
+                                        @if (c.IsImage)
+                                        {
+                                            <img class="hjb-course__img" src="@c.ImageUrl" alt="@c.AltText" loading="lazy" />
+                                        }
+                                        else
+                                        {
+                                            <span class="hjb-course__name">@c.Title</span>
+                                            <span class="hjb-course__go">@c.SubText</span>
+                                        }
+                                    </a>
+                                }
+                            </div>
+                        </section>
+                    }
+
+                    @* ── Previous / Next ── *@
+                    @if (post.Prev != null || post.Next != null)
+                    {
+                        <nav class="hjb-nav" aria-label="More Articles">
+                            @if (post.Prev != null)
+                            {
+                                <a href="/blog/@post.Prev.Slug" class="hjb-nav__item hjb-nav__item--prev">
+                                    <span class="hjb-nav__dir"><span aria-hidden="true">←</span> Previous Article</span>
+                                    <span class="hjb-nav__title">@post.Prev.Title</span>
+                                </a>
+                            }
+                            else { <span class="hjb-nav__spacer"></span> }
+
+                            @if (post.Next != null)
+                            {
+                                <a href="/blog/@post.Next.Slug" class="hjb-nav__item hjb-nav__item--next">
+                                    <span class="hjb-nav__dir">Next Article <span aria-hidden="true">→</span></span>
+                                    <span class="hjb-nav__title">@post.Next.Title</span>
+                                </a>
+                            }
+                            else { <span class="hjb-nav__spacer"></span> }
+                        </nav>
+                    }
+                </main>
+
+                @* ── Latest Blogs sidebar. Sticky on desktop, a 2-up grid under
+                     the article on mobile. Sourced from the existing list
+                     endpoint so it does not duplicate Related Blogs below. ── *@
+                @if (latest is { Count: > 0 } || !string.IsNullOrWhiteSpace(post.PromotionalImageUrl))
+                {
+                    @* Two INDEPENDENT sections. .hjb-side__sticky only positions
+                       them as a pair — all card styling (border, background,
+                       padding, scroll) lives on .hjb-latest, so the promo below
+                       inherits none of it. *@
+                    <aside class="hjb-side">
+                        <div class="hjb-side__sticky">
+
+                        @if (latest is { Count: > 0 })
+                        {
+                        <section class="hjb-latest" aria-label="Latest Blogs">
+                            <h2 class="hjb-side__heading">Latest Blogs</h2>
+
+                            @* Split into two regions so the first three can never be
+                               scrolled out of view: the fixed region has no height cap
+                               at all, so it always shows its cards in full whatever
+                               their titles wrap to. Only items 4+ live in a scroll box,
+                               and that box is not rendered when there are 3 or fewer —
+                               so no scrollbar can appear then.
+                               Presentation only: the service still returns the same
+                               published, current-excluded, newest-first Take(5). *@
+                            <div class="hjb-side__list hjb-side__list--fixed">
+                                @foreach (var l in latest.Take(VisibleLatest)) { @MiniCard(l) }
+                            </div>
+
+                            @if (latest.Count > VisibleLatest)
+                            {
+                                <div class="hjb-side__list hjb-side__list--scroll">
+                                    @foreach (var l in latest.Skip(VisibleLatest)) { @MiniCard(l) }
+                                </div>
+                            }
+                        </section>
+                        }
+
+                        @* ── Promotional image — its own section, a SIBLING of the
+                             Latest Blogs card, never inside it. This post's own
+                             PromotionalImageUrl; no homepage-banner dependency.
+                             Square 350×350 via CSS, object-fit:cover. Omitted
+                             entirely when unset. ── *@
+                        @if (!string.IsNullOrWhiteSpace(post.PromotionalImageUrl))
+                        {
+                            <section class="hjb-promo" aria-label="Promotion">
+                                @* Wrapped in an anchor ONLY when a hyperlink is configured — with no
+                                   link the image stays a plain picture rather than an empty href.
+                                   External opens in a new tab, internal stays same-tab: the same
+                                   convention the Explore Our Courses cards already use. *@
+                                @if (!string.IsNullOrWhiteSpace(post.PromotionalImageLinkUrl))
+                                {
+                                    <a href="@post.PromotionalImageLinkUrl" class="hjb-promo__link"
+                                       aria-label="View promotional offer"
+                                       target="@(post.PromotionalImageLinkIsExternal ? "_blank" : null)"
+                                       rel="@(post.PromotionalImageLinkIsExternal ? "noopener noreferrer" : null)">
+                                        <img class="hjb-promo__img" src="@post.PromotionalImageUrl"
+                                             alt="@post.Title" loading="lazy" />
+                                    </a>
+                                }
+                                else
+                                {
+                                    <img class="hjb-promo__img" src="@post.PromotionalImageUrl"
+                                         alt="@post.Title" loading="lazy" />
+                                }
+                            </section>
+                        }
+
+                        </div>
+                    </aside>
+                }
+            </div>
+
+            @* Related Blogs removed by request. post.Related still arrives in the
+               existing /api/content/blog/{slug} payload — it was never a separate
+               request, so nothing extra is being fetched — and the DTO and service
+               are deliberately left untouched. The page now ends at the back link. *@
+
+            <div class="hjb-back">
+                <a href="/blog" class="hjb-back__link"><span aria-hidden="true">←</span> Back To All Blogs</a>
+            </div>
+        </div>
+    </div>
+}
+
+@* Share buttons are identical in the vertical rail and the horizontal row, so
+   they are declared once. Targets and query strings are unchanged from the
+   previous implementation — only the markup around them is new. *@
+@{
+    // One Latest Blogs card. Declared once so the fixed and scrolling regions
+    // render identical markup.
+    RenderFragment MiniCard(BlogListItem l) =>
+    @<text>
+        <a href="/blog/@l.Slug" class="hjb-mini">
+            <span class="hjb-mini__media">
+                @if (!string.IsNullOrWhiteSpace(l.FeaturedImage))
+                {
+                    <img class="hjb-mini__img" src="@l.FeaturedImage" alt="@l.Title" loading="lazy" />
+                }
+                else
+                {
+                    <span class="hjb-mini__ph" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></svg>
+                    </span>
+                }
+            </span>
+            <span class="hjb-mini__body">
+                <span class="hjb-mini__title">@l.Title</span>
+                <span class="hjb-mini__meta">
+                    @if (!string.IsNullOrWhiteSpace(l.Category)) { @l.Category }
+                    @if (!string.IsNullOrWhiteSpace(l.Category) && l.PublishedAt is not null) { <span aria-hidden="true"> · </span> }
+                    @if (l.PublishedAt is { } lp) { @lp.ToLocalTime().ToString("dd MMM yyyy") }
+                </span>
+            </span>
+        </a>
+    </text>;
+
+    RenderFragment ShareLinks(string cls) =>
+    @<text>
+        <a class="@cls @(cls)--wa" href="https://wa.me/?text=@ShareText" target="_blank" rel="noopener" title="Share On WhatsApp" aria-label="Share On WhatsApp">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.2-1.7-.9-2-1-.3-.1-.5-.1-.7.2l-.9 1.1c-.2.2-.3.2-.6.1-1.6-.7-2.7-1.7-3.6-3.3-.2-.4 0-.5.2-.7l.6-.7c.1-.2.1-.4 0-.6l-.9-2.1c-.2-.5-.4-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-1.2 1.2-1.1 2.8-.1 4.4 1.2 2 3 3.6 5.4 4.4 1.8.6 2.9.4 3.7-.2.5-.4.8-1 .9-1.5.1-.4 0-.6-.1-.7ZM12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Z" /></svg>
+        </a>
+        <a class="@cls @(cls)--tg" href="https://t.me/share/url?url=@EncodedUrl&text=@EncodedTitle" target="_blank" rel="noopener" title="Share On Telegram" aria-label="Share On Telegram">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 4.3 18.8 19c-.2 1-.9 1.3-1.7.8l-4.7-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.4-4.9 8.9-8c.4-.3-.1-.5-.6-.2L6.9 12.8l-4.7-1.5c-1-.3-1-1 .2-1.5l18.3-7c.9-.3 1.6.2 1.2 1.5Z" /></svg>
+        </a>
+        <a class="@cls @(cls)--li" href="https://www.linkedin.com/sharing/share-offsite/?url=@EncodedUrl" target="_blank" rel="noopener" title="Share On LinkedIn" aria-label="Share On LinkedIn">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.9 21H3.6V9.2h3.3V21ZM5.3 7.8A1.9 1.9 0 1 1 5.3 4a1.9 1.9 0 0 1 0 3.8ZM21 21h-3.3v-5.8c0-1.4 0-3.2-2-3.2s-2.2 1.5-2.2 3.1V21H10V9.2h3.1v1.6h.1a3.5 3.5 0 0 1 3.1-1.7c3.3 0 3.9 2.2 3.9 5V21Z" /></svg>
+        </a>
+        <a class="@cls @(cls)--x" href="https://twitter.com/intent/tweet?url=@EncodedUrl&text=@EncodedTitle" target="_blank" rel="noopener" title="Share On X" aria-label="Share On X">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 3h3.1l-6.8 7.7L21.8 21h-6.3l-4.9-6.4L4.9 21H1.8l7.2-8.3L2 3h6.4l4.4 5.9L17.5 3Zm-1.1 16.1h1.7L7.7 4.8H5.9l10.5 14.3Z" /></svg>
+        </a>
+        <a class="@cls @(cls)--fb" href="https://www.facebook.com/sharer/sharer.php?u=@EncodedUrl" target="_blank" rel="noopener" title="Share On Facebook" aria-label="Share On Facebook">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.3v7A10 10 0 0 0 22 12Z" /></svg>
+        </a>
+        <button type="button" class="@cls @(cls)--copy @(copied ? "is-copied" : "")" @onclick="CopyLink" title="Copy Link" aria-label="Copy Link">
+            @if (copied)
+            {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+            }
+            else
+            {
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12.2 19" /></svg>
+            }
+        </button>
+    </text>;
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    private BlogPostView? post;
+    private List<BlogListItem> latest = new();
+    private bool loading = true;
+    private bool copied;
+
+    // Sidebar cap. Not a hardcoded post count — if fewer published posts exist,
+    // every one of them shows.
+    private const int SidebarMax = 5;
+
+    // How many Latest Blogs are always on screen. Items beyond this go into the
+    // scroll region; at or below it, no scroll region is rendered at all.
+    private const int VisibleLatest = 3;
+
+    // ── Counselling form. Captured through the existing ILeadService pipeline —
+    //    the same CaptureLeadRequest the homepage enquiry popup uses, so these
+    //    land in the admin Leads list with no new table, DTO or endpoint. The
+    //    source tag is the only thing that differs, so blog-sourced leads stay
+    //    filterable. ──
+    private sealed class CounsellingForm
+    {
+        public string Name { get; set; } = "";
+        public string Phone { get; set; } = "";
+        public string Course { get; set; } = "General Enquiry";
+    }
+
+    private CounsellingForm counselling = new();
+    private bool counsellingBusy, counsellingDone;
+    private string? counsellingError;
+
+    private async Task SubmitCounselling()
+    {
+        counsellingError = null;
+
+        var name = (counselling.Name ?? "").Trim();
+        var phone = new string((counselling.Phone ?? "").Where(char.IsDigit).ToArray());
+
+        if (name.Length < 2) { counsellingError = "Please enter your name."; return; }
+        // 10 digits, optionally with a 91 country prefix — matches how phone numbers
+        // are entered elsewhere on the site.
+        if (phone.Length is < 10 or > 12) { counsellingError = "Please enter a valid 10-digit mobile number."; return; }
+
+        counsellingBusy = true;
+        try
+        {
+            // post.Id is the blog currently being read — never hardcoded — so the admin can
+            // see exactly which article produced the lead.
+            await Leads.CaptureAsync(new CaptureLeadRequest(
+                name, phone, null, counselling.Course, "blog_counselling",
+                LeadSource: LeadSource.Blog, BlogPostId: post!.Id));
+            counsellingDone = true;
+        }
+        catch
+        {
+            counsellingError = "Something went wrong. Please try again.";
+        }
+        counsellingBusy = false;
+    }
+
+    private string EncodedUrl => Uri.EscapeDataString(Nav.Uri);
+    private string EncodedTitle => Uri.EscapeDataString(post?.Title ?? "");
+    private string ShareText => Uri.EscapeDataString($"{post?.Title} {Nav.Uri}");
+
+    // Options for the counselling form's Course dropdown ONLY. The "Explore Our Courses"
+    // cards no longer come from here — they are per-post CMS data (post.CourseCards). The
+    // Url side is unused now but kept so the tuple still documents where each option points.
+    private static readonly (string Name, string Url)[] CourseLinks =
+    {
+        ("Courses",          "/courses"),
+        ("Books",            "/books"),
+        ("Other",            "/contact"),
+    };
+
+    private static string Shorten(string s, int max) => s.Length > max ? s[..max] + "…" : s;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        copied = false;
+
+        try { var r = await Http.GetFromJsonAsync<ApiResponse<BlogPostView>>($"/api/content/blog/{Slug}"); post = r?.Data; }
+        catch { post = null; }
+
+        // Sidebar list — existing published-posts endpoint, no new API. That
+        // endpoint already filters Status == Published, so nothing unpublished
+        // can reach the sidebar.
+        //
+        // It orders by DisplayOrder then PublishedAt DESC. The sidebar is
+        // specified as newest-first, so the date sort is re-applied here rather
+        // than changing the shared service (the /blog listing depends on the
+        // editor's manual DisplayOrder and must keep it).
+        //
+        // Fetching one more than we show means excluding the current post still
+        // leaves a full list. A failure here hides the sidebar and never breaks
+        // the article.
+        latest = new();
+        if (post != null)
+        {
+            try
+            {
+                var l = await Http.GetFromJsonAsync<ApiResponse<PagedResult<BlogListItem>>>(
+                    $"/api/content/blog?page=1&pageSize={SidebarMax + 1}");
+                latest = (l?.Data?.Items ?? new())
+                    .Where(x => !string.Equals(x.Slug, post.Slug, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(x => x.PublishedAt ?? DateTime.MinValue)
+                    .Take(SidebarMax)
+                    .ToList();
+            }
+            catch { latest = new(); }
+        }
+
+        loading = false;
+    }
+
+    /// <summary>
+    /// Smooth-scrolls to the top of the article body. Not scrollIntoView({block:'start'}):
+    /// that would park the first line underneath the sticky site header, so the target is
+    /// offset by the header's measured height rather than a guessed constant. Honours
+    /// prefers-reduced-motion by jumping instead of animating.
+    /// </summary>
+    private async Task ScrollToArticle()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", """
+                (function(){
+                  var el = document.getElementById('hjb-article-start');
+                  if (!el) return;
+                  // The header's BOTTOM edge, not its height: it sits below a contact
+                  // strip, so height (84px) left the first line tucked under it.
+                  var header = document.querySelector('.header');
+                  var offset = (header ? header.getBoundingClientRect().bottom : 0) + 18;
+                  var top = el.getBoundingClientRect().top + window.scrollY - offset;
+                  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                  window.scrollTo({ top: Math.max(0, top), behavior: reduce ? 'auto' : 'smooth' });
+                })()
+                """);
+        }
+        catch { }   // a scroll convenience must never break the page
+    }
+
+    private async Task CopyLink()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", Nav.Uri); copied = true; }
+        catch { }
+    }
+
+    // ── Presentation-only body enhancement ───────────────────────────────
+    // Adds CSS hooks to a COPY of the stored HTML so authored content can render
+    // as the designed components. Nothing is added, removed or reworded: only
+    // class attributes are injected. Any regex miss simply leaves that pattern
+    // as ordinary prose, and any exception returns the original string.
+    // The summary is no longer scraped out of the body — it comes from
+    // BlogPostView.SummaryPoints. The body renders as authored.
+    private string BodyHtml => Enhance(post?.Body ?? "");
+
+    private static readonly TimeSpan RxTimeout = TimeSpan.FromMilliseconds(250);
+    private const RegexOptions RxOpts = RegexOptions.IgnoreCase | RegexOptions.Singleline;
+
+    private static string Enhance(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return html;
+        try
+        {
+            // No "in a hurry" rule here by design. That section is now real CMS
+            // data (BlogPost.ShowSummary + BlogSummaryPoints) rendered above the
+            // article, so scraping the body for it would duplicate the section
+            // and tie it back to hand-written HTML headings.
+            html = TagListAfterHeading(html, "opportunit",  "hjb-chips", "hjb-chips__head");
+            html = WrapCallout(html, "think about it");
+            return html;
+        }
+        catch
+        {
+            // Never let a presentation tweak cost the reader the article.
+            return html;
+        }
+    }
+
+    // Finds a heading containing <phrase> and adds a class to it plus to the
+    // list element that immediately follows it.
+    private static string TagListAfterHeading(string html, string phrase, string listCls, string headCls)
+    {
+        // The level backreference MUST be named. .NET numbers unnamed groups
+        // before named ones, so with (?<head>…) present a plain ([1-6]) becomes
+        // group 1 and \2 silently resolves to "head" — the pattern then matches
+        // nothing at all, with no error to notice.
+        var rx = new Regex(
+            @"(?<head><h(?<lvl>[1-6])\b[^>]*>(?:(?!</h\k<lvl>>).)*?" + Regex.Escape(phrase) + @"(?:(?!</h\k<lvl>>).)*?</h\k<lvl>>)" +
+            @"(?<gap>\s*)" +
+            @"(?<open><(?:ul|ol)\b)",
+            RxOpts, RxTimeout);
+
+        return rx.Replace(html, m =>
+            AddClass(m.Groups["head"].Value, headCls) + m.Groups["gap"].Value +
+            m.Groups["open"].Value + $" class=\"{listCls}\"", 1);
+    }
+
+    // Wraps a heading containing <phrase> together with the run of content that
+    // follows it (up to the next heading) in a callout container.
+    private static string WrapCallout(string html, string phrase)
+    {
+        var rx = new Regex(
+            @"(?<head><h(?<lvl>[1-6])\b[^>]*>(?:(?!</h\k<lvl>>).)*?" + Regex.Escape(phrase) + @"(?:(?!</h\k<lvl>>).)*?</h\k<lvl>>)" +
+            @"(?<rest>(?:(?!<h[1-6]\b).)*)",
+            RxOpts, RxTimeout);
+
+        return rx.Replace(html, m =>
+            "<div class=\"hjb-callout\">" +
+            AddClass(m.Groups["head"].Value, "hjb-callout__head") +
+            "<div class=\"hjb-callout__body\">" + m.Groups["rest"].Value + "</div></div>", 1);
+    }
+
+    // Appends to an existing class attribute, or adds one if absent.
+    private static string AddClass(string tagHtml, string cls)
+    {
+        var withExisting = new Regex(@"^(<\w+\b[^>]*?\sclass="")([^""]*)("")", RxOpts, RxTimeout);
+        if (withExisting.IsMatch(tagHtml))
+            return withExisting.Replace(tagHtml, m => m.Groups[1].Value + m.Groups[2].Value + " " + cls + m.Groups[3].Value, 1);
+
+        var bare = new Regex(@"^(<\w+\b)", RxOpts, RxTimeout);
+        return bare.Replace(tagHtml, m => m.Groups[1].Value + $" class=\"{cls}\"", 1);
+    }
+}
+
+<style>
+    /* ═══════════════════════════════════════════════════════════════
+       BLOG DETAIL — page-scoped. Every rule sits under .hjb so nothing
+       here can reach another page or the admin panel.
+       Palette: Primary Blue #0B45AB, Azure Haze #0AC7E5.
+       ═══════════════════════════════════════════════════════════════ */
+
+    .hjb{
+        --b:#0B45AB; --b2:#0A5BCF; --b3:#082B73;
+        --a:#0AC7E5; --a2:#0AA9C4; --a3:#5AD9EF;
+        --tint:#E6F9FD; --tint2:#C9F1F9; --tintb:#E8F1FF;
+        --ink:#0F172A; --body:#42506A; --mute:#64748B; --line:#E4ECF6;
+        background:linear-gradient(180deg,#F7FBFE 0%,#FFFFFF 420px);
+        padding:0 0 clamp(36px,4vw,56px);
+    }
+    /* Fluid, matching the Blog Listing page.
+       This used to be max-width:1340px, which is why the detail page stopped
+       growing while the listing page kept filling the window — the listing's
+       wrapper is .container, and .container has NO width cap anywhere in the
+       loaded stylesheets (responsive-normalize only gives it max-width:100%).
+       So the listing was always fluid and this page was the odd one out; at
+       1920px it left ~290px of dead space down each side.
+       Deleting the cap is the whole fix. Do NOT "helpfully" add width:100% —
+       an auto-width block already fills its parent, and the explicit width
+       only creates a way to overflow it if box-sizing ever stops being
+       border-box on this subtree.
+
+       The element also carries the shared .container class now, so the page
+       opts into the same container the listing uses rather than running a
+       private one. .container only contributes max-width:100% and small-width
+       side padding; this block renders after the linked stylesheets, so the
+       padding below still wins and spacing is unchanged. */
+    .hjb__wrap{margin-inline:auto;padding:0 clamp(14px,2.2vw,28px)}
+
+    /* ── Top bar ── */
+    .hjb-top{
+        display:flex;align-items:center;justify-content:space-between;gap:14px;
+        flex-wrap:wrap;padding:14px 0 12px;
+    }
+    .hjb-crumb{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:12px;font-weight:700;
+        letter-spacing:.4px;text-transform:uppercase;color:var(--mute)}
+    .hjb-crumb a{color:var(--mute);text-decoration:none;transition:color .2s}
+    .hjb-crumb a:hover{color:var(--b)}
+    .hjb-crumb span[aria-hidden]{color:#C2CEDF}
+    .hjb-crumb__current{color:var(--b)}
+    .hjb-top__date{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+        letter-spacing:.4px;text-transform:uppercase;color:var(--mute);white-space:nowrap}
+    .hjb-top__date svg{width:14px;height:14px;flex:none;color:var(--a2)}
+
+    /* ── Shell: share rail | article | sidebar ── */
+    .hjb-shell{
+        display:grid;
+        grid-template-columns:58px minmax(0,1fr) 326px;
+        gap:clamp(18px,2.2vw,32px);
+        align-items:start;
+    }
+    .hjb-main{min-width:0}
+
+    /* ── Share rail (desktop) ──
+       STICKY, not fixed. This is what keeps it off the footer.
+
+       A fixed rail is positioned against the viewport and knows nothing about the
+       page, so it kept sliding over the footer at the bottom of a scroll. Sticky
+       is clamped by its containing block: .hjb-rail is a cell of .hjb-shell, and
+       the shell ends after the article/sidebar — above the back link, and well
+       above the footer, which is a sibling of the main element entirely (never
+       name a tag inside this style block: Razor parses it as markup). The rail therefore
+       *cannot* reach the footer, whatever the article length, footer height or
+       window size. No JS, no scroll listener, no hardcoded footer offset.
+
+       align-self:stretch is required: .hjb-shell sets align-items:start, and a
+       sticky child inside a content-height cell has no travel and just scrolls
+       away (the same trap the Latest Blogs panel hit).
+
+       top approximates vertical centring — 50vh less half the rail's height —
+       with a floor that clears the sticky site header (bottom edge 126px). */
+    .hjb-rail{position:relative;align-self:stretch}
+    .hjb-rail__inner{
+        /* Pull left into the page margin, never into the article. The grid column
+           keeps its 58px, so content width and the sidebar are untouched; only
+           this group shifts. The amount is whatever outer margin + wrap padding
+           actually exist at this width, minus a 12px minimum edge gap, capped at
+           46px — so it moves left on a wide screen and simply stops pulling on a
+           narrow one instead of running off the edge. */
+           The outer-margin term this used to add — max(0px,(100vw - 1340px)/2) —
+           is gone with the 1340px cap: a fluid wrap has no outer margin to pull
+           into, so that term was permanently 0 and only the wrap padding is
+           left to reclaim. */
+        --hjb-rail-pull:clamp(0px, calc(clamp(14px, 2.2vw, 28px) - 16px), 46px);
+        margin-left:calc(-1 * var(--hjb-rail-pull));
+
+        position:sticky;
+        top:max(138px, calc(50vh - 145px));
+        display:flex;flex-direction:column;align-items:center;gap:8px;
+    }
+    .hjb-rail__label{font-size:10px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;
+        color:var(--mute);margin-bottom:2px}
+    .hjb-rail__btn{
+        width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+        background:#fff;border:1px solid var(--line);color:var(--b);cursor:pointer;padding:0;
+        box-shadow:0 4px 12px -8px rgba(11,69,171,.5);
+        transition:transform .22s ease,background .22s ease,color .22s ease,border-color .22s ease;
+    }
+    /* responsive-normalize.css loads AFTER this page and clamps bare svgs to
+       clamp(16px,1.4vw,22px) at (0,3,1) — which made these icons drift between
+       16px and 20px across widths. Matching its :not() chain from four class
+       selectors wins the cascade and pins them at a consistent 18px. */
+    .hjb .hjb-rail .hjb-rail__inner .hjb-rail__btn svg:not([width]):not([data-large]):not(.svg-noclamp){
+        width:18px;height:18px;flex:none;
+    }
+    .hjb-rail__btn:hover{background:var(--b);border-color:var(--b);color:#fff;transform:translateY(-2px)}
+    /* Keyboard users get the same affordance as the mouse, plus a visible ring.
+       :focus-visible so a mouse click doesn't leave the ring behind. */
+    .hjb-rail__btn:focus-visible{
+        outline:none;background:var(--b);border-color:var(--b);color:#fff;
+        box-shadow:0 0 0 3px rgba(10,199,229,.45);
+    }
+    .hjb-rail__btn.is-copied{background:var(--a);border-color:var(--a);color:#fff}
+
+    /* ── Hero ── */
+    .hjb-hero{margin-bottom:clamp(18px,2vw,26px)}
+    .hjb-hero__figure{margin:0 0 16px;border-radius:22px;overflow:hidden;background:var(--tint);
+        box-shadow:0 18px 44px -26px rgba(11,31,58,.55),0 2px 6px rgba(11,31,58,.05)}
+    .hjb-hero__img{display:block;width:100%;aspect-ratio:16/7;object-fit:cover}
+    .hjb-hero__cat{
+        display:inline-block;font-size:11px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;
+        color:var(--b);background:var(--tint);border:1px solid rgba(11,69,171,.2);
+        padding:5px 13px;border-radius:999px;margin-bottom:10px;
+    }
+    /* Title sizing is stepped per breakpoint rather than one wide clamp, so each
+       band lands inside the spec: desktop 42-52, tablet 34-42, mobile 26-32.
+       A single clamp undershot the tablet floor at ~900px. */
+    .hjb-hero__title{
+        font-size:clamp(42px,3.4vw,48px);font-weight:800;color:var(--b);
+        line-height:1.16;letter-spacing:-.6px;margin:0 0 12px;
+    }
+    .hjb-hero__meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px 11px;
+        font-size:13px;font-weight:600;color:var(--mute);
+        padding-bottom:16px;border-bottom:1px solid var(--line)}
+    .hjb-hero__by{font-weight:800;color:var(--b)}
+    .hjb-hero__dot{width:4px;height:4px;border-radius:50%;background:#C2CEDF;flex:none}
+    .hjb-meta__item{display:inline-flex;align-items:center;gap:6px}
+    .hjb-meta__item svg{width:14px;height:14px;flex:none;color:var(--a2)}
+
+    /* ── Article typography ── */
+    .hjb-article{font-size:16px;line-height:1.8;color:var(--body)}
+    .hjb-article > *:first-child{margin-top:0}
+    .hjb-article p{margin:0 0 16px}
+    .hjb-article h1,.hjb-article h2,.hjb-article h3,.hjb-article h4{
+        color:var(--b);font-weight:800;line-height:1.28;letter-spacing:-.3px;
+        margin:30px 0 12px;scroll-margin-top:100px;
+    }
+    .hjb-article h1{font-size:clamp(23px,2.4vw,30px)}
+    .hjb-article h2{font-size:clamp(20px,2vw,25px)}
+    .hjb-article h3{font-size:clamp(18px,1.7vw,21px)}
+    .hjb-article h4{font-size:17px}
+    /* Azure keyline under the numbered section headings */
+    .hjb-article h2::after,.hjb-article h3::after{
+        content:"";display:block;width:44px;height:3px;border-radius:2px;
+        background:linear-gradient(90deg,var(--b),var(--a));margin-top:9px;
+    }
+    .hjb-article ul,.hjb-article ol{margin:0 0 16px;padding-left:22px}
+    .hjb-article li{margin-bottom:7px}
+    .hjb-article li::marker{color:var(--a2)}
+    .hjb-article a{color:var(--b);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+    .hjb-article a:hover{color:var(--a2)}
+    .hjb-article strong,.hjb-article b{color:var(--ink);font-weight:700}
+    .hjb-article img{max-width:100%;height:auto;border-radius:16px;margin:6px 0 18px;display:block}
+    .hjb-article hr{border:0;border-top:1px solid var(--line);margin:26px 0}
+    .hjb-article iframe,.hjb-article video{
+        max-width:100%;width:100%;aspect-ratio:16/9;height:auto;border:0;border-radius:16px;margin:6px 0 18px;display:block;
+    }
+    .hjb-article table{width:100%;border-collapse:collapse;margin:0 0 18px;font-size:14.5px;display:block;overflow-x:auto}
+    .hjb-article th,.hjb-article td{border:1px solid var(--line);padding:9px 12px;text-align:left}
+    .hjb-article th{background:var(--tint);color:var(--b);font-weight:700}
+
+    /* Authored quotes render as the accent callout. */
+    .hjb-article blockquote{
+        margin:20px 0;padding:14px 18px;border-left:4px solid var(--a);
+        background:var(--tint);border-radius:0 14px 14px 0;color:var(--ink);font-style:normal;
+    }
+    .hjb-article blockquote p:last-child{margin-bottom:0}
+
+    /* ── "Think About It" callout (class injected at render time) ── */
+    .hjb-callout{
+        margin:22px 0;padding:16px 18px 14px;border-radius:16px;
+        background:linear-gradient(135deg,var(--tint),#F4FCFE);
+        border:1px solid rgba(10,199,229,.28);border-left:4px solid var(--a);
+        box-shadow:0 10px 26px -20px rgba(11,69,171,.55);
+    }
+    .hjb-callout__head{
+        font-size:12px !important;font-weight:800 !important;letter-spacing:.9px;text-transform:uppercase;
+        color:var(--b) !important;margin:0 0 9px !important;
+    }
+    .hjb-callout__head::after{display:none !important}
+    .hjb-callout__body > *:last-child{margin-bottom:0}
+    .hjb-callout__body p{margin-bottom:7px;color:var(--ink)}
+
+    /* ── ⚡ In A Hurry summary. Backend-driven (BlogSummaryPoints), rendered
+         between the blog heading and the article. Real elements for the number,
+         title and description — no counters and no !important, because this
+         block no longer lives inside .hjb-article and so has no article
+         typography to override. ── */
+    .hjb-sumbox{
+        margin:0 0 22px;padding:14px 16px 16px;border-radius:18px;
+        background:linear-gradient(135deg,var(--tint),#F2FBFE);
+        border:1px solid rgba(10,199,229,.26);
+    }
+    .hjb-sum__head{
+        display:flex;align-items:center;gap:7px;
+        font-size:15px;font-weight:800;color:var(--b);
+        margin:0 0 12px;letter-spacing:.2px;line-height:1.3;
+    }
+    /* Desktop: all five across. Narrower breakpoints override below. */
+    .hjb-sum{
+        list-style:none;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+        gap:12px;margin:0;padding:0;
+    }
+    .hjb-sum__card{
+        list-style:none;margin:0;display:flex;flex-direction:column;gap:3px;
+        background:#fff;border:1px solid rgba(11,69,171,.12);border-radius:14px;
+        padding:13px;box-shadow:0 6px 16px -14px rgba(11,31,58,.5);
+        min-width:0;   /* long words wrap instead of widening the track */
+    }
+    .hjb-sum__card::marker{content:""}
+    .hjb-sum__num{
+        width:24px;height:24px;border-radius:50%;
+        display:inline-flex;align-items:center;justify-content:center;
+        font-size:12px;font-weight:800;color:#fff;
+        background:linear-gradient(135deg,var(--b),var(--b2));
+        margin-bottom:5px;flex:none;
+    }
+    .hjb-sum__title{
+        font-size:13.5px;font-weight:800;color:var(--b);line-height:1.35;
+        overflow-wrap:anywhere;
+    }
+    .hjb-sum__desc{
+        font-size:12.5px;line-height:1.5;color:var(--body);
+        overflow-wrap:anywhere;
+    }
+
+    /* ── "Dive in" scroll cue ──
+       A button reset to look like plain content: no default chrome, inherits the
+       page font. Column layout puts the chevron above the label, and margin:auto
+       centres it under the cards at every width. */
+    .hjb-dive{
+        display:flex;flex-direction:column;align-items:center;gap:2px;
+        margin:12px auto 0;padding:6px 12px;
+        background:none;border:0;border-radius:10px;
+        font-family:inherit;cursor:pointer;color:var(--b);
+        -webkit-appearance:none;appearance:none;
+    }
+    /* The :not() chain matches responsive-normalize's bare-svg clamp, which is
+       (0,3,1) and loads after this page — without it the chevron drifted between
+       16px and 20px depending on viewport width. */
+    .hjb-dive .hjb-dive__ico,
+    .hjb .hjb-sumbox .hjb-dive .hjb-dive__ico:not([width]):not([data-large]):not(.svg-noclamp){
+        width:20px;height:20px;flex:none;color:var(--a);
+        animation:hjb-dive-bob 1.8s ease-in-out infinite;
+    }
+    .hjb-dive__text{
+        font-size:12.5px;font-weight:800;letter-spacing:.7px;
+        /* uppercase overrides the site-wide capitalize transform */
+        text-transform:uppercase;color:var(--b);line-height:1.3;text-align:center;
+    }
+    .hjb-dive:hover .hjb-dive__ico{color:var(--b)}
+    .hjb-dive:hover .hjb-dive__text{color:var(--b2)}
+    .hjb-dive:focus-visible{
+        outline:none;box-shadow:0 0 0 3px rgba(10,199,229,.45);
+    }
+    /* Small travel, slow cycle — a cue, not a distraction. */
+    @@keyframes hjb-dive-bob{
+        0%,100%{transform:translateY(0);opacity:.85}
+        50%    {transform:translateY(4px);opacity:1}
+    }
+    /* Never animate for anyone who has asked the OS not to. */
+    @@media (prefers-reduced-motion: reduce){
+        .hjb-dive__ico{animation:none}
+    }
+
+    /* ── Career chips (class injected at render time) ── */
+    .hjb-chips__head{margin-top:24px !important}
+    .hjb-chips{
+        list-style:none !important;display:grid !important;
+        grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;
+        margin:0 0 20px !important;padding:0 !important;
+    }
+    .hjb-chips > li{
+        list-style:none;margin:0 !important;padding:11px 14px;border-radius:12px;
+        background:#fff;border:1px solid rgba(11,69,171,.16);
+        font-size:13.5px;font-weight:700;color:var(--b);line-height:1.4;
+        box-shadow:0 5px 14px -12px rgba(11,31,58,.55);
+        transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;
+    }
+    .hjb-chips > li::marker{content:""}
+    .hjb-chips > li:hover{transform:translateY(-2px);border-color:rgba(10,199,229,.5);
+        box-shadow:0 10px 20px -14px rgba(11,69,171,.6)}
+
+    /* ── Horizontal share row ── */
+    .hjb-share{
+        display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+        margin-top:26px;padding-top:18px;border-top:1px solid var(--line);
+    }
+    .hjb-share__label{font-size:13px;font-weight:800;color:var(--b)}
+    .hjb-share__row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .hjb-share__btn{
+        width:36px;height:36px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;
+        background:#fff;border:1px solid var(--line);color:var(--b);cursor:pointer;padding:0;
+        transition:transform .2s ease,background .2s ease,color .2s ease,border-color .2s ease;
+    }
+    /* Same normalize-clamp override as the rail — see the note there. */
+    .hjb .hjb-share .hjb-share__row .hjb-share__btn svg:not([width]):not([data-large]):not(.svg-noclamp){
+        width:17px;height:17px;flex:none;
+    }
+    .hjb-share__btn:hover{background:var(--b);border-color:var(--b);color:#fff;transform:translateY(-2px)}
+    .hjb-share__btn:focus-visible{
+        outline:none;background:var(--b);border-color:var(--b);color:#fff;
+        box-shadow:0 0 0 3px rgba(10,199,229,.45);
+    }
+    .hjb-share__btn.is-copied{background:var(--a);border-color:var(--a);color:#fff}
+
+    /* ── Video + counselling ──
+         60/40 split when both halves show. --single collapses to one column so a
+         lone video or lone form fills the width instead of leaving a dead half. */
+    .hjb-vc{
+        display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);
+        gap:16px;align-items:start;margin-top:26px;
+    }
+    .hjb-vc--single{grid-template-columns:minmax(0,1fr)}
+    /* A lone video would stretch very wide on desktop; cap it so it stays a video
+       rather than becoming a billboard. */
+    .hjb-vc--single .hjb-vc__video{max-width:760px}
+    .hjb-vc--single .hjb-vc__form{max-width:460px}
+
+    .hjb-vc__heading{
+        font-size:clamp(16px,1.6vw,19px);font-weight:800;color:var(--b);
+        margin:0 0 10px;line-height:1.35;
+    }
+    /* 16:9, so the frame never distorts whatever the column width is. */
+    .hjb-vc__frame{
+        position:relative;width:100%;aspect-ratio:16/9;
+        border-radius:16px;overflow:hidden;background:#000;
+        border:1px solid rgba(11,69,171,.14);
+        box-shadow:0 14px 30px -20px rgba(11,31,58,.6);
+    }
+    .hjb-vc__frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+
+    .hjb-vc__form{
+        padding:18px;border-radius:16px;
+        background:linear-gradient(180deg,var(--tint),#F5FCFE);
+        border:1px solid rgba(10,199,229,.26);
+        box-shadow:0 14px 30px -22px rgba(11,31,58,.5);
+    }
+    .hjb-vc__form-title{font-size:17px;font-weight:800;color:var(--b);margin:0}
+    .hjb-vc__form-sub{font-size:13px;color:var(--mute);margin:3px 0 14px}
+    .hjb-vc__label{display:block;font-size:12px;font-weight:700;color:var(--b);margin:0 0 5px}
+    .hjb-vc__input{
+        width:100%;box-sizing:border-box;margin-bottom:12px;
+        padding:10px 12px;border-radius:10px;
+        border:1px solid rgba(11,69,171,.18);background:#fff;
+        font-family:inherit;font-size:13.5px;color:var(--ink);
+    }
+    .hjb-vc__input:focus{outline:none;border-color:var(--a);box-shadow:0 0 0 3px rgba(10,199,229,.18)}
+    .hjb-vc__submit{
+        width:100%;padding:11px 18px;border:0;border-radius:999px;cursor:pointer;
+        font-family:inherit;font-size:14px;font-weight:800;color:#fff;
+        background:linear-gradient(135deg,var(--b),var(--b2));
+        box-shadow:0 12px 24px -14px rgba(11,69,171,.85);
+        transition:transform .2s ease,box-shadow .2s ease;
+    }
+    .hjb-vc__submit:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 16px 28px -14px rgba(11,69,171,.95)}
+    .hjb-vc__submit:disabled{opacity:.7;cursor:wait}
+    .hjb-vc__err{font-size:12.5px;font-weight:600;color:#B91C1C;margin:-4px 0 10px}
+    .hjb-vc__done{display:flex;flex-direction:column;gap:4px;padding:8px 0;text-align:center}
+    .hjb-vc__done strong{font-size:16px;font-weight:800;color:var(--b)}
+    .hjb-vc__done span{font-size:13px;color:var(--body)}
+
+    /* ── Course CTA cards ── */
+    .hjb-courses{margin-top:28px}
+    .hjb-courses__heading{font-size:17px;font-weight:800;color:var(--b);margin:0 0 12px}
+    .hjb-courses__grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    .hjb-course{
+        display:flex;flex-direction:column;gap:7px;padding:15px 16px;border-radius:16px;
+        text-decoration:none;color:#fff;background:linear-gradient(135deg,var(--b),var(--b2));
+        box-shadow:0 12px 26px -18px rgba(11,69,171,.85);
+        transition:transform .25s ease,box-shadow .25s ease;
+    }
+    .hjb-course:nth-child(even){background:linear-gradient(135deg,var(--a2),var(--b))}
+    .hjb-course:hover{transform:translateY(-3px);box-shadow:0 18px 32px -18px rgba(11,69,171,.95)}
+    .hjb-course__name{font-size:15.5px;font-weight:800;line-height:1.25;letter-spacing:-.2px}
+    .hjb-course__go{font-size:12px;font-weight:700;opacity:.92}
+
+    /* ── Image card ──
+         The artwork supplies its own colours, borders and design, so the container contributes
+         nothing visual: no fill, no gradient, no overlay, no filter, no padding. The
+         :nth-child(even) alternate gradient above is overridden too, otherwise every second
+         card would still sit on blue. Only border-radius + overflow are kept, so a card with
+         square artwork still matches the section's corner treatment. */
+    .hjb-course--img,
+    .hjb-course--img:nth-child(even){
+        background:none;
+        padding:0;
+        border-radius:14px;
+        overflow:hidden;
+        box-shadow:0 8px 20px -14px rgba(11,31,58,.45);
+        display:block;
+        /* Grid cells stretch to the tallest row item by default. Without this the anchor
+           would be taller than a short banner and its shadow would outline an empty box
+           under the artwork — align-self:start makes the card hug the image. */
+        align-self:start;
+    }
+    .hjb-course__img{
+        width:100%;
+        height:auto;          /* intrinsic ratio — never cropped or stretched */
+        object-fit:contain;
+        display:block;
+        background:transparent;
+    }
+
+    /* ── Prev / Next ── */
+    .hjb-nav{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:24px}
+    .hjb-nav__spacer{display:block}
+    .hjb-nav__item{
+        display:flex;flex-direction:column;gap:5px;padding:14px 16px;border-radius:16px;
+        background:#fff;border:1px solid var(--line);text-decoration:none;
+        transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease;
+    }
+    .hjb-nav__item:hover{transform:translateY(-2px);border-color:rgba(10,199,229,.5);
+        box-shadow:0 14px 28px -20px rgba(11,69,171,.7)}
+    .hjb-nav__item--next{text-align:right;align-items:flex-end}
+    .hjb-nav__dir{font-size:11px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:var(--a2)}
+    .hjb-nav__title{font-size:14.5px;font-weight:700;color:var(--b);line-height:1.4;
+        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+    /* ── Latest Blogs sidebar ── */
+    /* align-self:stretch is what makes the sticky panel work. .hjb-shell sets
+       align-items:start, which sizes each grid item to its own content — a
+       sticky child inside a content-height parent has no travel and simply
+       scrolls away with the page. Stretching this cell to the full row height
+       (set by the article) gives the panel room to stick. */
+    .hjb-side{min-width:0;align-self:stretch}
+    /* Sticky WRAPPER only — positioning, nothing visual. The Latest Blogs card
+       owns all the chrome, so the promo section below is a clean sibling that
+       inherits no border, background, padding, scroll or height from it.
+       flex + gap:16px provides the separation between the two sections. */
+    /* No max-height here on purpose. It used to be calc(100vh - 158px), which made
+       the Latest card shrink to whatever the promo left over — on a short viewport
+       that squeezed the list until blog 1 itself was scrolled out of sight. Height
+       is now content-driven: the fixed region is never capped, so the first three
+       cards are always fully visible. */
+    .hjb-side__sticky{
+        position:sticky;top:138px;
+        display:flex;flex-direction:column;gap:16px;
+    }
+
+    /* SECTION 1 — Latest Blogs. All the card styling lives here.
+       min-height:0 lets it shrink inside the sticky column so its own list can
+       scroll; the promo never shrinks (flex:none below), so a long list gives
+       up space rather than squashing the square. */
+    .hjb-latest{
+        padding:16px;border-radius:20px;
+        background:linear-gradient(180deg,var(--tint),#F5FCFE);
+        border:1px solid rgba(10,199,229,.24);
+        display:flex;flex-direction:column;min-height:0;
+    }
+    .hjb-side__heading{
+        font-size:12.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+        color:var(--b);margin:0 0 12px;flex:none;
+    }
+    .hjb-side__list{display:flex;flex-direction:column;gap:10px}
+
+    /* First three: no cap, no overflow — they cannot be scrolled away. */
+    .hjb-side__list--fixed{flex:none}
+
+    /* Items 4+ only. This element is not rendered at all for 3 or fewer posts, so
+       a scrollbar can never appear below that count.
+       --hjb-mini-h is the tallest a card gets at this width (measured 91px for a
+       three-line title). The cap is one card plus a slice of the next, so the
+       partial card signals that more exist without stretching the sidebar. */
+    .hjb-side__list--scroll{
+        --hjb-mini-h:92px;
+        max-height:calc(var(--hjb-mini-h) + 22px);
+        overflow-y:auto;min-height:0;margin-top:10px;
+        padding-right:5px;margin-right:-3px;
+        scrollbar-width:thin;scrollbar-color:rgba(11,69,171,.34) transparent;
+        overscroll-behavior:contain;
+    }
+    .hjb-side__list--scroll::-webkit-scrollbar{width:6px}
+    .hjb-side__list--scroll::-webkit-scrollbar-track{background:transparent}
+    .hjb-side__list--scroll::-webkit-scrollbar-thumb{background:rgba(11,69,171,.28);border-radius:999px}
+    .hjb-side__list--scroll:hover::-webkit-scrollbar-thumb{background:rgba(11,69,171,.45)}
+
+    /* SECTION 2 — promo. Independent card: no border/background of its own
+         beyond the image, and flex:none so the sticky column never compresses
+         the square. min(350px,100%) caps at 350 but shrinks rather than
+         overflowing a narrower column; aspect-ratio keeps it square at any size.
+         object-fit:cover fills without distorting. */
+    .hjb-promo{
+        flex:none;
+        width:min(280px,100%);
+        aspect-ratio:1 / 1;
+    }
+    /* The anchor is a pure wrapper — it fills the square and adds no box of its own,
+       so a linked promo is pixel-identical to an unlinked one apart from the cursor
+       and a very light hover lift. */
+    .hjb-promo__link{
+        display:block;width:100%;height:100%;
+        border-radius:14px;overflow:hidden;cursor:pointer;
+        transition:transform .25s ease,opacity .25s ease;
+    }
+    .hjb-promo__link:hover{transform:translateY(-2px);opacity:.94}
+    .hjb-promo__link:focus-visible{
+        outline:none;box-shadow:0 0 0 3px rgba(10,199,229,.5);
+    }
+    .hjb-promo__img{
+        display:block;width:100%;height:100%;object-fit:cover;
+        border-radius:14px;
+        box-shadow:0 10px 24px -16px rgba(11,31,58,.55);
+        border:1px solid rgba(11,69,171,.12);
+    }
+    .hjb-mini{
+        display:grid;grid-template-columns:78px minmax(0,1fr);gap:11px;align-items:center;
+        padding:8px;border-radius:14px;background:#fff;border:1px solid rgba(11,69,171,.1);
+        text-decoration:none;transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease;
+    }
+    .hjb-mini:hover{transform:translateY(-2px);border-color:rgba(10,199,229,.55);
+        box-shadow:0 12px 24px -18px rgba(11,69,171,.75)}
+    .hjb-mini__media{
+        position:relative;overflow:hidden;border-radius:10px;aspect-ratio:4/3;
+        background:linear-gradient(135deg,var(--b),var(--a2));display:block;
+    }
+    .hjb-mini__img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+        transition:transform .45s cubic-bezier(.22,.7,.24,1)}
+    .hjb-mini:hover .hjb-mini__img{transform:scale(1.08)}
+    .hjb-mini__ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.9)}
+    .hjb-mini__ph svg{width:20px;height:20px}
+    .hjb-mini__body{display:flex;flex-direction:column;gap:3px;min-width:0}
+    .hjb-mini__title{
+        font-size:13px;font-weight:800;color:var(--b);line-height:1.35;
+        display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+    }
+    .hjb-mini__meta{font-size:10.5px;font-weight:600;color:var(--mute);letter-spacing:.2px}
+
+    .hjb-back{margin-top:24px}
+    .hjb-back__link{
+        display:inline-flex;align-items:center;gap:7px;padding:10px 20px;border-radius:999px;
+        background:#fff;border:1px solid var(--line);color:var(--b);
+        font-size:13.5px;font-weight:700;text-decoration:none;transition:background .2s,border-color .2s;
+    }
+    .hjb-back__link:hover{background:var(--tint);border-color:rgba(10,199,229,.5)}
+
+    /* ═══════════ TABLET — sidebar drops below, rail goes horizontal ═══════════ */
+    /* Summary grid is 5-up by default (see .hjb-sum). Between 1024 and 1179 the
+       article spans the full width, so five still fit; the step down to 3+2
+       happens at the tablet breakpoint below. */
+
+    /* Desktop shows the sticky rail, so the horizontal row would be a second
+       copy of the same six buttons. Exactly one is visible at any width. */
+    @@media (min-width:1180px){
+        .hjb-share{display:none}
+    }
+
+    @@media (max-width:1179.98px){
+        .hjb-hero__title{font-size:clamp(34px,4.2vw,42px)}
+        .hjb-courses__grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        .hjb-shell{grid-template-columns:minmax(0,1fr)}
+        /* The vertical rail is desktop-only: below this width the horizontal
+           share row inside the article covers it, so showing both would just
+           duplicate the same six buttons. */
+        .hjb-rail{display:none}
+        .hjb-main{order:1}
+        .hjb-side{order:2}
+        /* Stacked: drop the sticky cap so both sections flow with the page. A
+           nested scroll box inside a stacked block is awkward on touch — the
+           list is allowed its natural height here instead. The 16px gap between
+           the two sections is kept. */
+        .hjb-side__sticky{position:static;max-height:none;display:block}
+        .hjb-latest{display:block}
+        /* Sidebar cards spread across the full width once stacked. Both regions
+           become plain 2-up grids: a nested scroll box inside a stacked block is
+           awkward on touch, and there is no vertical pressure here to justify it,
+           so all five simply flow. */
+        .hjb-side__list{
+            display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;
+        }
+        .hjb-side__list--scroll{
+            max-height:none;overflow:visible;
+            padding-right:0;margin-right:0;margin-top:10px;
+        }
+        /* Stacked: the square stays 350 max and centres in the wider column
+           rather than stretching across it. The base rule already caps at
+           min(350px,100%), so narrow phones shrink it instead of overflowing. */
+        .hjb-promo{margin:16px auto 0}
+        .hjb-sum{grid-template-columns:repeat(3,minmax(0,1fr))}
+        .hjb-chips{grid-template-columns:repeat(3,minmax(0,1fr))}
+        /* Tablet: the 60/40 split leaves the form too narrow for comfortable
+           typing, so video and form stack. */
+        .hjb-vc{grid-template-columns:minmax(0,1fr)}
+        .hjb-vc--single .hjb-vc__video,
+        .hjb-vc--single .hjb-vc__form{max-width:none}
+    }
+
+    /* ═══════════ MOBILE ═══════════ */
+    @@media (max-width:767.98px){
+        .hjb__wrap{padding:0 14px}
+        .hjb-top{padding:10px 0 8px}
+        .hjb-crumb{font-size:10.5px;gap:5px}
+        .hjb-top__date{font-size:10.5px}
+
+        .hjb-hero__figure{border-radius:16px;margin-bottom:12px}
+        .hjb-hero__img{aspect-ratio:16/10}
+        .hjb-hero__title{font-size:clamp(26px,7vw,32px);letter-spacing:-.3px;margin-bottom:9px}
+        .hjb-hero__meta{font-size:11.5px;gap:6px 8px;padding-bottom:12px}
+        .hjb-hero__cat{font-size:10px;padding:4px 11px}
+
+        .hjb-article{font-size:15.2px;line-height:1.75}
+
+        /* 2-up summary per the spec: 2 + 2 + 1, the fifth card sitting alone on
+           the last row. */
+        .hjb-sumbox{padding:11px 12px 12px;border-radius:14px;margin-bottom:18px}
+        .hjb-sum__head{font-size:13.5px;margin-bottom:10px}
+        .hjb-sum{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+        .hjb-sum__card{padding:11px;border-radius:12px}
+        .hjb-sum__num{width:21px;height:21px;font-size:11px;margin-bottom:4px}
+        .hjb-sum__title{font-size:12.5px}
+        .hjb-sum__desc{font-size:11.5px;line-height:1.45}
+        /* Compact cue on phones — 11px sits inside the 10–12px band and the label
+           still fits one line at 360px. */
+        .hjb-dive{margin-top:10px;padding:5px 8px}
+        .hjb-dive .hjb-dive__ico,
+        .hjb .hjb-sumbox .hjb-dive .hjb-dive__ico:not([width]):not([data-large]):not(.svg-noclamp){
+            width:18px;height:18px;
+        }
+        .hjb-dive__text{font-size:11px;letter-spacing:.5px}
+        .hjb-chips{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+        .hjb-chips > li{padding:9px 11px;font-size:12.5px}
+
+        .hjb-callout{padding:13px 14px 11px;border-radius:14px}
+
+        .hjb-courses__grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+        .hjb-course{padding:12px 13px;border-radius:13px}
+        .hjb-course__name{font-size:13.5px}
+        .hjb-course__go{font-size:11px}
+        /* The mobile padding above is for the text tile only — an image card must stay
+           edge-to-edge so the artwork isn't inset on a blue-free but padded box. */
+        .hjb-course--img{padding:0;border-radius:12px}
+
+        .hjb-nav{grid-template-columns:1fr;gap:9px}
+        .hjb-nav__item--next{text-align:left;align-items:flex-start}
+
+        /* Compact 2-up Latest Blogs tiles — vertical, not horizontal, so the
+           title has room on a narrow screen. */
+        .hjb-vc{gap:12px;margin-top:20px}
+        .hjb-vc__frame{border-radius:13px}
+        .hjb-vc__form{padding:14px;border-radius:14px}
+        .hjb-vc__form-title{font-size:15.5px}
+        .hjb-vc__form-sub{font-size:12px;margin-bottom:12px}
+
+        .hjb-latest{padding:12px;border-radius:16px}
+        .hjb-side__list{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+        .hjb-mini{grid-template-columns:minmax(0,1fr);gap:7px;padding:7px;border-radius:12px}
+        .hjb-mini__media{aspect-ratio:16/10;border-radius:9px}
+        .hjb-mini__title{font-size:12px;-webkit-line-clamp:2}
+        .hjb-mini__meta{font-size:9.5px}
+
+        .hjb-share{margin-top:20px;padding-top:14px;gap:9px}
+        .hjb-share__label{font-size:12px;width:100%}
+        .hjb-share__btn{width:34px;height:34px;border-radius:10px}
+        .hjb-share__btn svg{width:15px;height:15px}
+    }
+
+    /* Very narrow phones — never let a long unbroken word push the page wide. */
+    @@media (max-width:400px){
+        .hjb-hero__title{font-size:26px}
+        .hjb-article{overflow-wrap:break-word;word-break:break-word}
+        .hjb-courses__grid{gap:8px}
+    }
+
+    @@media (prefers-reduced-motion:reduce){
+        .hjb-mini,.hjb-mini__img,.hjb-course,.hjb-nav__item,.hjb-chips > li,
+        .hjb-rail__btn,.hjb-share__btn{transition:none !important;transform:none !important}
+    }
+</style>

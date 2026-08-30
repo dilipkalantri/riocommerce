@@ -1,0 +1,845 @@
+@inject RioCommerce.Core.Interfaces.ISiteSettingsService Settings
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="icon" type="image/png" href="/_content/RioCommerce.Web/assets/logo.png" />
+    <link rel="shortcut icon" type="image/png" href="/_content/RioCommerce.Web/assets/logo.png" />
+    <link rel="apple-touch-icon" href="/_content/RioCommerce.Web/assets/logo.png" />
+    <link rel="stylesheet" href="_content/RioCommerce.Web/css/app.css" />
+    <link rel="stylesheet" href="_content/RioCommerce.Web/css/home-premium.css" />
+    <link rel="stylesheet" href="_content/RioCommerce.Web/css/admin-grid.css" />
+    <link rel="stylesheet" href="_content/RioCommerce.Web/css/hero-banner.css" />
+    @* responsive-normalize.css must load LAST so its breakpoint defaults override
+       any page-specific styles that aren't yet responsive. *@
+    <link rel="stylesheet" href="_content/RioCommerce.Web/css/responsive-normalize.css" />
+    @* THE single site-wide font import. Jost is the only typeface loaded anywhere
+       in the frontend — do not add a second @import or <link> for a webfont; add
+       the weight to this URL instead. *@
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet" />
+    @if (analytics.Length > 0) { @((MarkupString)analytics) }
+    <HeadOutlet @rendermode="RenderMode.InteractiveServer" />
+</head>
+<body>
+    <Routes @rendermode="RenderMode.InteractiveServer" />
+    <script src="_framework/blazor.web.js"></script>
+    <script src="_content/RioCommerce.Web/js/menu.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+        window.hjc = window.hjc || {};
+        // Focus an element by id (OTP box navigation).
+        // Close the header nav after a client-side navigation.
+        //
+        // The dropdowns are pure CSS — they open on :hover OR :focus-within — so
+        // after Blazor navigates without a page reload two things keep them up:
+        // the clicked <a> still holds focus, and the pointer is usually still
+        // resting over the panel. Blurring fixes the first; the .is-navigating
+        // class force-hides the panels until the pointer leaves the nav, which
+        // fixes the second without breaking normal hover afterwards.
+        window.hjc.closeNav = function () {
+            try {
+                var el = document.activeElement;
+                if (el && typeof el.blur === 'function') el.blur();
+            } catch (e) { }
+
+            var nav = document.querySelector('.header__nav');
+            if (!nav) return;
+            nav.classList.add('is-navigating');
+
+            var release = function () {
+                nav.classList.remove('is-navigating');
+                nav.removeEventListener('pointerleave', release);
+                nav.removeEventListener('pointerdown', release);
+            };
+            nav.addEventListener('pointerleave', release);
+            nav.addEventListener('pointerdown', release);
+            // Safety net for touch/keyboard, where pointerleave may never fire.
+            setTimeout(release, 1500);
+        };
+
+        window.hjc.focusEl = function (id) {
+            const el = document.getElementById(id);
+            if (el) { el.focus(); el.select && el.select(); }
+        };
+        // POST a urlencoded form and return the parsed JSON (used by the OTP / reset screens).
+        window.hjc.postForm = async function (url, data) {
+            const body = new URLSearchParams();
+            for (const k in data) body.append(k, data[k]);
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+                credentials: 'same-origin'
+            });
+            try { return await r.json(); } catch { return { success: false, error: 'Unexpected server response.' }; }
+        };
+        // Read an image file's natural pixel dimensions before upload (banner size validation).
+        // Returns {width,height} or null if it can't be decoded. Looks the <input> up by id so it
+        // doesn't depend on passing an ElementReference.
+        window.hjc.readImageSize = function (inputId) {
+            return new Promise((resolve) => {
+                const inputEl = document.getElementById(inputId);
+                const f = inputEl && inputEl.files && inputEl.files[0];
+                if (!f) { resolve(null); return; }
+                const url = URL.createObjectURL(f);
+                const img = new Image();
+                img.onload = function () { URL.revokeObjectURL(url); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
+                img.onerror = function () { URL.revokeObjectURL(url); resolve(null); };
+                img.src = url;
+            });
+        };
+        // Drag-to-reorder rows in the admin banner list. Calls back into .NET with the new id order.
+        window.hjc.bannerReorder = {
+            init: function (container, dotnetRef) {
+                if (!container || container._dndInit) return; container._dndInit = true;
+                let dragEl = null;
+                container.querySelectorAll('[draggable="true"]').forEach(row => {
+                    row.addEventListener('dragstart', e => { dragEl = row; row.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+                    row.addEventListener('dragend', () => {
+                        row.classList.remove('dragging'); dragEl = null;
+                        const ids = Array.from(container.querySelectorAll('[data-id]')).map(r => r.getAttribute('data-id'));
+                        dotnetRef.invokeMethodAsync('OnReordered', ids);
+                    });
+                    row.addEventListener('dragover', e => {
+                        e.preventDefault();
+                        if (!dragEl || dragEl === row) return;
+                        const rect = row.getBoundingClientRect();
+                        const after = (e.clientY - rect.top) > rect.height / 2;
+                        container.insertBefore(dragEl, after ? row.nextSibling : row);
+                    });
+                });
+            }
+        };
+        // Rich-text editor (Quill) interop for the RichText.razor component.
+        window.hjc.quill = {
+            init: function (el, dotnetRef, initialHtml) {
+                if (!window.Quill || !el) return false;
+                const q = new Quill(el, {
+                    theme: 'snow',
+                    modules: { toolbar: [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        ['link', 'blockquote', 'clean']
+                    ]}
+                });
+                if (initialHtml) { try { q.clipboard.dangerouslyPasteHTML(initialHtml); } catch (e) { q.root.innerHTML = initialHtml; } }
+                q.on('text-change', function () {
+                    let html = q.root.innerHTML;
+                    if (html === '<p><br></p>') html = '';
+                    dotnetRef.invokeMethodAsync('OnHtmlChanged', html);
+                });
+                el._quill = q;
+                return true;
+            }
+        };
+        // Product media gallery: prev/next arrows + dots, click-to-play YouTube (thumbnail shown until
+        // clicked), and stops playback when a video is scrolled away.
+        window.hjc.mediaGallery = {
+            init: function (c) {
+                if (!c || c._mgInit) return; c._mgInit = true;
+                const track = c.querySelector('.mg__track');
+                const slides = Array.prototype.slice.call(c.querySelectorAll('.mg__slide'));
+                const dots = Array.prototype.slice.call(c.querySelectorAll('.mg__dot'));
+                if (!track) return;
+                const goTo = function (i) {
+                    i = Math.max(0, Math.min(slides.length - 1, i));
+                    if (slides[i]) track.scrollTo({ left: slides[i].offsetLeft - track.offsetLeft, behavior: 'smooth' });
+                };
+                const current = function () {
+                    let best = 0, bd = Infinity;
+                    slides.forEach(function (s, i) { const d = Math.abs(s.offsetLeft - track.offsetLeft - track.scrollLeft); if (d < bd) { bd = d; best = i; } });
+                    return best;
+                };
+                dots.forEach(function (d, i) { d.addEventListener('click', function () { goTo(i); }); });
+                const prev = c.querySelector('.mg__nav--prev'), next = c.querySelector('.mg__nav--next');
+                if (prev) prev.addEventListener('click', function () { goTo(current() - 1); });
+                if (next) next.addEventListener('click', function () { goTo(current() + 1); });
+                // click a video slide → load + play its iframe (user gesture, so sound is allowed)
+                slides.forEach(function (s) {
+                    const embed = s.getAttribute('data-embed');
+                    if (!embed) return;
+                    s.addEventListener('click', function () {
+                        if (s.querySelector('iframe')) return;
+                        const f = document.createElement('iframe');
+                        f.src = embed; f.className = 'mg__frame';
+                        f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+                        f.setAttribute('allowfullscreen', 'true');
+                        s.appendChild(f);
+                    });
+                });
+                // track active dot + stop playback when a slide scrolls out of view
+                if ('IntersectionObserver' in window) {
+                    const io = new IntersectionObserver(function (entries) {
+                        entries.forEach(function (e) {
+                            const idx = slides.indexOf(e.target);
+                            if (e.isIntersecting && e.intersectionRatio >= 0.6) {
+                                dots.forEach(function (d, i) { d.classList.toggle('active', i === idx); });
+                            } else {
+                                const f = e.target.querySelector('iframe'); if (f) f.remove();
+                            }
+                        });
+                    }, { root: track, threshold: 0.6 });
+                    slides.forEach(function (s) { io.observe(s); });
+                }
+            }
+        };
+        // ===== Premium storefront FX: scroll-reveal, count-up, magnetic buttons, hero parallax =====
+        window.hjc._fmtIN = function (n) { try { return Math.round(n).toLocaleString('en-IN'); } catch (e) { return Math.round(n); } };
+        window.hjc._countUp = function (el) {
+            if (el._counted) return; el._counted = true;
+            var target = parseFloat(el.getAttribute('data-count')) || 0;
+            var suffix = el.getAttribute('data-suffix') || '';
+            var dur = 1500, start = null;
+            function step(ts) {
+                if (!start) start = ts;
+                var p = Math.min((ts - start) / dur, 1);
+                var eased = 1 - Math.pow(1 - p, 3);
+                el.textContent = window.hjc._fmtIN(target * eased) + suffix;
+                if (p < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        };
+        window.hjc.homeFx = function () {
+            if ('IntersectionObserver' in window) {
+                if (!window.hjc._revObs) {
+                    window.hjc._revObs = new IntersectionObserver(function (entries) {
+                        entries.forEach(function (en) {
+                            if (!en.isIntersecting) return;
+                            en.target.classList.add('reveal--in');
+                            if (en.target.querySelectorAll) en.target.querySelectorAll('[data-count]').forEach(function (c) { window.hjc._countUp(c); });
+                            if (en.target.hasAttribute('data-count')) window.hjc._countUp(en.target);
+                            window.hjc._revObs.unobserve(en.target);
+                        });
+                    }, { threshold: 0.14, rootMargin: '0px 0px -40px 0px' });
+                }
+                document.querySelectorAll('.reveal:not([data-rev-init])').forEach(function (e) {
+                    e.setAttribute('data-rev-init', '1'); window.hjc._revObs.observe(e);
+                });
+                if (!window.hjc._cntObs) {
+                    window.hjc._cntObs = new IntersectionObserver(function (entries) {
+                        entries.forEach(function (en) { if (en.isIntersecting) { window.hjc._countUp(en.target); window.hjc._cntObs.unobserve(en.target); } });
+                    }, { threshold: 0.4 });
+                }
+                document.querySelectorAll('[data-count]:not([data-cnt-init])').forEach(function (e) {
+                    e.setAttribute('data-cnt-init', '1'); window.hjc._cntObs.observe(e);
+                });
+            } else {
+                document.querySelectorAll('.reveal').forEach(function (e) { e.classList.add('reveal--in'); });
+                document.querySelectorAll('[data-count]').forEach(function (e) { window.hjc._countUp(e); });
+            }
+            // magnetic buttons
+            document.querySelectorAll('.magnetic:not([data-mag-init])').forEach(function (el) {
+                el.setAttribute('data-mag-init', '1');
+                el.addEventListener('pointermove', function (ev) {
+                    var r = el.getBoundingClientRect();
+                    el.style.setProperty('--mx', ((ev.clientX - r.left - r.width / 2) * 0.22).toFixed(1) + 'px');
+                    el.style.setProperty('--my', ((ev.clientY - r.top - r.height / 2) * 0.3).toFixed(1) + 'px');
+                });
+                el.addEventListener('pointerleave', function () { el.style.setProperty('--mx', '0px'); el.style.setProperty('--my', '0px'); });
+            });
+            // hero pointer parallax (moves the glow blobs)
+            var hero = document.querySelector('.hjc-app .hero');
+            if (hero && !hero._fxInit) {
+                hero._fxInit = true; var raf = null;
+                hero.addEventListener('pointermove', function (ev) {
+                    if (raf) return;
+                    raf = requestAnimationFrame(function () {
+                        raf = null; var r = hero.getBoundingClientRect();
+                        hero.style.setProperty('--px', (((ev.clientX - r.left) / r.width) - 0.5).toFixed(3));
+                        hero.style.setProperty('--py', (((ev.clientY - r.top) / r.height) - 0.5).toFixed(3));
+                    });
+                });
+            }
+        };
+        // homepage faculty carousel: auto-advance with pause on hover / manual scroll, plus prev/next arrows.
+        // Only activates when there are more cards than fit in the viewport (4 on desktop, 2 tablet, 1 mobile).
+        window.hjc.facultyCarousel = function () {
+            var v = document.querySelector('.hjc-app .fcs-viewport');
+            if (!v || v._fcsInit) return;
+            var track = v.querySelector('.fcs-grid');
+            if (!track) return;
+            var cards = track.querySelectorAll('.fcs-card');
+            // Wait for real cards (skeletons don't get .fcs-card class).
+            if (cards.length === 0) return;
+            v._fcsInit = true;
+
+            var canScroll = function () { return track.scrollWidth > track.clientWidth + 4; };
+
+            // Build pagination dots — one per card. Active dot follows scrollLeft.
+            var dotsHost = v.parentElement.querySelector('.fcs-dots');
+            var dotEls = [];
+            if (dotsHost && canScroll()) {
+                dotsHost.innerHTML = '';
+                for (var i = 0; i < cards.length; i++) {
+                    (function (idx) {
+                        var d = document.createElement('button');
+                        d.type = 'button';
+                        d.className = 'fcs-dot' + (idx === 0 ? ' is-active' : '');
+                        d.setAttribute('aria-label', 'Faculty ' + (idx + 1));
+                        d.addEventListener('click', function () {
+                            manualPauseUntil = Date.now() + 6000;
+                            var g = parseInt(getComputedStyle(track).columnGap, 10) || 24;
+                            track.scrollTo({ left: idx * (cards[0].offsetWidth + g), behavior: 'smooth' });
+                        });
+                        dotsHost.appendChild(d);
+                        dotEls.push(d);
+                    })(i);
+                }
+            } else if (dotsHost) { dotsHost.innerHTML = ''; }
+
+            var setEdges = function () {
+                var atStart = track.scrollLeft < 4;
+                var atEnd = track.scrollLeft + track.clientWidth + 4 >= track.scrollWidth;
+                v.classList.toggle('is-edge-start', atStart);
+                v.classList.toggle('is-edge-end', atEnd);
+                v.classList.toggle('is-active', canScroll());
+                if (dotEls.length) {
+                    var stepGap = parseInt(getComputedStyle(track).columnGap, 10) || 24;
+                    var step = cards[0].offsetWidth + stepGap;
+                    var idx = Math.round(track.scrollLeft / step);
+                    if (idx < 0) idx = 0;
+                    if (idx >= dotEls.length) idx = dotEls.length - 1;
+                    for (var k = 0; k < dotEls.length; k++) dotEls[k].classList.toggle('is-active', k === idx);
+                }
+            };
+            setEdges();
+            track.addEventListener('scroll', function () { if (rafPending) return; rafPending = true; requestAnimationFrame(function () { rafPending = false; setEdges(); }); }, { passive: true });
+            var rafPending = false;
+
+            // chevron buttons
+            v.querySelectorAll('[data-fcs-dir]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var dir = parseInt(btn.getAttribute('data-fcs-dir'), 10) || 1;
+                    var stepGap = parseInt(getComputedStyle(track).columnGap, 10) || 24; var step = cards[0].offsetWidth + stepGap;
+                    manualPauseUntil = Date.now() + 6000;
+                    if (dir > 0 && track.scrollLeft + track.clientWidth + 4 >= track.scrollWidth) track.scrollTo({ left: 0, behavior: 'smooth' });
+                    else if (dir < 0 && track.scrollLeft <= 4) track.scrollTo({ left: track.scrollWidth, behavior: 'smooth' });
+                    else track.scrollBy({ left: dir * step, behavior: 'smooth' });
+                });
+            });
+
+            // auto-advance (only when overflowing) — pauses on hover and for 4s after any manual scroll
+            var paused = false;
+            var manualPauseUntil = 0;
+            v.addEventListener('mouseenter', function () { paused = true; });
+            v.addEventListener('mouseleave', function () { paused = false; });
+            track.addEventListener('scroll', function () { manualPauseUntil = Date.now() + 4500; }, { passive: true });
+            track.addEventListener('touchstart', function () { manualPauseUntil = Date.now() + 6000; }, { passive: true });
+            setInterval(function () {
+                if (paused || !canScroll() || Date.now() < manualPauseUntil) return;
+                var stepGap = parseInt(getComputedStyle(track).columnGap, 10) || 24; var step = cards[0].offsetWidth + stepGap;
+                if (track.scrollLeft + track.clientWidth + 4 >= track.scrollWidth) track.scrollTo({ left: 0, behavior: 'smooth' });
+                else track.scrollBy({ left: step, behavior: 'smooth' });
+            }, 4200);
+
+            // re-evaluate edges when the viewport resizes (card width changes)
+            if ('ResizeObserver' in window) new ResizeObserver(setEdges).observe(track);
+        };
+
+        // ── Testimonials: phone-only auto-advance over a real scroller ──────────────
+        // Desktop keeps its CSS transform marquee untouched. Below 640px the CSS turns
+        // .tm-marquee into a native scroller and stops that animation, because a
+        // transformed track cannot also be scrolled — the two fight and the strip
+        // judders. This drives the same movement by nudging scrollLeft, which a swipe
+        // can interrupt and take over at any moment.
+        //
+        // The markup renders every review TWICE (the marquee needed a seamless loop).
+        // That is reused here: once past the halfway mark the scroller jumps back by
+        // exactly half its width, landing on the identical card, so the loop is
+        // invisible rather than a visible rewind to the start.
+        window.hjc.testimonialCarousel = function () {
+            var v = document.querySelector('.hjc-app .tm-marquee');
+            if (!v || v._tmInit) return;
+            var track = v.querySelector('.tm-track');
+            if (!track || !track.children.length) return;
+
+            var isPhone = function () { return window.matchMedia('(max-width:639px)').matches; };
+            // Nothing to wire up on desktop — and no listeners left behind if the window
+            // is never narrowed. A resize into phone width re-runs this via the handler below.
+            if (!isPhone()) return;
+            v._tmInit = true;
+
+            var manualPauseUntil = 0;
+            var step = function () {
+                var card = track.children[0];
+                var gap = parseInt(getComputedStyle(track).columnGap, 10) || 14;
+                return (card ? card.offsetWidth : v.clientWidth * 0.86) + gap;
+            };
+
+            // Any touch or scroll hands control to the reader for a few seconds.
+            v.addEventListener('touchstart', function () { manualPauseUntil = Date.now() + 7000; }, { passive: true });
+            v.addEventListener('scroll', function () { manualPauseUntil = Date.now() + 5000; }, { passive: true });
+
+            setInterval(function () {
+                if (!isPhone() || Date.now() < manualPauseUntil) return;
+                if (v.scrollWidth <= v.clientWidth + 4) return;
+
+                var half = v.scrollWidth / 2;
+                if (v.scrollLeft >= half) {
+                    // Seamless wrap: same card, first copy. No smooth scroll here — the
+                    // jump must be instant or the rewind becomes visible.
+                    var prev = v.style.scrollBehavior;
+                    v.style.scrollBehavior = 'auto';
+                    v.scrollLeft = v.scrollLeft - half;
+                    v.style.scrollBehavior = prev || '';
+                }
+                v.scrollBy({ left: step(), behavior: 'smooth' });
+            }, 3800);
+        };
+
+        // The header is now PERMANENTLY fixed via .site-topbar (position:fixed), so
+        // there is no scroll-driven header behaviour any more. This used to toggle
+        // .is-scrolled (shrink) and .is-hidden (translateY(-140%) on scroll-down),
+        // which is what made the header slide out of view while scrolling. Kept as a
+        // no-op because App.razor calls it on DOMContentLoaded and on load.
+        window.hjc.navScroll = function () { };
+        document.addEventListener('DOMContentLoaded', function () { try { window.hjc.homeFx(); window.hjc.navScroll(); window.hjc.facultyCarousel(); window.hjc.testimonialCarousel(); } catch (e) { } });
+        window.addEventListener('load', function () { try { window.hjc.homeFx(); window.hjc.navScroll(); window.hjc.facultyCarousel(); window.hjc.testimonialCarousel(); } catch (e) { } });
+
+        window.hjc.getCookie = function (name) {
+            const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+            return m ? m.pop() : '';
+        };
+        // ──────────────────────────────────────────────────────────────────────────
+        //   RAZORPAY PAYMENT FLOW (REST-driven, no Blazor JSInvokable in the hot path)
+        // ──────────────────────────────────────────────────────────────────────────
+        //
+        // window.hjc.payRazorpay(checkoutRequest)  → new order from /checkout
+        // window.hjc.retryRazorpay(localOrderId)   → retry from /checkout/payment-failed
+        //                                            or /checkout/payment-cancelled
+        //
+        // Both routines:
+        //   1. POST to /api/payments/razorpay/(create|retry)-order
+        //   2. open the Razorpay popup with the returned {orderId, key, amount}
+        //   3. on payment success → POST /api/payments/razorpay/verify
+        //   4. follow the JSON.redirectUrl via window.location.replace(...)
+        //   5. on popup dismiss → window.location.replace('/checkout/payment-cancelled?o=...')
+        //   6. on payment.failed → window.location.replace('/checkout/payment-failed?o=...&r=...')
+        //
+        // No spinners-of-doom, no setTimeout polling, no "awaiting payment" screens.
+        // The browser only ever waits on a single fetch and then redirects.
+
+        window.hjc._postJson = async function (url, body) {
+            const res = await fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify(body || {})
+            });
+            const text = await res.text();
+            let json = null;
+            try { json = text ? JSON.parse(text) : null; } catch (e) { /* leave as null */ }
+            return { ok: res.ok, status: res.status, body: json, raw: text };
+        };
+
+        // Boots the Razorpay popup once we have an {orderId, key, amount} handoff in hand.
+        // Wires up handler → verify; ondismiss → cancelled page; payment.failed → failed page.
+        window.hjc._launchRazorpay = function (handoff, prefill) {
+            return new Promise(function (resolve) {
+                if (!window.Razorpay) {
+                    return resolve({ outcome: 'error', reason: 'Razorpay script did not load. Check your network.' });
+                }
+                let terminal = false;
+                const cfg = {
+                    key: handoff.key,
+                    amount: handoff.amount,
+                    currency: handoff.currency || 'INR',
+                    order_id: handoff.orderId,
+                    name: 'RioCommerce',
+                    description: 'Order ' + (handoff.orderNumber || ''),
+                    image: '/_content/RioCommerce.Web/assets/logo.png',
+                    prefill: prefill || {},
+                    notes: { order_number: handoff.orderNumber || '' },
+                    theme: { color: '#F58220' },
+                    handler: function (resp) {
+                        if (terminal) return;
+                        terminal = true;
+                        resolve({
+                            outcome: 'success',
+                            paymentId: resp.razorpay_payment_id,
+                            orderId: resp.razorpay_order_id,
+                            signature: resp.razorpay_signature
+                        });
+                    },
+                    modal: {
+                        ondismiss: function () {
+                            if (terminal) return;
+                            terminal = true;
+                            resolve({ outcome: 'dismissed' });
+                        },
+                        escape: true,
+                        backdropclose: false
+                    }
+                };
+                try {
+                    console.log('[Razorpay] launching popup', cfg);
+                    const rzp = new window.Razorpay(cfg);
+                    rzp.on('payment.failed', function (resp) {
+                        if (terminal) return;
+                        terminal = true;
+                        const e = (resp && resp.error) || {};
+                        const bits = [];
+                        if (e.description) bits.push(e.description);
+                        if (e.reason)      bits.push('reason: ' + e.reason);
+                        if (e.code)        bits.push('code: ' + e.code);
+                        if (e.step)        bits.push('step: ' + e.step);
+                        console.error('[Razorpay] payment.failed', e);
+                        resolve({ outcome: 'failed', reason: bits.length ? bits.join(' · ') : 'Payment failed' });
+                    });
+                    rzp.open();
+                } catch (ex) {
+                    console.error('[Razorpay] open threw', ex);
+                    resolve({ outcome: 'error', reason: (ex && ex.message) || 'Could not open the payment window.' });
+                }
+            });
+        };
+
+        // Shared post-popup handler: takes the popup outcome + localOrderId, runs
+        // server verification on success, and redirects via window.location.replace.
+        window.hjc._handlePopupOutcome = async function (outcome, localOrderId, prefill) {
+            if (outcome.outcome === 'success') {
+                console.log('[Razorpay] verifying with server…');
+                const v = await window.hjc._postJson('/api/payments/razorpay/verify', {
+                    razorpay_order_id: outcome.orderId,
+                    razorpay_payment_id: outcome.paymentId,
+                    razorpay_signature: outcome.signature,
+                    localOrderId: localOrderId
+                });
+                // The verify endpoint always returns a redirectUrl — even on failure —
+                // so the browser just follows it without inspecting HTTP status.
+                if (v.body && v.body.redirectUrl) {
+                    window.location.replace(v.body.redirectUrl);
+                } else {
+                    window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId || '') +
+                        '&r=' + encodeURIComponent('Verification call failed'));
+                }
+                return;
+            }
+            if (outcome.outcome === 'dismissed') {
+                window.location.replace('/checkout/payment-cancelled?o=' + encodeURIComponent(localOrderId || ''));
+                return;
+            }
+            // 'failed' (Razorpay-side) or 'error' (couldn't open the popup) → failed page.
+            window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId || '') +
+                '&r=' + encodeURIComponent(outcome.reason || 'Payment failed'));
+        };
+
+        // PUBLIC: new-order entry point. Called from Checkout.razor's Pay button.
+        window.hjc.payRazorpay = async function (checkoutRequest, prefill) {
+            try {
+                const r = await window.hjc._postJson('/api/payments/razorpay/create-order', checkoutRequest);
+                if (!r.ok || !r.body || !r.body.success) {
+                    const reason = (r.body && r.body.error) || ('Could not create the payment order (' + r.status + ').');
+                    console.error('[Razorpay] create-order failed:', reason, r.body || r.raw);
+                    window.location.replace('/checkout/payment-failed?o=&r=' + encodeURIComponent(reason));
+                    return;
+                }
+                const handoff = {
+                    key: r.body.key,
+                    amount: r.body.amount,
+                    currency: r.body.currency,
+                    orderId: r.body.orderId,
+                    orderNumber: r.body.orderNumber
+                };
+                const outcome = await window.hjc._launchRazorpay(handoff, prefill);
+                await window.hjc._handlePopupOutcome(outcome, r.body.orderNumber, prefill);
+            } catch (ex) {
+                console.error('[Razorpay] payRazorpay threw', ex);
+                window.location.replace('/checkout/payment-failed?o=&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
+            }
+        };
+
+        // ──────────────────────────────────────────────────────────────────────────
+        //   EASEBUZZ FLOW — redirect-based (no popup). Server returns a hosted-page
+        //   URL; we navigate the entire browser to it. Easebuzz POSTs the customer
+        //   back to /api/payments/easebuzz/callback which 302-redirects to the
+        //   appropriate /checkout/payment-* page.
+        // ──────────────────────────────────────────────────────────────────────────
+        window.hjc.payEasebuzz = async function (checkoutRequest) {
+            try {
+                console.log('[Easebuzz] create-order', checkoutRequest);
+                const r = await window.hjc._postJson('/api/payments/easebuzz/create-order', checkoutRequest);
+                if (!r.ok || !r.body || !r.body.success || !r.body.redirectUrl) {
+                    const reason = (r.body && r.body.error) || ('Could not create the payment order (' + r.status + ').');
+                    console.error('[Easebuzz] create-order failed:', reason, r.body || r.raw);
+                    window.location.replace('/checkout/payment-failed?o=&r=' + encodeURIComponent(reason));
+                    return;
+                }
+                console.log('[Easebuzz] redirecting to', r.body.redirectUrl);
+                // Full-page navigation to Easebuzz hosted page. The browser leaves our
+                // domain briefly; Easebuzz redirects it back to our /callback endpoint.
+                window.location.href = r.body.redirectUrl;
+            } catch (ex) {
+                console.error('[Easebuzz] payEasebuzz threw', ex);
+                window.location.replace('/checkout/payment-failed?o=&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
+            }
+        };
+
+        // ADMIN/FRANCHISE: initiate payment for an EXISTING order (created at the counter on a
+        // customer's behalf). Hits the role-gated admin-initiate endpoints, then reuses the same
+        // popup (Razorpay) / redirect (Easebuzz) machinery as the public checkout.
+        window.hjc.adminPayRazorpay = async function (orderNumber, prefill) {
+            try {
+                const r = await window.hjc._postJson('/api/payments/razorpay/admin-initiate', { localOrderId: orderNumber });
+                if (!r.ok || !r.body || !r.body.success) {
+                    const reason = (r.body && r.body.error) || ('Could not initiate payment (' + r.status + ').');
+                    window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(orderNumber) + '&r=' + encodeURIComponent(reason));
+                    return;
+                }
+                const handoff = { key: r.body.key, amount: r.body.amount, currency: r.body.currency, orderId: r.body.orderId, orderNumber: r.body.orderNumber };
+                const outcome = await window.hjc._launchRazorpay(handoff, prefill || {});
+                await window.hjc._handlePopupOutcome(outcome, r.body.orderNumber, prefill || {});
+            } catch (ex) {
+                window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(orderNumber) + '&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
+            }
+        };
+
+        window.hjc.adminPayEasebuzz = async function (orderNumber) {
+            try {
+                const r = await window.hjc._postJson('/api/payments/easebuzz/admin-initiate', { localOrderId: orderNumber });
+                if (!r.ok || !r.body || !r.body.success || !r.body.redirectUrl) {
+                    const reason = (r.body && r.body.error) || ('Could not initiate payment (' + r.status + ').');
+                    window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(orderNumber) + '&r=' + encodeURIComponent(reason));
+                    return;
+                }
+                window.location.href = r.body.redirectUrl;
+            } catch (ex) {
+                window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(orderNumber) + '&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
+            }
+        };
+
+        // FRANCHISE: open the Razorpay popup for an already-created Pending franchise order and
+        // return the signed result to Blazor (no redirect). The Blazor page then calls the
+        // franchise confirm endpoint via its service. handoff = { key, amount, currency, orderId, orderNumber }.
+        window.hjc.franchisePayRazorpay = function (handoff, prefill) {
+            return window.hjc._launchRazorpay(handoff, prefill || {});
+        };
+
+        window.hjc.retryEasebuzz = async function (localOrderId) {
+            try {
+                const r = await window.hjc._postJson('/api/payments/easebuzz/retry-order', { localOrderId: localOrderId });
+                if (!r.ok || !r.body || !r.body.success || !r.body.redirectUrl) {
+                    const reason = (r.body && r.body.error) || ('Could not retry the payment (' + r.status + ').');
+                    console.error('[Easebuzz] retry-order failed:', reason, r.body || r.raw);
+                    window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId) +
+                        '&r=' + encodeURIComponent(reason));
+                    return;
+                }
+                window.location.href = r.body.redirectUrl;
+            } catch (ex) {
+                console.error('[Easebuzz] retryEasebuzz threw', ex);
+                window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId) +
+                    '&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
+            }
+        };
+
+        // PUBLIC: retry entry point. Called from /checkout/payment-failed and -cancelled.
+        window.hjc.retryRazorpay = async function (localOrderId, prefill) {
+            try {
+                const r = await window.hjc._postJson('/api/payments/razorpay/retry-order', { localOrderId: localOrderId });
+                if (!r.ok || !r.body || !r.body.success) {
+                    const reason = (r.body && r.body.error) || ('Could not retry the payment (' + r.status + ').');
+                    console.error('[Razorpay] retry-order failed:', reason, r.body || r.raw);
+                    window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId) +
+                        '&r=' + encodeURIComponent(reason));
+                    return;
+                }
+                const handoff = {
+                    key: r.body.key,
+                    amount: r.body.amount,
+                    currency: r.body.currency,
+                    orderId: r.body.orderId,
+                    orderNumber: r.body.orderNumber
+                };
+                const outcome = await window.hjc._launchRazorpay(handoff, prefill);
+                await window.hjc._handlePopupOutcome(outcome, r.body.orderNumber, prefill);
+            } catch (ex) {
+                console.error('[Razorpay] retryRazorpay threw', ex);
+                window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId) +
+                    '&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
+            }
+        };
+
+        // ── Razorpay Checkout popup (legacy JSInvokable interface) ────────────────
+        // Kept for any caller that still does the Blazor round-trip. The new REST flow
+        // above is preferred — it doesn't depend on the SignalR circuit being alive
+        // when the popup closes.
+        window.hjc.openRazorpay = function (opts, dotnetRef) {
+            // ── Diagnostic logging: print every option to the console BEFORE we touch
+            //    Razorpay, so when the popup misbehaves the values are right there. The
+            //    KeyId is the public Razorpay KeyId (rzp_test_* / rzp_live_*) — safe to log.
+            try {
+                console.groupCollapsed('%c[Razorpay] openRazorpay()', 'color:#F58220;font-weight:bold');
+                console.log('key (KeyId)     :', opts && opts.key);
+                console.log('amount (paise)  :', opts && opts.amount, '(₹' + ((opts && opts.amount || 0) / 100).toFixed(2) + ')');
+                console.log('currency        :', opts && (opts.currency || 'INR'));
+                console.log('order_id        :', opts && opts.gatewayOrderId);
+                console.log('orderNumber     :', opts && opts.orderNumber);
+                console.log('prefill         :', opts && { name: opts.prefillName, email: opts.prefillEmail, contact: opts.prefillContact });
+                console.log('full options    :', opts);
+                console.groupEnd();
+            } catch (e) { /* console may be disabled */ }
+
+            try {
+                if (!window.Razorpay) {
+                    const msg = 'Razorpay script did not load. Open the Network tab and confirm https://checkout.razorpay.com/v1/checkout.js returned 200.';
+                    console.error('[Razorpay]', msg);
+                    if (dotnetRef) dotnetRef.invokeMethodAsync('OnRazorpayError', msg);
+                    return false;
+                }
+
+                // ── Pre-flight validation. The popup will silently 5xx if we send junk; surface it here. ──
+                const problems = [];
+                if (!opts || !opts.key) problems.push('KeyId is empty');
+                else if (typeof opts.key !== 'string') problems.push('KeyId is not a string');
+                else if (opts.key.indexOf(' ') >= 0) problems.push('KeyId contains whitespace');
+                else if (opts.key.indexOf('rzp_test_') !== 0 && opts.key.indexOf('rzp_live_') !== 0)
+                    problems.push('KeyId "' + opts.key + '" does not start with rzp_test_ or rzp_live_');
+                if (!opts || !opts.gatewayOrderId) problems.push('order_id is empty');
+                else if (typeof opts.gatewayOrderId !== 'string' || opts.gatewayOrderId.indexOf('order_') !== 0)
+                    problems.push('order_id "' + opts.gatewayOrderId + '" does not start with order_');
+                if (!opts || !(opts.amount > 0)) problems.push('amount must be > 0 paise');
+                if (problems.length) {
+                    const msg = 'Razorpay options invalid: ' + problems.join('; ') + '. Check the server logs and appsettings.';
+                    console.error('[Razorpay]', msg);
+                    if (dotnetRef) dotnetRef.invokeMethodAsync('OnRazorpayError', msg);
+                    return false;
+                }
+
+                let dismissed = true; // assume dismissal unless a success/error fires first
+                const cfg = {
+                    key: opts.key,
+                    amount: opts.amount,         // already in paise from the server
+                    currency: opts.currency || 'INR',
+                    order_id: opts.gatewayOrderId,
+                    name: opts.name || 'RioCommerce',
+                    description: opts.description || ('Order ' + (opts.orderNumber || '')),
+                    image: opts.image || '/_content/RioCommerce.Web/assets/logo.png',
+                    prefill: {
+                        name: opts.prefillName || '',
+                        email: opts.prefillEmail || '',
+                        contact: opts.prefillContact || ''
+                    },
+                    notes: { order_number: opts.orderNumber || '' },
+                    theme: { color: '#F58220' },
+                    handler: function (resp) {
+                        dismissed = false;
+                        console.log('[Razorpay] payment success:', resp);
+                        if (!dotnetRef) return;
+                        dotnetRef.invokeMethodAsync('OnRazorpaySuccess', {
+                            paymentId: resp.razorpay_payment_id,
+                            orderId: resp.razorpay_order_id,
+                            signature: resp.razorpay_signature
+                        });
+                    },
+                    modal: {
+                        ondismiss: function () {
+                            console.warn('[Razorpay] popup dismissed by user');
+                            if (dismissed && dotnetRef) dotnetRef.invokeMethodAsync('OnRazorpayDismissed');
+                        },
+                        escape: true,
+                        backdropclose: false
+                    }
+                };
+
+                console.log('[Razorpay] final cfg passed to new Razorpay():', cfg);
+                const rzp = new window.Razorpay(cfg);
+
+                rzp.on('payment.failed', function (resp) {
+                    dismissed = false;
+                    const err = (resp && resp.error) || {};
+                    // Show EVERY field Razorpay surfaces so the user can act on the real reason.
+                    console.error('[Razorpay] payment.failed:', err);
+                    const bits = [];
+                    if (err.description) bits.push(err.description);
+                    if (err.reason)      bits.push('reason: ' + err.reason);
+                    if (err.code)        bits.push('code: ' + err.code);
+                    if (err.step)        bits.push('step: ' + err.step);
+                    if (err.source)      bits.push('source: ' + err.source);
+                    const msg = bits.length ? bits.join(' · ') : 'Payment failed. Please try again.';
+                    if (dotnetRef) dotnetRef.invokeMethodAsync('OnRazorpayError', msg);
+                });
+
+                rzp.open();
+                return true;
+            } catch (e) {
+                console.error('[Razorpay] open threw:', e);
+                if (dotnetRef) dotnetRef.invokeMethodAsync('OnRazorpayError', (e && e.message) || 'Unexpected error opening Razorpay.');
+                return false;
+            }
+        };
+        window.hjc.copy = function (text) { try { navigator.clipboard.writeText(text); } catch (e) { } };
+        window.hjc.downloadCsv = function (filename, text) {
+            const blob = new Blob(["﻿" + text], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+            document.body.removeChild(a); URL.revokeObjectURL(url);
+        };
+        // Binary sibling of downloadCsv, for real .xlsx workbooks. Blazor Server can only hand
+        // bytes across the circuit as base64, so it is decoded here rather than sent as a string —
+        // a zip container does not survive being treated as text.
+        window.hjc.downloadBytes = function (filename, base64, mime) {
+            const bin = atob(base64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+            document.body.removeChild(a); URL.revokeObjectURL(url);
+        };
+        window.hjc.beep = function () {
+            try {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return;
+                window.hjc._ac = window.hjc._ac || new Ctx();
+                const ac = window.hjc._ac;
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.type = 'sine'; o.frequency.value = 880;
+                g.gain.setValueAtTime(0.0001, ac.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.2, ac.currentTime + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.25);
+                o.connect(g); g.connect(ac.destination);
+                o.start(); o.stop(ac.currentTime + 0.26);
+            } catch (e) { }
+        };
+        // Admin smart-search helpers. Scroll the Nth child of a scroll container into the centre
+        // when the user navigates the suggestion list with ↑/↓.
+        window.hjcAdmin = window.hjcAdmin || {};
+        window.hjcAdmin.scrollIntoCenter = function (container, index) {
+            try {
+                if (!container || index == null) return;
+                var child = container.children && container.children[index];
+                if (!child) return;
+                child.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            } catch (e) { }
+        };
+    </script>
+</body>
+</html>
+
+@code {
+    private string analytics = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var s = await Settings.GetAsync();
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(s.Ga4Id))
+            sb.Append($"<script async src=\"https://www.googletagmanager.com/gtag/js?id={s.Ga4Id}\"></script>" +
+                      $"<script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments);}}gtag('js',new Date());gtag('config','{s.Ga4Id}');</script>");
+        if (!string.IsNullOrWhiteSpace(s.GtmId))
+            sb.Append($"<script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],j=d.createElement(s);j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f);}})(window,document,'script','dataLayer','{s.GtmId}');</script>");
+        if (!string.IsNullOrWhiteSpace(s.MetaPixelId))
+            sb.Append($"<script>!function(f,b,e,v,n,t,s){{if(f.fbq)return;n=f.fbq=function(){{n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)}};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');fbq('init','{s.MetaPixelId}');fbq('track','PageView');</script>");
+        analytics = sb.ToString();
+    }
+}

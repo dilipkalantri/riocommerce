@@ -1,0 +1,9 @@
+<div class="kpi-card">
+    <div class="kpi-card__label">@Label</div>
+    <div class="kpi-card__value" style="@($"color:{Color}")">@Value</div>
+</div>
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "0";
+    [Parameter] public string Color { get; set; } = "var(--navy)";
+}

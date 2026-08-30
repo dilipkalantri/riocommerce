@@ -1,0 +1,516 @@
+@page "/login"
+@layout MainLayout
+@inject ISiteSettingsService Settings
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Login — RioCommerce" })" />
+
+<style>
+    /* ── Duplicate-account toast & inline-availability indicators on the Register form ── */
+    .dup-toast{background:linear-gradient(180deg,#FEF2F2,#FEE7E7);border:1px solid rgba(220,38,38,.28);border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;gap:12px;animation:dup-toast-in .35s cubic-bezier(.22,1,.36,1) both;box-shadow:0 12px 28px -16px rgba(220,38,38,.4)}
+    @@keyframes dup-toast-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+    .dup-toast__ico{flex:none;width:36px;height:36px;border-radius:50%;background:#FEE2E2;color:#DC2626;display:inline-flex;align-items:center;justify-content:center;font-size:18px;font-weight:800}
+    .dup-toast__body{flex:1;min-width:0}
+    .dup-toast__title{font-weight:800;color:#B91C1C;font-size:14px;margin-bottom:2px}
+    .dup-toast__msg{font-size:13px;color:#7F1D1D;line-height:1.5}
+    .dup-toast__actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .dup-toast__actions a{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;font-weight:700;font-size:12.5px;text-decoration:none;border:1px solid rgba(220,38,38,.3)}
+    .dup-toast__actions .dup-btn-login{background:#DC2626;color:#fff;border-color:#DC2626}
+    .dup-toast__actions .dup-btn-login:hover{filter:brightness(1.05)}
+    .dup-toast__actions .dup-btn-forgot{background:#fff;color:#B91C1C}
+    .dup-field-msg{font-size:12px;font-weight:700;margin-top:4px;display:flex;align-items:center;gap:5px}
+    .dup-field-msg--ok{color:#16A34A}
+    .dup-field-msg--bad{color:#DC2626}
+
+    /* ══════════════════════ Premium authentication redesign (.hj-auth-*) ══════════════════════ */
+    .hj-auth-page{position:relative;display:grid;grid-template-columns:1fr 1fr;min-height:calc(100vh - 64px);
+        background:var(--navy-dark);overflow:hidden}
+
+    /* ─────── LEFT BRAND PANEL ─────── */
+    .hj-auth-brand{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+        padding:48px 40px;background:linear-gradient(150deg,var(--navy-dark),var(--navy) 55%,var(--navy-light))}
+    .hj-auth-brand__inner{position:relative;z-index:2;max-width:440px;text-align:center;color:#fff}
+
+    /* animated backlight glows (behind content) */
+    .hj-auth-glow{position:absolute;border-radius:50%;filter:blur(70px);pointer-events:none}
+    .hj-auth-glow--orange{width:340px;height:340px;top:6%;left:-6%;background:rgba(10, 199, 229,.50);animation:hj-float1 16s ease-in-out infinite}
+    .hj-auth-glow--blue{width:360px;height:360px;bottom:0;right:-8%;background:rgba(42,85,128,.72);animation:hj-float2 20s ease-in-out infinite}
+    .hj-auth-glow--green{width:200px;height:200px;bottom:22%;left:14%;background:rgba(61,170,53,.28);animation:hj-float3 18s ease-in-out infinite}
+    .hj-auth-beam{position:absolute;top:-30%;left:50%;width:58%;height:160%;transform:translateX(-50%) rotate(8deg);
+        background:linear-gradient(180deg,transparent,rgba(255,255,255,.07),transparent);filter:blur(26px);
+        animation:hj-beam 13s ease-in-out infinite;pointer-events:none}
+    .hj-auth-dots{position:absolute;inset:0;opacity:.5;pointer-events:none;
+        background-image:radial-gradient(rgba(255,255,255,.10) 1px,transparent 1px);background-size:26px 26px;
+        -webkit-mask-image:radial-gradient(ellipse at center,#000 38%,transparent 78%);
+                mask-image:radial-gradient(ellipse at center,#000 38%,transparent 78%)}
+
+    /* logo with backlight ring + float + hover */
+    .hj-auth-logo-wrap{position:relative;display:inline-flex;margin-bottom:26px;animation:hj-logo-float 6s ease-in-out infinite}
+    .hj-auth-logo-ring{position:absolute;inset:-26px;border-radius:50%;z-index:-1;
+        background:radial-gradient(circle,rgba(10, 199, 229,.45),rgba(42,85,128,.28) 45%,transparent 70%);
+        filter:blur(14px);animation:hj-ring-pulse 4.5s ease-in-out infinite}
+    .hj-auth-logo{height:64px;width:auto;display:block;filter:drop-shadow(0 6px 18px rgba(0,0,0,.35));
+        transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
+    .hj-auth-logo-wrap:hover .hj-auth-logo{transform:scale(1.06)}
+    .hj-auth-logo-wrap:hover .hj-auth-logo-ring{animation-duration:2.4s}
+
+    .hj-auth-brand__title{font-size:clamp(26px,3vw,36px);font-weight:800;letter-spacing:-.02em;line-height:1.15;margin-bottom:14px}
+    .hj-auth-brand__sub{font-size:clamp(14px,1.5vw,16px);line-height:1.6;color:rgba(255,255,255,.78);margin:0 auto 26px;max-width:380px}
+    .hj-auth-trust{display:inline-flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:10px;
+        font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.82)}
+    .hj-auth-trust__dot{width:5px;height:5px;border-radius:50%;background:var(--orange);box-shadow:0 0 8px var(--orange)}
+
+    /* ─────── RIGHT FORM SIDE ─────── */
+    .hj-auth-formside{position:relative;display:flex;align-items:center;justify-content:center;
+        padding:40px 34px;background:radial-gradient(120% 90% at 100% 0%,#fff,#fbf6f1)}
+    .hj-auth-formside::before,.hj-auth-formside::after{content:"";position:absolute;border-radius:50%;filter:blur(80px);pointer-events:none}
+    .hj-auth-formside::before{width:320px;height:320px;top:-90px;right:-80px;background:rgba(10, 199, 229,.16);animation:hj-float2 22s ease-in-out infinite}
+    .hj-auth-formside::after{width:320px;height:320px;bottom:-100px;left:-80px;background:rgba(42,85,128,.14);animation:hj-float1 24s ease-in-out infinite}
+
+    /* premium glass card + slowly-orbiting soft backlight */
+    .hj-auth-card{position:relative;z-index:1;width:100%;max-width:440px;
+        background:rgba(255,255,255,.86);backdrop-filter:blur(14px) saturate(1.1);-webkit-backdrop-filter:blur(14px) saturate(1.1);
+        border:1px solid rgba(255,255,255,.7);border-radius:24px;padding:34px 32px;
+        box-shadow:0 30px 60px -24px rgba(16,40,70,.32),0 2px 6px rgba(16,40,70,.06);
+        transition:transform .35s cubic-bezier(.4,0,.2,1),box-shadow .35s ease}
+    .hj-auth-card::before{content:"";position:absolute;inset:-2px;border-radius:26px;z-index:-1;
+        background:conic-gradient(from 0deg,rgba(10, 199, 229,0),rgba(10, 199, 229,.35),rgba(42,85,128,.35),rgba(61,170,53,.22),rgba(10, 199, 229,0));
+        filter:blur(22px);opacity:.55;animation:hj-card-orbit 10s linear infinite}
+    .hj-auth-card:hover{transform:translateY(-4px);box-shadow:0 42px 82px -28px rgba(16,40,70,.42),0 3px 8px rgba(16,40,70,.08)}
+    .hj-auth-card:hover::before{opacity:.85}
+
+    /* segmented Login / Register control with sliding thumb */
+    .hj-auth-tabs{position:relative;display:grid;grid-template-columns:1fr 1fr;background:var(--gray-100);
+        border-radius:14px;padding:5px;margin-bottom:22px}
+    .hj-auth-tabs__thumb{position:absolute;top:5px;bottom:5px;left:5px;width:calc(50% - 7px);
+        background:var(--navy);border-radius:10px;box-shadow:0 6px 16px -6px rgba(26,58,92,.6);
+        transition:transform .32s cubic-bezier(.4,0,.2,1)}
+    .hj-auth-tabs[data-active="register"] .hj-auth-tabs__thumb{transform:translateX(calc(100% + 4px))}
+    .hj-auth-tab{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:7px;
+        padding:11px 8px 13px;border:none;background:transparent;cursor:pointer;border-radius:10px;
+        font-size:14px;font-weight:700;color:var(--gray-500);transition:color .3s ease}
+    .hj-auth-tab:hover{color:var(--navy)}
+    .hj-auth-tab.active{color:#fff}
+    .hj-auth-tab svg{width:16px;height:16px}
+    .hj-auth-tab__accent{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);width:18px;height:2.5px;
+        border-radius:2px;background:var(--orange);opacity:0;transition:opacity .3s ease}
+    .hj-auth-tab.active .hj-auth-tab__accent{opacity:1}
+
+    /* form header */
+    .hj-auth-head{margin-bottom:18px}
+    .hj-auth-head__title{font-size:22px;font-weight:800;color:var(--navy);margin-bottom:4px;letter-spacing:-.01em}
+    .hj-auth-head__sub{font-size:13.5px;color:var(--gray-500);line-height:1.5}
+
+    /* fields */
+    .hj-auth-field{margin-bottom:15px}
+    .hj-auth-field__label{display:block;font-size:12.5px;font-weight:700;color:var(--gray-600);margin-bottom:6px}
+    .hj-auth-field__label .req{color:var(--orange)}
+    .hj-auth-input-wrap{position:relative;display:flex;align-items:center}
+    .hj-auth-ico{position:absolute;left:13px;width:18px;height:18px;color:var(--gray-400);pointer-events:none;transition:color .2s ease}
+    .hj-auth-input{width:100%;height:46px;padding:0 14px 0 40px;border:1.5px solid var(--gray-200);border-radius:12px;
+        background:var(--gray-50);font-size:14px;color:var(--gray-700);outline:none;
+        transition:border-color .2s ease,background .2s ease,box-shadow .2s ease}
+    .hj-auth-input::placeholder{color:var(--gray-400)}
+    .hj-auth-input:hover{border-color:var(--gray-300);background:#fff}
+    .hj-auth-input:focus{border-color:var(--orange);background:#fff;box-shadow:0 0 0 3px rgba(10, 199, 229,.14)}
+    .hj-auth-input-wrap:focus-within .hj-auth-ico{color:var(--orange)}
+    .hj-auth-input--pw{padding-right:44px}
+    /* show / hide password */
+    .hj-auth-eye{position:absolute;right:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+        border:none;background:transparent;color:var(--gray-400);cursor:pointer;border-radius:8px;
+        transition:color .2s ease,background .2s ease}
+    .hj-auth-eye:hover{color:var(--navy);background:var(--gray-100)}
+    .hj-auth-eye:focus-visible{outline:2px solid rgba(10, 199, 229,.4);outline-offset:1px}
+    .hj-auth-eye svg{width:18px;height:18px}
+    .hj-auth-eye .ico-eyeoff{display:none}
+    .hj-auth-eye.is-visible .ico-eye{display:none}
+    .hj-auth-eye.is-visible .ico-eyeoff{display:block}
+
+    /* password row + forgot link */
+    .hj-auth-pwrow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+    .hj-auth-pwrow .hj-auth-field__label{margin-bottom:0}
+    .hj-auth-forgot{position:relative;font-size:12.5px;font-weight:700;color:var(--orange);text-decoration:none}
+    .hj-auth-forgot::after{content:"";position:absolute;left:0;right:100%;bottom:-2px;height:1.5px;background:var(--orange);transition:right .28s ease}
+    .hj-auth-forgot:hover::after,.hj-auth-forgot:focus-visible::after{right:0}
+    .hj-auth-forgot:focus-visible{outline:none}
+
+    /* inline alert (server error) */
+    .hj-auth-alert{background:#FEF2F2;color:#DC2626;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:14px;
+        border:1px solid rgba(220,38,38,.22)}
+
+    /* premium submit CTA */
+    .hj-auth-submit{position:relative;width:100%;height:50px;margin-top:8px;border:none;cursor:pointer;overflow:hidden;
+        display:flex;align-items:center;justify-content:center;gap:9px;border-radius:14px;
+        font-size:15px;font-weight:700;color:#fff;
+        background:linear-gradient(135deg,var(--orange),var(--orange-dark));
+        box-shadow:0 14px 26px -12px rgba(10, 199, 229,.7);
+        transition:transform .2s ease,box-shadow .25s ease,filter .2s ease}
+    .hj-auth-submit:hover{transform:translateY(-2px);box-shadow:0 20px 34px -12px rgba(10, 199, 229,.82);filter:brightness(1.04)}
+    .hj-auth-submit:active{transform:translateY(0) scale(.99)}
+    .hj-auth-submit:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(10, 199, 229,.4),0 14px 26px -12px rgba(10, 199, 229,.7)}
+    .hj-auth-submit svg{width:18px;height:18px}
+    .hj-auth-submit__arrow{transition:transform .25s ease}
+    .hj-auth-submit:hover .hj-auth-submit__arrow{transform:translateX(4px)}
+    .hj-auth-submit::after{content:"";position:absolute;top:0;left:-60%;width:38%;height:100%;
+        background:linear-gradient(105deg,transparent,rgba(255,255,255,.38),transparent);transform:skewX(-20deg)}
+    .hj-auth-submit:hover::after{animation:hj-shine .9s ease}
+    .hj-auth-submit__spin{display:none;position:absolute;width:20px;height:20px;border-radius:50%;
+        border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:hj-spin .7s linear infinite}
+    .hj-auth-submit.is-loading{pointer-events:none;color:transparent}
+    .hj-auth-submit.is-loading svg{visibility:hidden}
+    .hj-auth-submit.is-loading .hj-auth-submit__spin{display:block}
+    .hj-auth-submit:disabled{opacity:.85;cursor:not-allowed;transform:none;filter:saturate(.92)}
+
+    /* entrance animations */
+    .hj-anim{opacity:0;animation:hj-fade-up .7s cubic-bezier(.22,1,.36,1) forwards}
+    .hj-anim--1{animation-delay:.05s}
+    .hj-anim--2{animation-delay:.18s}
+    .hj-anim--3{animation-delay:.30s}
+    .hj-anim--4{animation-delay:.42s}
+    .hj-anim--card{animation-delay:.12s}
+
+    @@keyframes hj-fade-up{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+    @@keyframes hj-logo-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+    @@keyframes hj-ring-pulse{0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+    @@keyframes hj-float1{0%,100%{transform:translate(0,0)}50%{transform:translate(24px,20px)}}
+    @@keyframes hj-float2{0%,100%{transform:translate(0,0)}50%{transform:translate(-26px,-18px)}}
+    @@keyframes hj-float3{0%,100%{transform:translate(0,0)}50%{transform:translate(16px,-22px)}}
+    @@keyframes hj-beam{0%,100%{opacity:.4;transform:translateX(-50%) rotate(8deg)}50%{opacity:.85;transform:translateX(-40%) rotate(10deg)}}
+    @@keyframes hj-card-orbit{to{transform:rotate(360deg)}}
+    @@keyframes hj-shine{to{left:130%}}
+    @@keyframes hj-spin{to{transform:rotate(360deg)}}
+
+    /* ─────── RESPONSIVE ─────── */
+    @@media(max-width:900px){
+        .hj-auth-page{grid-template-columns:1fr;min-height:0}
+        .hj-auth-brand{padding:34px 24px 30px}
+        .hj-auth-brand__inner{max-width:560px}
+        .hj-auth-logo{height:54px}
+        .hj-auth-logo-wrap{margin-bottom:18px}
+        .hj-auth-brand__sub{margin-bottom:18px}
+        .hj-auth-formside{padding:26px 18px 40px}
+        .hj-auth-card{max-width:480px}
+    }
+    @@media(max-width:520px){
+        .hj-auth-brand{padding:26px 18px 22px}
+        .hj-auth-logo{height:46px}
+        .hj-auth-logo-wrap{margin-bottom:14px}
+        .hj-auth-brand__title{margin-bottom:10px}
+        .hj-auth-brand__sub{margin-bottom:14px;font-size:14px}
+        .hj-auth-card{padding:26px 20px;border-radius:20px}
+        .hj-auth-formside{padding:22px 14px 100px}   /* bottom clearance so floating buttons never overlap */
+        /* lighter blur / softer effects on mobile for performance */
+        .hj-auth-glow{filter:blur(48px)}
+        .hj-auth-formside::before,.hj-auth-formside::after{filter:blur(56px);width:240px;height:240px}
+        .hj-auth-beam{display:none}
+    }
+    @@media(max-width:360px){
+        .hj-auth-card{padding:22px 16px}
+        .hj-auth-trust{gap:7px;font-size:11px}
+        .hj-auth-head__title{font-size:20px}
+    }
+
+    /* reduced motion: disable non-essential animation, keep everything visible & usable */
+    @@media(prefers-reduced-motion:reduce){
+        .hj-auth-glow,.hj-auth-beam,.hj-auth-logo-wrap,.hj-auth-logo-ring,.hj-auth-card::before,
+        .hj-auth-formside::before,.hj-auth-formside::after,.hj-auth-submit:hover::after{animation:none!important}
+        .hj-anim{animation:none!important;opacity:1!important;transform:none!important}
+        .hj-auth-card,.hj-auth-submit,.hj-auth-input,.hj-auth-logo,.hj-auth-tabs__thumb,.hj-auth-forgot::after{transition:none!important}
+        .hj-auth-card:hover{transform:none}
+        .hj-auth-submit:hover{transform:none}
+    }
+</style>
+
+<section class="hj-auth-page">
+    @* ── LEFT: premium branded panel with animated backlight ── *@
+    <div class="hj-auth-brand">
+        <span class="hj-auth-glow hj-auth-glow--orange" aria-hidden="true"></span>
+        <span class="hj-auth-glow hj-auth-glow--blue" aria-hidden="true"></span>
+        <span class="hj-auth-glow hj-auth-glow--green" aria-hidden="true"></span>
+        <span class="hj-auth-beam" aria-hidden="true"></span>
+        <span class="hj-auth-dots" aria-hidden="true"></span>
+        <div class="hj-auth-brand__inner">
+            <div class="hj-auth-logo-wrap hj-anim hj-anim--1">
+                <span class="hj-auth-logo-ring" aria-hidden="true"></span>
+                <img src="@LogoSrc" alt="RioCommerce" class="hj-auth-logo" />
+            </div>
+            <h1 class="hj-auth-brand__title hj-anim hj-anim--2">Start Your CA Journey</h1>
+            <p class="hj-auth-brand__sub hj-anim hj-anim--3">Learn from trusted faculty. Prepare with confidence. Achieve your CA dream.</p>
+            <div class="hj-auth-trust hj-anim hj-anim--4">
+                <span>Expert Faculty</span>
+                <span class="hj-auth-trust__dot" aria-hidden="true"></span>
+                <span>Quality Courses</span>
+                <span class="hj-auth-trust__dot" aria-hidden="true"></span>
+                <span>Student Success</span>
+            </div>
+        </div>
+    </div>
+
+    @* ── RIGHT: soft-lit surface + glass auth card ── *@
+    <div class="hj-auth-formside">
+        <div class="hj-auth-card hj-anim hj-anim--card">
+            <div class="hj-auth-tabs" data-active="@(isLogin ? "login" : "register")">
+                <span class="hj-auth-tabs__thumb" aria-hidden="true"></span>
+                <button type="button" class="hj-auth-tab @(isLogin ? "active" : "")" @onclick="() => isLogin = true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    <span>Login</span>
+                    <span class="hj-auth-tab__accent" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="hj-auth-tab @(!isLogin ? "active" : "")" @onclick="() => isLogin = false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                    <span>Register</span>
+                    <span class="hj-auth-tab__accent" aria-hidden="true"></span>
+                </button>
+            </div>
+
+            @* ── ⚠ Account Already Exists toast — slides in from the top, manually dismissable.
+                 Triggered by the /account/register redirect with ?error=email|phone|both. ── *@
+            @if (DuplicateToast is { } toast)
+            {
+                <div class="dup-toast" role="alert">
+                    <span class="dup-toast__ico">⚠</span>
+                    <div class="dup-toast__body">
+                        <div class="dup-toast__title">@toast.title</div>
+                        <div class="dup-toast__msg">@toast.message</div>
+                        <div class="dup-toast__actions">
+                            <a href="/login?tab=login" class="dup-btn-login">🔑 Login Now</a>
+                            <a href="/forgot-password" class="dup-btn-forgot">Forgot Password</a>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="hj-auth-alert">@ErrorMessage</div>
+            }
+
+            @if (isLogin)
+            {
+                <div class="hj-auth-head">
+                    <div class="hj-auth-head__title">Welcome Back</div>
+                    <div class="hj-auth-head__sub">Sign in to continue your learning journey.</div>
+                </div>
+                <form method="post" action="/account/login" data-enhance="false" class="auth-form hj-auth-form">
+                    <input type="hidden" name="rurl" value="@(ReturnUrl ?? "/")" />
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Email or Phone</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            <input type="text" name="emailOrPhone" class="hj-auth-input" placeholder="Enter your Email or MobileNo." required />
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <div class="hj-auth-pwrow">
+                            <label class="hj-auth-field__label">Password</label>
+                            <a href="/forgot-password" class="hj-auth-forgot">Forgot password?</a>
+                        </div>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <input type="password" name="password" class="hj-auth-input hj-auth-input--pw" placeholder="Enter password" required />
+                            <button type="button" class="hj-auth-eye" data-pwtoggle aria-label="Show password">
+                                <svg class="ico-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg class="ico-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" class="hj-auth-submit">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                        <span>Login</span>
+                        <svg class="hj-auth-submit__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                        <span class="hj-auth-submit__spin" aria-hidden="true"></span>
+                    </button>
+                </form>
+            }
+            else
+            {
+                <div class="hj-auth-head">
+                    <div class="hj-auth-head__title">Create Your Account</div>
+                    <div class="hj-auth-head__sub">Join RioCommerce and start learning today.</div>
+                </div>
+                <form method="post" action="/account/register" data-enhance="false" class="auth-form hj-auth-form" id="dupRegForm">
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Full Name <span class="req">*</span></label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            <input type="text" name="fullName" class="hj-auth-input" placeholder="Your full name" required />
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Phone (+91) <span class="req">*</span></label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                            <input type="tel" name="phone" id="dupRegPhone" class="hj-auth-input" placeholder="10-digit mobile number" required autocomplete="off" />
+                        </div>
+                        <div id="dupRegPhoneMsg"></div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Email <span class="req">*</span></label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                            <input type="email" name="email" id="dupRegEmail" class="hj-auth-input" placeholder="your@email.com" required autocomplete="off" />
+                        </div>
+                        <div id="dupRegEmailMsg"></div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Password <span class="req">*</span></label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <input type="password" name="password" class="hj-auth-input hj-auth-input--pw" placeholder="Min 8 characters" minlength="6" required />
+                            <button type="button" class="hj-auth-eye" data-pwtoggle aria-label="Show password">
+                                <svg class="ico-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <svg class="ico-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">City</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            <input type="text" name="city" class="hj-auth-input" placeholder="Pune" />
+                        </div>
+                    </div>
+                    <button type="submit" class="hj-auth-submit">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                        <span>Create Account</span>
+                        <svg class="hj-auth-submit__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                        <span class="hj-auth-submit__spin" aria-hidden="true"></span>
+                    </button>
+                </form>
+
+                @* ── 🔍 Inline blur-AJAX availability check ──
+                     Hits /api/auth/check-email + /api/auth/check-phone (the public endpoints fronting
+                     ICustomerDuplicateService). Pure DOM script so it survives the non-interactive
+                     server render of /login (this page is a plain HTTP form post). ── *@
+                <script>
+                  (function(){
+                    function mkMsg(box, ok, txt){
+                        if (!box) return;
+                        box.innerHTML = '';
+                        if (txt == null) return;
+                        var d = document.createElement('div');
+                        d.className = 'dup-field-msg ' + (ok ? 'dup-field-msg--ok' : 'dup-field-msg--bad');
+                        d.textContent = (ok ? '✓ ' : '❌ ') + txt;
+                        box.appendChild(d);
+                    }
+                    function wire(inputId, msgId, url, fieldName){
+                        var input = document.getElementById(inputId);
+                        var msg = document.getElementById(msgId);
+                        if (!input || !msg) return;
+                        var lastVal = '';
+                        input.addEventListener('blur', async function(){
+                            var v = (input.value || '').trim();
+                            if (v === '' || v === lastVal) { return; }
+                            lastVal = v;
+                            try {
+                                var r = await fetch(url + '?' + fieldName + '=' + encodeURIComponent(v),
+                                    { credentials: 'same-origin' });
+                                if (!r.ok) return;
+                                var j = await r.json();
+                                var d = j && j.data;
+                                if (!d) return;
+                                mkMsg(msg, !!d.available, d.message || (d.available ? 'Available' : 'Already registered'));
+                            } catch (e) { /* network blip — silent */ }
+                        });
+                        input.addEventListener('input', function(){ if (msg.firstChild) msg.innerHTML = ''; });
+                    }
+                    function init(){
+                        wire('dupRegEmail', 'dupRegEmailMsg', '/api/auth/check-email', 'email');
+                        wire('dupRegPhone', 'dupRegPhoneMsg', '/api/auth/check-phone', 'phone');
+                    }
+                    if (document.readyState !== 'loading') init();
+                    else document.addEventListener('DOMContentLoaded', init);
+                  })();
+                </script>
+            }
+        </div>
+    </div>
+</section>
+
+@* ── Progressive enhancement (no jQuery, no library): password show/hide + submit-once guard.
+     Document-delegated so it also covers the form that appears after an interactive tab switch. ── *@
+<script>
+  (function(){
+    if (window.__hjAuthWired) return; window.__hjAuthWired = true;
+    // Show / hide password
+    document.addEventListener('click', function(e){
+        var btn = e.target.closest && e.target.closest('[data-pwtoggle]');
+        if (!btn) return;
+        var wrap = btn.closest('.hj-auth-input-wrap');
+        var inp = wrap && wrap.querySelector('input');
+        if (!inp) return;
+        var reveal = inp.type === 'password';
+        inp.type = reveal ? 'text' : 'password';
+        btn.classList.toggle('is-visible', reveal);
+        btn.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+    });
+    // Prevent duplicate submissions + show loading state (native POST forms).
+    document.addEventListener('submit', function(e){
+        var f = e.target;
+        if (!f.classList || !f.classList.contains('hj-auth-form')) return;
+        if (f.__submitting) { e.preventDefault(); return; }
+        f.__submitting = true;
+        var btn = f.querySelector('.hj-auth-submit');
+        if (btn) {
+            btn.classList.add('is-loading');
+            btn.setAttribute('aria-busy', 'true');
+            // Disable AFTER the submit is dispatched so the POST still fires.
+            setTimeout(function(){ btn.disabled = true; }, 0);
+        }
+    }, true);
+  })();
+</script>
+
+@code {
+    // Same source as the storefront header and footer: whatever the admin uploaded on
+    // Admin › Settings, falling back to the bundled asset when nothing has been.
+    private string? customLogoUrl;
+    private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
+    private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Never let a settings hiccup keep the sign-in page from rendering.
+        try { customLogoUrl = (await Settings.GetAsync()).LogoUrl; } catch { }
+    }
+
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    [SupplyParameterFromQuery] public string? Tab { get; set; }
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private bool isLogin = true;
+
+    private string? ErrorMessage => Error switch
+    {
+        "1" => "Invalid email/phone or password.",
+        "missing" => "Please fill all required fields.",
+        // Bounced out of /set-password: the setup link expired or the password was already set.
+        // Logging in again either re-issues the link or just works.
+        "setup-expired" => "That password setup link has expired. Please sign in again.",
+        _ => null
+    };
+
+    // Premium duplicate-account toast for the three duplicate cases — exact copy matches the spec.
+    private (string title, string message)? DuplicateToast => Error switch
+    {
+        "email" => ("Account Already Exists",
+                    "This email address is already registered. Please login or use another email address."),
+        "phone" => ("Mobile Number Already Registered",
+                    "This mobile number is already linked with an existing account. Please login or use another mobile number."),
+        "both"  => ("Account Already Exists",
+                    "The entered email address and mobile number are already registered. Please login to continue."),
+        _ => null
+    };
+
+    protected override void OnParametersSet()
+    {
+        // Explicit request for the login tab wins (e.g. "Login Now" from the duplicate toast),
+        // even if a stale ?error= is still in the URL.
+        if (Tab == "login")
+        {
+            isLogin = true;
+            return;
+        }
+        // Open the Register tab when the redirect indicates a duplicate so the user sees the toast in context.
+        if (Tab == "register" || Error == "email" || Error == "phone" || Error == "both" || Error == "missing")
+            isLogin = false;
+    }
+}

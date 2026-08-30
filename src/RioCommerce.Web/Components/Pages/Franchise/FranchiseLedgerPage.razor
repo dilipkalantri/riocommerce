@@ -1,0 +1,119 @@
+@page "/franchise/ledger"
+@attribute [Authorize(Roles = "franchise_admin")]
+@inject IFranchisePortalService Svc
+@inject IFranchiseService Franchise
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Wallet — Franchise Portal" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">Franchise Portal</h1>
+    <FranchiseNav />
+
+    @if (d != null)
+    {
+        <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-card__label">Wallet Balance</div><div class="kpi-card__value" style="@(d.Wallet < 0 ? "color:var(--error)" : "")">₹@d.Wallet.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Credit Limit</div><div class="kpi-card__value">₹@d.CreditLimit.ToString("N0")</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Available</div><div class="kpi-card__value" style="color:var(--green)">₹@d.Available.ToString("N0")</div></div>
+        </div>
+    }
+
+    <div class="data-card" style="margin-top:20px">
+        <div class="data-card__title" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+            <span>Wallet Ledger</span>
+            <a class="btn btn-outline btn-sm" href="/api/franchise/wallet/statement.csv" target="_blank">⬇ Download Statement (CSV)</a>
+        </div>
+        <div class="table-wrap"><table>
+            <thead><tr><th>Date</th><th>Description</th><th>Order</th><th>Type</th><th>Amount</th><th>Balance</th><th>Invoice</th></tr></thead>
+            <tbody>
+                @if (ledger == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+                else if (ledger.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No transactions yet.</td></tr> }
+                else
+                {
+                    @foreach (var e in ledger)
+                    {
+                        <tr>
+                            <td>@e.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
+                            <td>@e.Description</td>
+                            <td>@(e.OrderNumber ?? "—")</td>
+                            <td><span class="status @(e.IsCredit ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(e.IsCredit ? "Credit" : "Debit")</span></td>
+                            <td style="color:@(e.IsCredit ? "var(--green)" : "var(--error)")">@(e.IsCredit ? "+" : "−")₹@e.Amount.ToString("N0")</td>
+                            <td><strong>₹@e.BalanceAfter.ToString("N0")</strong></td>
+                            @* Money added to the wallet is invoiced; the courses you then buy from
+                               the wallet aren't invoiced again — they get a receipt. *@
+                            <td>
+                                @if (e.IsCredit && e.OrderId is { } tid)
+                                {
+                                    <a class="btn btn-ghost btn-sm" href="@($"/api/franchise/orders/{tid}/invoice.pdf?download=1")" target="_blank">🧾 Invoice</a>
+                                }
+                                else { <span style="color:var(--gray-300)">—</span> }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table></div>
+    </div>
+
+    @if (recharges != null && recharges.Count > 0)
+    {
+        <div class="data-card" style="margin-top:20px">
+            <div class="data-card__title">Recharge History</div>
+            <div class="table-wrap"><table>
+                <thead><tr><th>Date</th><th>Amount</th><th>Gateway</th><th>Status</th><th>Reference</th></tr></thead>
+                <tbody>
+                    @foreach (var r in recharges)
+                    {
+                        <tr>
+                            <td>@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
+                            <td><strong>₹@r.Amount.ToString("N0")</strong></td>
+                            <td>@r.GatewayName</td>
+                            <td>@StatusBadge(r.Status)</td>
+                            <td><span style="font-size:11px;color:var(--gray-500)">@(r.GatewayPaymentId ?? r.GatewayOrderId ?? "—")</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </div>
+    }
+</div>
+
+@code {
+    private FranchisePortalDashboard? d;
+    private List<FranchiseLedgerItem>? ledger;
+    private List<WalletRechargeRow>? recharges;
+    private Guid franchiseId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+        {
+            var fid = await Svc.ResolveFranchiseIdAsync(userId);
+            if (fid != null)
+            {
+                franchiseId = fid.Value;
+                await Reload();
+                return;
+            }
+        }
+        ledger = new();
+    }
+
+    private async Task Reload()
+    {
+        d = await Svc.GetDashboardAsync(franchiseId);
+        ledger = await Svc.LedgerAsync(franchiseId);
+        recharges = await Franchise.ListRechargesAsync(franchiseId, 20);
+    }
+
+    private static MarkupString StatusBadge(WalletRechargeStatus s) => new(s switch
+    {
+        WalletRechargeStatus.Success => "<span class=\"status status--confirmed\"><span class=\"dot\"></span>Success</span>",
+        WalletRechargeStatus.Pending => "<span class=\"status status--pending\"><span class=\"dot\"></span>Pending</span>",
+        WalletRechargeStatus.Failed  => "<span class=\"status status--cancelled\"><span class=\"dot\"></span>Failed</span>",
+        _ => s.ToString()
+    });
+}

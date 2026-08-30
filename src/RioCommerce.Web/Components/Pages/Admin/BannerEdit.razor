@@ -1,0 +1,214 @@
+@page "/admin/banners/new"
+@page "/admin/banners/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IBannerService Svc
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+<PageTitle>@(IsNew ? "New Banner" : "Edit Banner") — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>@(IsNew ? "New Banner" : "Edit Banner")</h1>
+    <a href="/admin/banners" class="btn btn-ghost btn-sm">← Back to banners</a>
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:12px 0">@msg</div> }
+
+@if (model == null) { <p style="color:var(--gray-400)">Loading…</p> }
+else
+{
+    <div class="data-card" style="padding:22px;max-width:880px">
+        <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+
+            <div class="form-group" style="grid-column:1 / -1">
+                <label class="form-label">Banner name <span style="color:var(--orange)">*</span></label>
+                <input class="form-input" @bind="model.Name" placeholder="e.g. Sept 2026 Foundation Batch" />
+                <small style="color:var(--gray-400)">Internal label only — not shown on the website.</small>
+            </div>
+
+            @* ── Desktop image ── *@
+            <div class="form-group">
+                <label class="form-label">Desktop image <span style="color:var(--orange)">*</span></label>
+                <div class="banner-drop">
+                    @if (!string.IsNullOrWhiteSpace(model.DesktopImageUrl))
+                    {
+                        <img src="@model.DesktopImageUrl" alt="Desktop preview" style="width:100%;aspect-ratio:1920/600;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200)" />
+                    }
+                    else { <div class="banner-drop__empty" style="aspect-ratio:1920/600">No desktop image</div> }
+                </div>
+                <label class="btn btn-primary btn-sm" style="margin-top:8px;cursor:pointer">
+                    <InputFile OnChange="OnDesktopSelected" accept=".jpg,.jpeg,.png,.webp" hidden id="banner-desktop-file" @ref="desktopInput" />
+                    @(deskUploading ? "Uploading…" : (string.IsNullOrWhiteSpace(model.DesktopImageUrl) ? "📤 Choose desktop image" : "🔁 Replace"))
+                </label>
+                <small style="color:var(--gray-400);display:block;margin-top:4px">Recommended <strong>@settings.RecommendedDesktopW × @settings.RecommendedDesktopH px</strong> · JPG/PNG/WEBP, max 5 MB</small>
+                @if (deskNote != null) { <small style="color:var(--warning);display:block">@deskNote</small> }
+            </div>
+
+            @* ── Mobile image ── *@
+            <div class="form-group">
+                <label class="form-label">Mobile image</label>
+                <div class="banner-drop">
+                    @if (!string.IsNullOrWhiteSpace(model.MobileImageUrl))
+                    {
+                        <img src="@model.MobileImageUrl" alt="Mobile preview" style="width:100%;aspect-ratio:768/900;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200);max-height:240px" />
+                    }
+                    else { <div class="banner-drop__empty" style="aspect-ratio:768/900;max-height:240px">Optional — desktop image is used on phones if left empty</div> }
+                </div>
+                <label class="btn btn-primary btn-sm" style="margin-top:8px;cursor:pointer">
+                    <InputFile OnChange="OnMobileSelected" accept=".jpg,.jpeg,.png,.webp" hidden id="banner-mobile-file" @ref="mobileInput" />
+                    @(mobUploading ? "Uploading…" : (string.IsNullOrWhiteSpace(model.MobileImageUrl) ? "📤 Choose mobile image" : "🔁 Replace"))
+                </label>
+                @if (!string.IsNullOrWhiteSpace(model.MobileImageUrl))
+                {
+                    <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" @onclick="() => model.MobileImageUrl = null">🗑 Remove</button>
+                }
+                <small style="color:var(--gray-400);display:block;margin-top:4px">Recommended <strong>@settings.RecommendedMobileW × @settings.RecommendedMobileH px</strong></small>
+                @if (mobNote != null) { <small style="color:var(--warning);display:block">@mobNote</small> }
+            </div>
+
+            @* ── Optional overlay content ── *@
+            <div class="form-group">
+                <label class="form-label">Title (optional)</label>
+                <input class="form-input" @bind="model.Title" placeholder="Admissions Open" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Button text (optional)</label>
+                <input class="form-input" @bind="model.ButtonText" placeholder="Enrol Now" />
+            </div>
+            <div class="form-group" style="grid-column:1 / -1">
+                <label class="form-label">Description (optional)</label>
+                <textarea class="form-input" rows="2" @bind="model.Description" placeholder="Short supporting line shown over the banner."></textarea>
+            </div>
+            <div class="form-group" style="grid-column:1 / -1">
+                <label class="form-label">Link URL</label>
+                <input class="form-input" @bind="model.LinkUrl" placeholder="/courses/ca-foundation or https://…" />
+                <small style="color:var(--gray-400)">Where a click on the banner/button goes. Required if you set button text.</small>
+            </div>
+
+            @* ── Scheduling + order + status ── *@
+            <div class="form-group">
+                <label class="form-label">Start date (optional)</label>
+                <input type="date" class="form-input" @bind="StartDateLocal" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">End date (optional)</label>
+                <input type="date" class="form-input" @bind="EndDateLocal" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Display order</label>
+                <input type="number" class="form-input" @bind="model.DisplayOrder" min="0" />
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" @bind="model.IsActive" /> <span>Active</span>
+                </label>
+            </div>
+        </div>
+
+        <div style="margin-top:20px;display:flex;gap:10px">
+            <button class="btn btn-primary" @onclick="Save" disabled="@saving">@(saving ? "Saving…" : "Save banner")</button>
+            <a href="/admin/banners" class="btn btn-ghost">Cancel</a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+    private bool IsNew => Id is null || Id == Guid.Empty;
+
+    private BannerEditModel? model;
+    private BannerSliderSettingsModel settings = new();
+    private bool saving, deskUploading, mobUploading, msgOk;
+    private string? msg, deskNote, mobNote;
+    private InputFile? desktopInput, mobileInput;
+
+    private const long MaxBytes = 5 * 1024 * 1024;
+
+    private DateTime? StartDateLocal
+    {
+        get => model?.StartDate?.ToLocalTime();
+        set { if (model != null) model.StartDate = value?.ToUniversalTime(); }
+    }
+    private DateTime? EndDateLocal
+    {
+        get => model?.EndDate?.ToLocalTime();
+        // Make the end date inclusive of the whole chosen day.
+        set { if (model != null) model.EndDate = value?.Date.AddDays(1).AddSeconds(-1).ToUniversalTime(); }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        settings = await Svc.GetSettingsAsync();
+        model = IsNew ? new BannerEditModel { IsActive = true } : (await Svc.GetAsync(Id!.Value) ?? new BannerEditModel { IsActive = true });
+    }
+
+    private async Task OnDesktopSelected(InputFileChangeEventArgs e)
+    {
+        deskNote = null;
+        await ValidateDimensions("banner-desktop-file", settings.RecommendedDesktopW, settings.RecommendedDesktopH, n => deskNote = n);
+        await UploadOne(e, "desktop", url => model!.DesktopImageUrl = url, v => deskUploading = v, n => deskNote = n);
+    }
+
+    private async Task OnMobileSelected(InputFileChangeEventArgs e)
+    {
+        mobNote = null;
+        await ValidateDimensions("banner-mobile-file", settings.RecommendedMobileW, settings.RecommendedMobileH, n => mobNote = n);
+        await UploadOne(e, "mobile", url => model!.MobileImageUrl = url, v => mobUploading = v, n => mobNote = n);
+    }
+
+    // Reads natural dimensions in the browser and warns (non-blocking) if they're off-ratio.
+    private async Task ValidateDimensions(string inputId, int recW, int recH, Action<string?> note)
+    {
+        try
+        {
+            var size = await JS.InvokeAsync<ImageSize?>("hjc.readImageSize", inputId);
+            if (size is null || size.Width == 0) return;
+            var wantRatio = (double)recW / recH;
+            var gotRatio = (double)size.Width / size.Height;
+            // Within ~6% of the recommended aspect ratio = fine. Otherwise warn, don't block.
+            if (Math.Abs(gotRatio - wantRatio) / wantRatio > 0.06)
+                note($"Uploaded {size.Width}×{size.Height}px — recommended {recW}×{recH}px. It'll be cropped to fit.");
+        }
+        catch { /* dimension read is best-effort */ }
+    }
+
+    private async Task UploadOne(InputFileChangeEventArgs e, string device, Action<string> setUrl, Action<bool> setBusy, Action<string?> note)
+    {
+        var file = e.File;
+        if (file == null) return;
+        if (file.Size > MaxBytes) { note("Image too large — max 5 MB."); return; }
+        var ext = System.IO.Path.GetExtension(file.Name);
+        setBusy(true);
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxBytes);
+            var (ok, err, url) = await Svc.UploadImageAsync(device, ext, stream);
+            if (ok && !string.IsNullOrWhiteSpace(url)) setUrl(url);
+            else { msgOk = false; msg = err ?? "Upload failed."; }
+        }
+        finally { setBusy(false); }
+    }
+
+    private async Task Save()
+    {
+        if (model == null) return;
+        saving = true;
+        try
+        {
+            var (ok, error, _) = await Svc.SaveAsync(model);
+            if (ok) Nav.NavigateTo("/admin/banners");
+            else { msgOk = false; msg = error; }
+        }
+        finally { saving = false; }
+    }
+
+    private sealed class ImageSize { public int Width { get; set; } public int Height { get; set; } }
+}
+
+<style>
+    .banner-drop__empty{
+        display:flex;align-items:center;justify-content:center;text-align:center;
+        padding:12px;border:1.5px dashed var(--gray-300);border-radius:8px;
+        color:var(--gray-400);font-size:13px;background:var(--gray-50);
+    }
+</style>

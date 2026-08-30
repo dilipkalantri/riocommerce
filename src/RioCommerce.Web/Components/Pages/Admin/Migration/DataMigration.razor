@@ -1,0 +1,193 @@
+@page "/admin/data-migration"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin")]
+@using RioCommerce.Core.DTOs.Migration
+@inject ILegacyMigrationService Migrator
+@inject AuthenticationStateProvider AuthProvider
+@inject ToastService Toast
+<PageTitle>Legacy Data Migration — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Legacy Data Migration</h1>
+</div>
+
+<div class="data-card" style="padding:20px;max-width:760px">
+    <p style="color:var(--gray-500);margin-top:0">
+        One-time import of <strong>products</strong> and <strong>customers</strong> from the old
+        nopCommerce (SQL Server) site. Old orders are not migrated. Imported customers are given the
+        <strong>Student</strong> role — the same one a website signup gets — and arrive with no
+        password: the first time one tries to log in, the site recognises the migrated account and
+        walks them through creating a new password after emailing them a 6-digit code.
+        Re-running is safe: products match on SKU, customers on email, so existing records are
+        updated rather than duplicated.
+    </p>
+
+    @*
+        Masked by default because it carries a password, but with a reveal — the driver reports a bad
+        connection string as a character index, which is undiagnosable on a field you cannot read.
+        The length is shown for the same reason: it catches a paste that arrived truncated.
+    *@
+    <div class="form-group" style="margin-top:8px">
+        <label class="form-label">Old SQL Server connection string</label>
+        <input class="form-input" @bind="req.SourceConnectionString" @bind:event="oninput"
+               type="@(showConnectionString ? "text" : "password")"
+               placeholder="Server=...;Database=riocommerce_com;User Id=...;Password=...;TrustServerCertificate=True" />
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:4px">
+            <small style="color:var(--gray-400)">Read-only access is sufficient. Not stored — used only for this run.</small>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;color:var(--gray-500);font-size:12px">
+                <input type="checkbox" @bind="showConnectionString" /> Show
+                <span style="color:var(--gray-400)">(@(req.SourceConnectionString?.Length ?? 0) chars)</span>
+            </label>
+        </div>
+    </div>
+
+    <div style="display:flex;gap:18px;margin-top:12px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" @bind="req.ImportProducts" /> Import products</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" @bind="req.ImportCustomers" /> Import customers</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" @bind="req.ImportProductImages" /> Import product images</label>
+    </div>
+
+    @if (req.ImportProductImages)
+    {
+        <div class="form-group" style="margin-top:12px">
+            <label class="form-label">Image source folder (optional — on this server)</label>
+            <input class="form-input" @bind="req.ImageSourceFolder"
+                   placeholder="Leave blank to skip the on-disk check" />
+            <small style="color:var(--gray-400)">
+                Images are matched to products <strong>by SKU</strong> (old product SKU → new product SKU),
+                then attached in place as <code>/images/thumbs/{file}</code>. <strong>Optional:</strong> if you
+                give a folder this server can read (e.g. <code>/var/www/.../wwwroot/images/thumbs</code>), each
+                file's existence is verified and missing ones are skipped + listed. Leave it <strong>blank</strong>
+                to trust the files are already served at the URL below and attach every image.
+            </small>
+        </div>
+        <div class="form-group" style="margin-top:8px">
+            <label class="form-label">Served URL prefix</label>
+            <input class="form-input" @bind="req.ImageUrlPrefix" placeholder="/images/thumbs/" />
+            <small style="color:var(--gray-400)">The public path the files are served at. Default <code>/images/thumbs/</code>.</small>
+        </div>
+    }
+
+    <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-ghost" @onclick="Preview" disabled="@busy">@(busy && dryRunning ? "Previewing…" : "Dry run (preview)")</button>
+        <button class="btn btn-primary" @onclick="ConfirmImport" disabled="@busy">@(busy && !dryRunning ? "Importing…" : "Run import")</button>
+    </div>
+    <p style="color:var(--gray-400);font-size:13px;margin-top:8px">Always dry-run first to check the counts, then run the import.</p>
+</div>
+
+@if (showConfirm)
+{
+    <div class="data-card" style="padding:18px;max-width:760px;margin-top:14px;border:1px solid #FCD9C0">
+        <strong>Run the real import now?</strong>
+        <p style="color:var(--gray-500);margin:6px 0 12px">This writes to the live database. It's idempotent, but please confirm.</p>
+        <div style="display:flex;gap:10px">
+            <button class="btn btn-ghost" @onclick="() => showConfirm = false">Cancel</button>
+            <button class="btn btn-primary" @onclick="RunImport" disabled="@busy">Yes, import</button>
+        </div>
+    </div>
+}
+
+@if (result != null)
+{
+    <div class="data-card" style="padding:20px;max-width:760px;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="margin:0">@(result.DryRun ? "Preview result" : "Import result")</h3>
+            <span class="status @(result.Ok ? "status--success" : "status--warning")"><span class="dot"></span>@(result.Ok ? "OK" : "Failed")</span>
+        </div>
+
+        @if (!result.Ok)
+        {
+            <div class="inline-alert inline-alert--err" style="margin-top:12px">@result.Error</div>
+        }
+        else
+        {
+            <div class="table-wrap" style="margin-top:12px"><table>
+                <thead><tr><th>Entity</th><th>Read</th><th>Insert</th><th>Update</th><th>Skip</th><th>Errors</th></tr></thead>
+                <tbody>
+                    @foreach (var e in new[] { result.Products, result.Users, result.Images })
+                    {
+                        <tr>
+                            <td>@e.Entity</td>
+                            <td>@e.Read</td>
+                            <td style="color:var(--green)">@e.Inserted</td>
+                            <td>@e.Updated</td>
+                            <td>@e.Skipped</td>
+                            <td style="color:@(e.Errors > 0 ? "var(--danger,#DC2626)" : "inherit")">@e.Errors</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <p style="color:var(--gray-400);font-size:12px;margin-top:6px">
+                Finished in @((result.FinishedAt - result.StartedAt).TotalSeconds.ToString("0.0"))s
+                @(result.DryRun ? " · nothing was written (dry run)" : "")
+            </p>
+
+            @if (Notes.Count > 0)
+            {
+                <details style="margin-top:8px">
+                    <summary style="cursor:pointer;font-size:13px;color:var(--gray-500)">Notes (@Notes.Count)</summary>
+                    <ul style="font-size:12px;color:var(--gray-500);margin-top:6px">
+                        @foreach (var n in Notes) { <li>@n</li> }
+                    </ul>
+                </details>
+            }
+        }
+    </div>
+}
+
+@code {
+    private ImportRequest req = new() { DryRun = true, ImportProducts = true, ImportCustomers = true };
+    private bool showConnectionString;
+    private ImportRunResult? result;
+    private bool busy, dryRunning, showConfirm;
+    private Guid? actorId;
+    private string actorName = "admin";
+
+    // Combined sample notes from both entities (kept out of the markup to avoid an inline @{} block).
+    private List<string> Notes => result == null
+        ? new List<string>()
+        : result.Products.Messages.Concat(result.Users.Messages).Concat(result.Images.Messages).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        var u = auth.User;
+        actorId = Guid.TryParse(u.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = u.Identity?.Name ?? "admin";
+    }
+
+    private async Task Preview()
+    {
+        showConfirm = false;
+        if (string.IsNullOrWhiteSpace(req.SourceConnectionString)) { Toast.Error("Enter the old SQL Server connection string."); return; }
+        busy = true; dryRunning = true;
+        try
+        {
+            req.DryRun = true;
+            result = await Migrator.RunAsync(req, actorId, actorName);
+            if (result.Ok) Toast.Success("Preview complete — review the counts, then run the import.");
+            else Toast.Error("Preview failed — see details.");
+        }
+        finally { busy = false; }
+    }
+
+    private void ConfirmImport()
+    {
+        if (string.IsNullOrWhiteSpace(req.SourceConnectionString)) { Toast.Error("Enter the old SQL Server connection string."); return; }
+        showConfirm = true;
+    }
+
+    private async Task RunImport()
+    {
+        showConfirm = false;
+        busy = true; dryRunning = false;
+        try
+        {
+            req.DryRun = false;
+            result = await Migrator.RunAsync(req, actorId, actorName);
+            if (result.Ok) Toast.Success("Import complete.");
+            else Toast.Error("Import failed — see details.");
+        }
+        finally { busy = false; }
+    }
+}

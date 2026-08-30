@@ -1,0 +1,42 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* Quill-backed rich-text editor. Two-way binds HTML via @bind-Value. Falls back to a plain textarea
+   only if JS interop never initialises (e.g. script blocked). *@
+<div class="richtext">
+    <div @ref="_el" style="min-height:@(MinHeight)"></div>
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string MinHeight { get; set; } = "180px";
+
+    private ElementReference _el;
+    private DotNetObjectReference<RichText>? _ref;
+    private string? _initialised;   // the Value we initialised Quill with
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _ref = DotNetObjectReference.Create(this);
+            _initialised = Value;
+            await JS.InvokeVoidAsync("hjc.quill.init", _el, _ref, Value ?? "");
+        }
+    }
+
+    [JSInvokable]
+    public Task OnHtmlChanged(string? html)
+    {
+        Value = html;
+        _initialised = html;   // keep in sync so parent re-renders don't fight the editor
+        return ValueChanged.InvokeAsync(html);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _ref?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

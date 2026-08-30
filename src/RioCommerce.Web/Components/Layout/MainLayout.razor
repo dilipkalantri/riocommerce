@@ -1,0 +1,14 @@
+@inherits LayoutComponentBase
+<div class="hjc-app">
+    @* Permanently fixed top bar. The contact strip is wrapped together with the
+       header so a header pinned at top:0 doesn't sit on top of it — both stay
+       visible at all times. .hjc-app gets a matching padding-top so page content
+       never renders underneath. *@
+    <div class="site-topbar">
+        <ContactStrip />
+        <Header />
+    </div>
+    <main>@Body</main>
+    <Footer />
+    <FloatingButtons />
+</div>

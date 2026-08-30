@@ -1,0 +1,417 @@
+@*
+    §15 — generating and paying faculty settlement periods.
+
+    The report shows the settlement figures; this page is where a period is generated from the
+    earnings ledger and payments are recorded against it.
+*@
+@page "/admin/reports/teacher-settlement/manage"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations")]
+@using RioCommerce.Core.Enums
+@inject ITeacherSettlementService Svc
+@inject IReportingService Reports
+@inject AuthenticationStateProvider AuthProvider
+
+<PageTitle>Teacher Settlements — RioCommerce Admin</PageTitle>
+
+<div class="page__header ts__header">
+    <div>
+        <h1>Teacher Settlements</h1>
+        <p class="ts__desc">
+            Roll a period's faculty earnings into settlements, then record payments against them.
+            Figures are frozen when a period is generated, so a later rule change cannot restate
+            what has already been paid.
+        </p>
+    </div>
+    <a class="btn btn-outline btn-sm" href="/admin/reports/teacher-settlement">📈 View Report</a>
+</div>
+
+<div class="form-card" style="margin-bottom:18px">
+    <div class="form-card__title">Generate a settlement period</div>
+    <div class="ts__filters">
+        <div class="form-group">
+            <label class="form-label">Period start</label>
+            <input type="date" class="form-input" @bind="periodStart" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Period end</label>
+            <input type="date" class="form-input" @bind="periodEnd" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Faculty</label>
+            <MultiSelect TValue="Guid" Options="facultyOpts" Selected="selectedFaculty"
+                         SelectedChanged="v => selectedFaculty = v"
+                         Placeholder="All faculty with earnings" ItemNoun="faculty" />
+        </div>
+        <div class="form-group ts__go">
+            <button class="btn btn-primary" disabled="@busy" @onclick="Generate">
+                @(busy ? "Working…" : "Generate")
+            </button>
+        </div>
+    </div>
+    <p class="form-hint">
+        The period end is exclusive — 1 Aug to 1 Sep covers the whole of August. Re-running a period
+        refreshes settlements that have taken no payment and leaves the rest untouched.
+    </p>
+</div>
+
+@if (message is not null)
+{
+    <div class="ts__note ts__note--@(messageOk ? "ok" : "bad")">
+        @message
+        @if (messageDetail.Count > 0)
+        {
+            <ul class="ts__note-list">
+                @foreach (var d in messageDetail) { <li>@d</li> }
+            </ul>
+        }
+    </div>
+}
+
+<div class="form-card" style="margin-bottom:14px">
+    <div class="ts__listfilters">
+        <div class="form-group">
+            <label class="form-label">Showing settlements from</label>
+            <input type="date" class="form-input" @bind="listFrom" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">to</label>
+            <input type="date" class="form-input" @bind="listTo" />
+        </div>
+        <div class="form-group ts__go">
+            <button class="btn btn-outline" @onclick="Load">Refresh</button>
+        </div>
+    </div>
+</div>
+
+<div class="ts__wrap">
+    <table class="ts__table">
+        <thead>
+            <tr>
+                <th>Settlement</th>
+                <th>Faculty</th>
+                <th>Period</th>
+                <th class="ts--num">Total Sales (₹)</th>
+                <th class="ts--num">Share (₹)</th>
+                <th class="ts--num">GST (₹)</th>
+                <th class="ts--num">Total Payable (₹)</th>
+                <th class="ts--num">Paid (₹)</th>
+                <th class="ts--num">Balance (₹)</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (rows is null)
+            {
+                <tr><td colspan="11" class="ts__state">Loading…</td></tr>
+            }
+            else if (rows.Count == 0)
+            {
+                <tr><td colspan="11" class="ts__state">No settlements in this range. Generate a period above.</td></tr>
+            }
+            else
+            {
+                @foreach (var r in rows)
+                {
+                    <tr>
+                        <td><strong>@r.SettlementNumber</strong></td>
+                        <td>@r.FacultyName</td>
+                        <td class="ts__period">@Period(r.PeriodStart, r.PeriodEnd)</td>
+                        <td class="ts--num">@r.TotalSales.ToString("N2")</td>
+                        <td class="ts--num">@r.ShareAmount.ToString("N2")</td>
+                        <td class="ts--num">@r.GstOnShare.ToString("N2")</td>
+                        <td class="ts--num"><strong>@r.TotalPayable.ToString("N2")</strong></td>
+                        <td class="ts--num">@r.AmountPaid.ToString("N2")</td>
+                        <td class="ts--num">@r.BalancePayable.ToString("N2")</td>
+                        <td><span class="ts__pill ts__pill--@Tone(r.Status)">@Label(r.Status)</span></td>
+                        <td class="ts--right ts__rowactions">
+                            @if (r.BalancePayable > 0 && r.Status != "Cancelled")
+                            {
+                                <button class="btn btn-primary btn-sm" @onclick="() => OpenPay(r)">Record Payment</button>
+                            }
+                            @* Cancelling is only offered while nothing has been paid. Once money has
+                               moved the settlement is a financial record, and the service refuses. *@
+                            @if (r.AmountPaid == 0 && r.Status != "Cancelled")
+                            {
+                                <button class="btn btn-ghost btn-sm ts__cancel" @onclick="() => OpenCancel(r)">Cancel</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<Modal @bind-Visible="showPay" Title="Record a settlement payment" Size="md">
+    <ChildContent>
+        @if (payTarget is not null)
+        {
+            <div class="ts__summary">
+                <div><span>Settlement</span><strong>@payTarget.SettlementNumber</strong></div>
+                <div><span>Faculty</span><strong>@payTarget.FacultyName</strong></div>
+                <div><span>Total payable</span><strong>₹@payTarget.TotalPayable.ToString("N2")</strong></div>
+                <div><span>Already paid</span><strong>₹@payTarget.AmountPaid.ToString("N2")</strong></div>
+                <div><span>Outstanding</span><strong>₹@payTarget.BalancePayable.ToString("N2")</strong></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Amount (₹)</label>
+                <input type="number" step="0.01" class="form-input" @bind="payAmount" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Paid via</label>
+                <select class="form-input" @bind="payMode">
+                    <option value="">Not specified</option>
+                    @foreach (var m in Enum.GetValues<PaymentMode>())
+                    {
+                        <option value="@m">@m</option>
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Reference (UTR / cheque no.)</label>
+                <input class="form-input" @bind="payReference" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Notes (optional)</label>
+                <textarea class="form-input" rows="2" @bind="payNotes"></textarea>
+            </div>
+            @if (payError is not null)
+            {
+                <p class="ts__inline-error">@payError</p>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showPay = false">Cancel</button>
+        <button class="btn btn-primary" disabled="@busy" @onclick="ConfirmPay">
+            @(busy ? "Saving…" : "Record Payment")
+        </button>
+    </Footer>
+</Modal>
+
+<Modal @bind-Visible="showCancel" Title="Cancel this settlement" Size="md">
+    <ChildContent>
+        @if (cancelTarget is not null)
+        {
+            <div class="ts__summary">
+                <div><span>Settlement</span><strong>@cancelTarget.SettlementNumber</strong></div>
+                <div><span>Faculty</span><strong>@cancelTarget.FacultyName</strong></div>
+                <div><span>Period</span><strong>@Period(cancelTarget.PeriodStart, cancelTarget.PeriodEnd)</strong></div>
+                <div><span>Total payable</span><strong>₹@cancelTarget.TotalPayable.ToString("N2")</strong></div>
+            </div>
+            <p class="form-hint">
+                The earnings behind this period are not deleted — they return to the report as
+                <strong>Unsettled</strong>, and the period can be generated again.
+            </p>
+            <div class="form-group">
+                <label class="form-label">Reason <span style="color:#97243a">*</span></label>
+                <textarea class="form-input" rows="2" @bind="cancelReason"
+                          placeholder="Why is this settlement being cancelled?"></textarea>
+            </div>
+            @if (cancelError is not null)
+            {
+                <p class="ts__inline-error">@cancelError</p>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showCancel = false">Keep it</button>
+        <button class="btn btn-danger" disabled="@busy" @onclick="ConfirmCancel">
+            @(busy ? "Cancelling…" : "Cancel Settlement")
+        </button>
+    </Footer>
+</Modal>
+
+<style>
+    .ts__rowactions { white-space: nowrap; display: flex; gap: 6px; justify-content: flex-end; }
+    .ts__cancel { color: #97243a; }
+    .ts__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .ts__desc { font-size: 13.5px; color: var(--gray-600); margin: 4px 0 0; max-width: 72ch; }
+
+    .ts__filters, .ts__listfilters {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end;
+    }
+    .ts__go { display: flex; align-items: flex-end; }
+
+    .ts__wrap { overflow-x: auto; border: 1px solid var(--gray-200); border-radius: 8px; background: #fff; }
+    table.ts__table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    table.ts__table thead th {
+        background: var(--gray-100); text-align: left; padding: 9px 11px; white-space: nowrap;
+        font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 650;
+        color: var(--gray-600); border-bottom: 1px solid var(--gray-300);
+    }
+    table.ts__table tbody td { padding: 9px 11px; border-bottom: 1px solid var(--gray-100); color: var(--gray-800); }
+    table.ts__table tbody tr:last-child td { border-bottom: 0; }
+    .ts--num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .ts--right { text-align: right; }
+    .ts__period { white-space: nowrap; font-size: 12.5px; color: var(--gray-600); }
+    .ts__state { padding: 26px 12px; text-align: center; color: var(--gray-500); }
+
+    .ts__pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+    .ts__pill--good { background: #e6f4ec; color: #14683f; }
+    .ts__pill--warn { background: #fdf1dc; color: #8a5a09; }
+    .ts__pill--bad { background: #fbe9ec; color: #97243a; }
+    .ts__pill--mute { background: var(--gray-100); color: var(--gray-600); }
+
+    .ts__note { padding: 10px 14px; border-radius: 6px; font-size: 13.5px; margin-bottom: 14px; }
+    .ts__note--ok { background: #e6f4ec; border: 1px solid #a8d5bf; color: #14683f; }
+    .ts__note--bad { background: #fbe9ec; border: 1px solid #e3b3bd; color: #97243a; }
+    .ts__note-list { margin: 6px 0 0; padding-left: 18px; }
+
+    .ts__summary { display: grid; gap: 6px; margin-bottom: 14px; padding: 12px; background: var(--gray-100); border-radius: 6px; }
+    .ts__summary > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+    .ts__summary span { color: var(--gray-600); }
+    .ts__inline-error { color: #97243a; font-size: 13px; margin: 4px 0 0; }
+</style>
+
+@code {
+    private DateTime periodStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1).AddMonths(-1);
+    private DateTime periodEnd = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+    private List<Guid> selectedFaculty = new();
+    private List<MultiSelect<Guid>.Option> facultyOpts = new();
+
+    private DateTime? listFrom = DateTime.UtcNow.AddMonths(-6).Date;
+    private DateTime? listTo = DateTime.UtcNow.AddMonths(1).Date;
+
+    private List<TeacherSettlementRow>? rows;
+    private bool busy;
+    private string? message;
+    private bool messageOk;
+    private List<string> messageDetail = new();
+
+    private bool showCancel;
+    private TeacherSettlementRow? cancelTarget;
+    private string? cancelReason;
+    private string? cancelError;
+
+    private bool showPay;
+    private TeacherSettlementRow? payTarget;
+    private decimal payAmount;
+    private string? payMode;
+    private string? payReference;
+    private string? payNotes;
+    private string? payError;
+
+    private Guid? actorId;
+    private string actorName = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(
+            state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+
+        // Same lookup the report filter bar uses, so the two pickers can never disagree.
+        var options = await Reports.GetFilterOptionsAsync();
+        facultyOpts = options.Faculty.Select(f => new MultiSelect<Guid>.Option(f.Id, f.Name)).ToList();
+
+        await Load();
+    }
+
+    private async Task Load() => rows = await Svc.ListAsync(listFrom, listTo, null);
+
+    private async Task Generate()
+    {
+        busy = true;
+        message = null;
+        messageDetail = new();
+        try
+        {
+            var result = await Svc.GenerateAsync(
+                periodStart, periodEnd, selectedFaculty, actorId, actorName);
+
+            var parts = new List<string>();
+            if (result.Created > 0) parts.Add($"{result.Created} created");
+            if (result.Updated > 0) parts.Add($"{result.Updated} refreshed");
+            if (result.SkippedLocked > 0) parts.Add($"{result.SkippedLocked} left unchanged");
+
+            messageOk = result.Created + result.Updated > 0;
+            message = parts.Count > 0
+                ? "Settlements " + string.Join(", ", parts) + "."
+                : result.Messages.FirstOrDefault() ?? "Nothing to generate for this period.";
+            messageDetail = result.Messages.ToList();
+
+            await Load();
+        }
+        finally { busy = false; }
+    }
+
+    private void OpenPay(TeacherSettlementRow r)
+    {
+        payTarget = r;
+        // Pre-filled with the whole outstanding balance — clearing a settlement in full is the
+        // common case, and a part-payment is a quick edit from there.
+        payAmount = r.BalancePayable;
+        payMode = null;
+        payReference = null;
+        payNotes = null;
+        payError = null;
+        showPay = true;
+    }
+
+    private async Task ConfirmPay()
+    {
+        if (payTarget is null) return;
+        busy = true;
+        payError = null;
+        try
+        {
+            PaymentMode? mode = Enum.TryParse<PaymentMode>(payMode, out var m) ? m : null;
+            var (ok, error) = await Svc.RecordPaymentAsync(
+                payTarget.Id, payAmount, mode, payReference, payNotes, actorId, actorName);
+
+            if (!ok) { payError = error; return; }
+
+            message = $"₹{payAmount:N2} recorded against {payTarget.SettlementNumber}.";
+            messageOk = true;
+            messageDetail = new();
+            showPay = false;
+            await Load();
+        }
+        finally { busy = false; }
+    }
+
+    private void OpenCancel(TeacherSettlementRow r)
+    {
+        cancelTarget = r;
+        cancelReason = null;
+        cancelError = null;
+        showCancel = true;
+    }
+
+    private async Task ConfirmCancel()
+    {
+        if (cancelTarget is null) return;
+        busy = true;
+        cancelError = null;
+        try
+        {
+            var (ok, error) = await Svc.CancelAsync(cancelTarget.Id, cancelReason ?? "");
+            if (!ok) { cancelError = error; return; }
+
+            message = $"{cancelTarget.SettlementNumber} cancelled. Its earnings are back on the report as unsettled.";
+            messageOk = true;
+            messageDetail = new();
+            showCancel = false;
+            await Load();
+        }
+        finally { busy = false; }
+    }
+
+    /// <summary>Period end is exclusive, so the label shows the last day actually covered.</summary>
+    private static string Period(DateTime start, DateTime end) =>
+        $"{start:dd MMM yyyy} – {end.AddTicks(-1):dd MMM yyyy}";
+
+    private static string Label(string status) => status == "PartiallyPaid" ? "Partially Paid" : status;
+
+    private static string Tone(string status) => status switch
+    {
+        "Paid" => "good",
+        "PartiallyPaid" or "Pending" => "warn",
+        "Cancelled" => "bad",
+        _ => "mute"
+    };
+}

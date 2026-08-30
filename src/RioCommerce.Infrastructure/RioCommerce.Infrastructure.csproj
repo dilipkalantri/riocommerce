@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>RioCommerce.Infrastructure</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RioCommerce.Core\RioCommerce.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- ReportingService and IReportBuilder are internal on purpose — reports are reached through
+         IReportingService. The tests construct the service directly rather than widening that. -->
+    <InternalsVisibleTo Include="RioCommerce.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.8" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.8" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="QuestPDF" Version="2024.12.3" />
+    <!-- Server-side PDF → image rendering used by BookPreviewService to pre-rasterise
+         every uploaded preview page into WebP. Native PDFium runtime is bundled per RID. -->
+    <PackageReference Include="PDFtoImage" Version="5.0.0" />
+  </ItemGroup>
+
+  <!-- Script-based migrations: every .sql under Migrations/Scripts ships as an embedded
+       resource so SqlMigrationRunner can discover and apply them at startup. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Migrations\Scripts\**\*.sql" />
+  </ItemGroup>
+
+  <!-- Brand mark for generated PDFs. Embedded (not a wwwroot file) so the renderer has no
+       content-root or static-asset dependency and works from any host. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\receipt-logo.png" />
+  </ItemGroup>
+</Project>

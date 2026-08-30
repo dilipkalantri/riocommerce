@@ -1,0 +1,619 @@
+@page "/admin/access-control"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin")]
+@using RioCommerce.Core.DTOs.Access
+@using RioCommerce.Core.DTOs.Admin
+@using RioCommerce.Core.Security
+@inject IPermissionService Perms
+@inject IAdminUserService Users
+@inject IJSRuntime JS
+@inject ToastService Toast
+@inject NavigationManager Nav
+<PageTitle>Admin Access Control — RioCommerce</PageTitle>
+
+<style>
+    /* ── Page shell ── */
+    .ac-shell{max-width:980px;margin:18px auto 24px}
+    .ac-h1{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800;color:var(--navy);letter-spacing:-.3px;margin:0 0 14px}
+
+    /* ── Card primitive ── */
+    .card{background:#fff;border:1px solid var(--gray-200);border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden;margin-bottom:14px}
+    .card__head{padding:14px 18px;font-weight:800;color:var(--navy);font-size:15px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,#FAFBFC);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .card__body{padding:14px 18px}
+
+    /* ── 🔍 Smart user search ── */
+    .usr-search{position:relative}
+    .usr-search__input{width:100%;padding:14px 46px 14px 46px;border-radius:14px;border:1.5px solid var(--gray-200);background:#fff;font-weight:600;color:var(--navy);font-size:15px;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:border-color .18s,box-shadow .18s}
+    .usr-search__input:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.18)}
+    .usr-search__ico{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--gray-400);font-size:18px;pointer-events:none}
+    .usr-search__spin{position:absolute;right:18px;top:50%;transform:translateY(-50%);width:14px;height:14px;border:2px solid var(--gray-200);border-top-color:var(--orange);border-radius:50%;animation:spin .85s linear infinite}
+    @@keyframes spin{to{transform:translateY(-50%) rotate(360deg)}}
+    .usr-search__dd{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;background:#fff;border:1px solid var(--gray-200);border-radius:14px;box-shadow:0 24px 60px -28px rgba(15,23,42,.55),0 4px 14px rgba(15,23,42,.06);overflow:hidden;animation:dd-in .2s ease-out both;max-height:460px;display:flex;flex-direction:column}
+    @@keyframes dd-in{from{opacity:0;transform:translateY(-6px) scale(.99)}to{opacity:1;transform:none}}
+    .usr-search__list{overflow-y:auto;max-height:420px}
+    .usr-hit{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--gray-100);transition:background .12s}
+    .usr-hit:last-child{border-bottom:0}
+    .usr-hit:hover,.usr-hit.is-active{background:linear-gradient(180deg,#FFF7EE,#FEF2E7)}
+    .usr-av{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#1E40AF);color:#fff;font-weight:800;font-size:15px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+    .usr-av img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+    .usr-hit__name{font-weight:800;color:var(--navy);font-size:14.5px}
+    .usr-hit__meta{font-size:12.5px;color:var(--gray-500);display:flex;flex-wrap:wrap;gap:10px;line-height:1.4}
+    .usr-search__empty{padding:24px;text-align:center;color:var(--gray-500);font-size:13.5px}
+
+    /* ── 👤 Compact user card ── */
+    .uc{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;padding:16px 18px}
+    .uc__photo{width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#F97316,#EA580C);color:#fff;font-weight:800;font-size:20px;display:inline-flex;align-items:center;justify-content:center;flex:none;box-shadow:0 8px 18px -10px rgba(249,115,22,.55)}
+    .uc__photo img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+    .uc__body{min-width:0}
+    .uc__name{font-weight:800;color:var(--navy);font-size:17px;letter-spacing:-.2px}
+    .uc__meta{font-size:13px;color:var(--gray-600);margin-top:6px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px 16px}
+    .uc__meta strong{color:var(--gray-500);font-weight:700;margin-right:6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+    .uc__status{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;background:#ECFDF5;color:#15803D;border:1px solid rgba(21,128,61,.22);margin-top:8px}
+    .uc__status .dot{width:7px;height:7px;border-radius:50%;background:#16A34A}
+    .uc__status--off{background:#FEF2F2;color:#B91C1C;border-color:rgba(185,28,28,.22)}
+    .uc__status--off .dot{background:#DC2626}
+    .uc__edit{display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:11px;border:0;background:linear-gradient(180deg,#F2873A,var(--orange));color:#fff;font-weight:800;font-size:13.5px;cursor:pointer;box-shadow:0 8px 18px -8px rgba(232,114,22,.55);transition:transform .15s,filter .15s}
+    .uc__edit:hover{transform:translateY(-1px);filter:brightness(1.05)}
+    .uc__edit--active{background:linear-gradient(180deg,#13315C,var(--navy))}
+
+    /* ── 🎯 Permission list ── */
+    .pl-toolbar{padding:12px 18px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#FAFBFC;border-top:1px solid var(--gray-100);border-bottom:1px solid var(--gray-100)}
+    .pl-toolbar__search{flex:1;min-width:220px;position:relative}
+    .pl-toolbar__search input{width:100%;padding:9px 12px 9px 32px;border-radius:11px;border:1.5px solid var(--gray-200);font-size:13px;font-weight:600;color:var(--navy)}
+    .pl-toolbar__search input:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,22,.15)}
+    .pl-toolbar__search-ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--gray-400);font-size:13px}
+    .pl-toolbar__btn{padding:8px 14px;border-radius:11px;font-weight:700;font-size:12.5px}
+    .pl-list{max-height:60vh;overflow-y:auto}
+    .pl-list::-webkit-scrollbar{width:8px}
+    .pl-list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:4px}
+    .pl-group{padding:10px 18px 4px;font-weight:800;color:var(--gray-500);font-size:11px;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px;background:#FAFBFC}
+    .pl-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--gray-100);transition:background .12s}
+    .pl-row:hover{background:#FAFBFC}
+    .pl-row__ico{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#F1F5F9,#E2E8F0);display:inline-flex;align-items:center;justify-content:center;font-size:17px;flex:none}
+    .pl-row__body{flex:1;min-width:0}
+    .pl-row__title{font-weight:800;color:var(--navy);font-size:14.5px}
+    .pl-row__sub{font-size:11.5px;color:var(--gray-400);font-weight:500;margin-top:1px}
+
+    /* Big ON/OFF toggle */
+    .big-toggle{display:inline-flex;align-items:center;gap:10px;cursor:pointer;flex:none;user-select:none}
+    .big-toggle input{position:absolute;opacity:0;width:0;height:0}
+    .big-toggle__slider{position:relative;width:50px;height:28px;background:#CBD5E1;border-radius:999px;transition:background .2s;box-shadow:inset 0 1px 3px rgba(15,23,42,.2)}
+    .big-toggle__slider::before{content:"";position:absolute;left:3px;top:50%;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 2px 6px rgba(15,23,42,.35)}
+    .big-toggle input:checked + .big-toggle__slider{background:linear-gradient(135deg,#16A34A,#15803D)}
+    .big-toggle input:checked + .big-toggle__slider::before{left:25px}
+    .big-toggle input:disabled + .big-toggle__slider{opacity:.55;cursor:not-allowed}
+    .big-toggle__label{font-size:11.5px;font-weight:800;letter-spacing:.5px;width:36px;text-align:center;padding:3px 8px;border-radius:999px;text-transform:uppercase}
+    .big-toggle__label--on{background:#ECFDF5;color:#15803D;border:1px solid rgba(21,128,61,.22)}
+    .big-toggle__label--off{background:var(--gray-100);color:var(--gray-500);border:1px solid var(--gray-200)}
+
+    /* ── Save bar (4 states) ── */
+    .save-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:14px 18px;border-top:1px solid var(--gray-100);transition:background .25s,color .25s,border-color .25s}
+    .save-bar__msg{font-size:13.5px;font-weight:800;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+    .save-bar__dot{width:10px;height:10px;border-radius:50%}
+    .save-bar--saved{background:linear-gradient(180deg,#ECFDF5,#D1FAE5);color:#15803D}
+    .save-bar--saved .save-bar__dot{background:#16A34A}
+    .save-bar--dirty{background:linear-gradient(180deg,#FFF7ED,#FED7AA);color:#9A3412}
+    .save-bar--dirty .save-bar__dot{background:#F97316}
+    .save-bar--saving{background:linear-gradient(180deg,#EFF6FF,#DBEAFE);color:#1D4ED8}
+    .save-bar--saving .save-bar__dot{background:#2563EB;animation:blink 1s ease-in-out infinite}
+    .save-bar--error{background:linear-gradient(180deg,#FEF2F2,#FECACA);color:#B91C1C}
+    .save-bar--error .save-bar__dot{background:#DC2626}
+    @@keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+    .save-bar__actions{display:flex;gap:8px;align-items:center}
+    .save-bar__btn{padding:9px 16px;border-radius:11px;font-weight:800;font-size:13.5px;border:0;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .18s}
+    .save-bar__btn:disabled{opacity:.55;cursor:not-allowed}
+    .save-bar__btn--save{background:linear-gradient(180deg,#F2873A,var(--orange));box-shadow:0 8px 18px -8px rgba(232,114,42,.55)}
+    .save-bar__btn--save:not(:disabled):hover{transform:translateY(-1px);filter:brightness(1.05)}
+    .save-bar__btn--ghost{background:transparent;color:inherit;border:1.5px solid currentColor}
+    .btn-spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;margin-right:6px;vertical-align:middle}
+
+    /* ── 📋 Global history table ── */
+    .hist__filters{padding:12px 18px;display:grid;grid-template-columns:1fr 160px 160px;gap:10px;border-bottom:1px solid var(--gray-100);background:#FAFBFC}
+    @@media(max-width:899px){.hist__filters{grid-template-columns:1fr 1fr}}
+    .hist__filters input,.hist__filters select{padding:8px 12px;border-radius:10px;border:1.5px solid var(--gray-200);font-size:13px;font-weight:600;color:var(--navy)}
+    .hist__filters input:focus,.hist__filters select:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.16)}
+    .hist__table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+    .hist__table thead th{position:sticky;top:0;background:#F8FAFC;color:var(--gray-600);text-transform:uppercase;letter-spacing:.5px;font-size:11px;font-weight:800;padding:10px 14px;text-align:left;border-bottom:1px solid var(--gray-200);z-index:1}
+    .hist__table tbody td{padding:11px 14px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+    .hist__table tbody tr:nth-child(even){background:#FCFDFE}
+    .hist__table tbody tr:hover{background:#F1F5F9}
+    .hist__user{font-weight:800;color:var(--navy)}
+    .hist__mod{font-weight:700;color:var(--navy)}
+    .hist__by{color:var(--gray-700);font-weight:700}
+    .hist__time{white-space:nowrap;color:var(--gray-500);font-weight:600;font-size:12.5px}
+    .hist__time .t{display:block;font-size:11px;color:var(--gray-400)}
+    .hist__act{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.5px;padding:3px 11px;border-radius:999px;text-transform:uppercase}
+    .hist__act--granted{background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.22)}
+    .hist__act--revoked{background:#FEF2F2;color:#B91C1C;border:1px solid rgba(185,28,28,.22)}
+    .hist__act--reset{background:#FEF3C7;color:#92400E;border:1px solid rgba(146,64,14,.22)}
+    .hist__act--mixed{background:#EFF6FF;color:#1D4ED8;border:1px solid rgba(29,78,216,.2)}
+    .hist__actions{display:inline-flex;gap:4px}
+    .hist__actions button{background:transparent;border:0;cursor:pointer;font-size:13px;padding:5px 8px;border-radius:7px;color:var(--gray-500);transition:all .12s}
+    .hist__actions button:hover{background:var(--gray-100);color:var(--navy)}
+    .hist__actions button.danger:hover{background:#FEE2E2;color:#DC2626}
+    .hist__empty{padding:28px;text-align:center;color:var(--gray-400);font-size:13.5px}
+    .hist__pager{padding:12px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px;background:#FAFBFC;border-top:1px solid var(--gray-100);font-size:12.5px;color:var(--gray-500);font-weight:700;flex-wrap:wrap}
+    .hist__pager button{padding:5px 10px;border-radius:8px;border:1.5px solid var(--gray-200);background:#fff;font-weight:700;cursor:pointer}
+    .hist__pager button:disabled{opacity:.4;cursor:not-allowed}
+
+    /* ── 👥 Users With Backend Access table ── */
+    .bul__filter{position:relative;padding:12px 18px;border-bottom:1px solid var(--gray-100);background:#FAFBFC}
+    .bul__filter input{width:100%;padding:9px 12px 9px 36px;border-radius:11px;border:1.5px solid var(--gray-200);font-size:13.5px;font-weight:600;color:var(--navy)}
+    .bul__filter input:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.16)}
+    .bul__filter-ico{position:absolute;left:30px;top:50%;transform:translateY(-50%);color:var(--gray-400);font-size:13px}
+    .bul__spin{position:absolute;right:28px;top:50%;transform:translateY(-50%);width:13px;height:13px;border:2px solid var(--gray-200);border-top-color:var(--orange);border-radius:50%;animation:spin .85s linear infinite}
+
+    .bul{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+    .bul thead th{position:sticky;top:0;background:#F8FAFC;color:var(--gray-600);text-transform:uppercase;letter-spacing:.5px;font-size:11px;font-weight:800;padding:10px 14px;text-align:left;border-bottom:1px solid var(--gray-200);z-index:1}
+    .bul tbody td{padding:11px 14px;border-bottom:1px solid var(--gray-100);vertical-align:middle;color:var(--gray-700)}
+    .bul tbody tr:nth-child(even){background:#FCFDFE}
+    .bul tbody tr:hover{background:#F1F5F9}
+    .bul tbody tr:last-child td{border-bottom:0}
+
+    .bul__av{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#1E40AF);color:#fff;font-weight:800;font-size:13px;display:inline-flex;align-items:center;justify-content:center}
+    .bul__av img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+    .bul__name{font-weight:800;color:var(--navy)}
+    .bul__code{font-family:ui-monospace,'SF Mono','Cascadia Code',Consolas,monospace;font-weight:700;color:var(--gray-700);font-size:12.5px;letter-spacing:.3px}
+    .bul__modules{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:#EFF6FF;color:#1D4ED8;font-weight:800;font-size:11.5px;letter-spacing:.4px;border:1px solid rgba(29,78,216,.18);text-transform:uppercase}
+    .bul__time{white-space:nowrap;color:var(--gray-500);font-weight:600}
+    .bul__status{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;background:#ECFDF5;color:#15803D;border:1px solid rgba(21,128,61,.22)}
+    .bul__status .dot{width:6px;height:6px;border-radius:50%;background:#16A34A}
+    .bul__status--off{background:#FEF2F2;color:#B91C1C;border-color:rgba(185,28,28,.22)}
+    .bul__status--off .dot{background:#DC2626}
+    .bul__actions{display:inline-flex;gap:4px}
+    .bul__actions button{background:transparent;border:0;cursor:pointer;font-size:14px;padding:6px 9px;border-radius:8px;color:var(--gray-500);transition:all .12s}
+    .bul__actions button:hover{background:var(--gray-100);color:var(--navy)}
+    .bul__actions button.danger:hover{background:#FEE2E2;color:#DC2626}
+
+    /* ── Confirmation modal ── */
+    .modal{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.5);backdrop-filter:blur(6px)}
+    .modal__card{width:min(420px,92vw);background:#fff;border-radius:18px;box-shadow:0 30px 80px -20px rgba(15,23,42,.55);overflow:hidden;animation:dd-in .25s ease-out both}
+    .modal__head{padding:16px 20px;border-bottom:1px solid var(--gray-100);font-weight:800;color:var(--navy)}
+    .modal__body{padding:18px 20px;font-size:14px;color:var(--gray-700)}
+    .modal__foot{padding:14px 20px;border-top:1px solid var(--gray-100);display:flex;justify-content:flex-end;gap:10px;background:var(--gray-50)}
+</style>
+
+<div class="ac-shell">
+    <h1 class="ac-h1">🔒 Admin Access Control</h1>
+
+    @* ─── 🔍 Search user ─── *@
+    <div class="card">
+        <div class="card__head"><span>Search User</span><span style="font-weight:600;color:var(--gray-400);font-size:12px">Name · Mobile · Email · Customer ID</span></div>
+        <div class="card__body">
+            <div class="usr-search">
+                <span class="usr-search__ico">🔍</span>
+                <input class="usr-search__input"
+                       placeholder="Type to search…"
+                       @bind="userQuery" @bind:event="oninput" @bind:after="OnUserQueryChanged"
+                       @onfocus="() => userDdOpen = !string.IsNullOrEmpty(userQuery)"
+                       @onkeydown="OnUserKey" autocomplete="off" />
+                @if (userSearching) { <span class="usr-search__spin"></span> }
+                @if (userDdOpen)
+                {
+                    <div class="usr-search__dd" @onmousedown:stopPropagation @onclick:stopPropagation>
+                        @if (userQuery.Trim().Length < 2) { <div class="usr-search__empty">Type at least 2 characters…</div> }
+                        else if (userResults is null || (userResults.Count == 0 && !userSearching)) { <div class="usr-search__empty">No customer found.</div> }
+                        else
+                        {
+                            <div class="usr-search__list">
+                                @for (var i = 0; i < userResults.Count; i++)
+                                {
+                                    var idx = i; var s = userResults[i];
+                                    <div class="usr-hit @(userActiveIdx == idx ? "is-active" : "")"
+                                         @onmousedown="() => SelectUser(idx)"
+                                         @onmouseover="() => userActiveIdx = idx">
+                                        <div class="usr-av">
+                                            @if (!string.IsNullOrEmpty(s.AvatarUrl)) { <img src="@s.AvatarUrl" alt="@s.FullName" /> }
+                                            else { @s.Initials }
+                                        </div>
+                                        <div>
+                                            <div class="usr-hit__name">@s.FullName</div>
+                                            <div class="usr-hit__meta">
+                                                @if (!string.IsNullOrEmpty(s.Phone)) { <span>📱 @s.Phone</span> }
+                                                @if (!string.IsNullOrEmpty(s.Email)) { <span>✉ @s.Email</span> }
+                                            </div>
+                                        </div>
+                                        <span style="color:var(--gray-300);font-size:18px">›</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ─── 👤 Compact user card + permission list ─── *@
+    @if (selectedUser != null)
+    {
+        <div class="card">
+            <div class="uc">
+                <div class="uc__photo">
+                    @if (!string.IsNullOrEmpty(selectedUser.AvatarUrl)) { <img src="@selectedUser.AvatarUrl" alt="@selectedUser.FullName" /> }
+                    else { @selectedUser.Initials }
+                </div>
+                <div class="uc__body">
+                    <div class="uc__name">@selectedUser.FullName</div>
+                    <div class="uc__meta">
+                        @if (!string.IsNullOrEmpty(selectedUser.Email)) { <div><strong>Email</strong>@selectedUser.Email</div> }
+                        @if (!string.IsNullOrEmpty(selectedUser.Phone)) { <div><strong>Mobile</strong>@selectedUser.Phone</div> }
+                        <div><strong>Customer ID</strong>@selectedUser.Id.ToString().Substring(0, 8).ToUpperInvariant()</div>
+                    </div>
+                    <span class="uc__status @(selectedUser.IsActive ? "" : "uc__status--off")">
+                        <span class="dot"></span>@(selectedUser.IsActive ? "Active" : "Inactive")
+                    </span>
+                </div>
+                <button class="uc__edit @(editingAccess ? "uc__edit--active" : "")" @onclick="ToggleEditAccess">
+                    @if (editingAccess) { <span>✕ Close</span> } else { <span>✏ Edit Access</span> }
+                </button>
+            </div>
+
+            @if (editingAccess)
+            {
+                <div class="pl-toolbar">
+                    <div class="pl-toolbar__search">
+                        <span class="pl-toolbar__search-ico">🔍</span>
+                        <input placeholder="Filter modules…" @bind="moduleSearch" @bind:event="oninput" />
+                    </div>
+                </div>
+                <div class="pl-list">
+                    @foreach (var grp in PermissionCatalog.Groups)
+                    {
+                        var visible = grp.Rows.Where(MatchesModuleSearch).ToList();
+                        if (visible.Count == 0) continue;
+                        <div class="pl-group">@grp.Icon <span>@grp.Label</span></div>
+                        @foreach (var row in visible)
+                        {
+                            var on = row.AllKeys().All(k => userState.GetValueOrDefault(k));
+                            <div class="pl-row">
+                                <div class="pl-row__ico">@grp.Icon</div>
+                                <div class="pl-row__body">
+                                    <div class="pl-row__title">@row.Label</div>
+                                    <div class="pl-row__sub">@row.Key</div>
+                                </div>
+                                <label class="big-toggle">
+                                    <input type="checkbox" checked="@on" disabled="@saving" @onchange="e => ToggleModule(row, e)" />
+                                    <span class="big-toggle__slider"></span>
+                                    <span class="big-toggle__label @(on ? "big-toggle__label--on" : "big-toggle__label--off")">@(on ? "ON" : "OFF")</span>
+                                </label>
+                            </div>
+                        }
+                    }
+                </div>
+                <div class="save-bar save-bar--@SaveBarClass">
+                    <div class="save-bar__msg"><span class="save-bar__dot"></span><span>@SaveBarMessage</span></div>
+                    <div class="save-bar__actions">
+                        <button class="save-bar__btn save-bar__btn--ghost" disabled="@(!dirty || saving)" @onclick="Discard">Discard</button>
+                        <button class="save-bar__btn save-bar__btn--save" disabled="@(!dirty || saving)" @onclick="Save">
+                            @if (saving) { <span class="btn-spin"></span><span>Saving…</span> }
+                            else { <span>💾 Save Permissions</span> }
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @* ─── 👥 Users With Backend Access ─── *@
+    <div class="card">
+        <div class="card__head">
+            <span>👥 Users With Backend Access</span>
+            <span style="font-size:12px;color:var(--gray-400);font-weight:600">@(backendUsers?.Count ?? 0) user(s)</span>
+        </div>
+        <div class="bul__filter">
+            <span class="bul__filter-ico">🔍</span>
+            <input placeholder="Filter list by name, email or mobile…" @bind="bulSearch" @bind:event="oninput" @bind:after="OnBulSearchChanged" />
+            @if (bulLoading) { <span class="bul__spin"></span> }
+        </div>
+        @if (backendUsers == null) { <div class="hist__empty">Loading…</div> }
+        else if (backendUsers.Count == 0) { <div class="hist__empty">No users have backend access yet. Grant access via the search above.</div> }
+        else
+        {
+            <table class="bul">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Customer Name</th>
+                        <th>Email</th>
+                        <th>Mobile</th>
+                        <th>Customer ID</th>
+                        <th>Modules</th>
+                        <th>Last Updated</th>
+                        <th>Status</th>
+                        <th style="text-align:right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in backendUsers)
+                    {
+                        <tr>
+                            <td>
+                                <div class="bul__av">
+                                    @if (!string.IsNullOrEmpty(u.AvatarUrl)) { <img src="@u.AvatarUrl" alt="@u.FullName" /> }
+                                    else { @u.Initials }
+                                </div>
+                            </td>
+                            <td class="bul__name">@u.FullName</td>
+                            <td>@(u.Email ?? "—")</td>
+                            <td>@(u.Phone ?? "—")</td>
+                            <td class="bul__code">@u.CustomerCode</td>
+                            <td><span class="bul__modules">@u.ModulesGranted Modules</span></td>
+                            <td class="bul__time">@(u.LastUpdated?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
+                            <td>
+                                <span class="bul__status @(u.IsActive ? "" : "bul__status--off")">
+                                    <span class="dot"></span>@(u.IsActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td style="text-align:right">
+                                <span class="bul__actions">
+                                    <button title="Edit access" @onclick="() => EditUserFromList(u)">✏</button>
+                                    <button class="danger" title="Remove backend access" @onclick="() => OpenRemoveUser(u)">🗑</button>
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@* ─── Remove Backend Access? confirmation ─── *@
+@if (removeUserOpen && removeUserTarget != null)
+{
+    <div class="modal" @onclick="CloseRemoveUser">
+        <div class="modal__card" @onclick:stopPropagation>
+            <div class="modal__head">🗑 Remove Backend Access?</div>
+            <div class="modal__body">
+                Remove ALL backend permissions for <strong>@removeUserTarget.FullName</strong>?
+                <div style="font-size:12.5px;color:var(--gray-500);margin-top:8px">They will disappear from this list immediately. This action cannot be undone.</div>
+            </div>
+            <div class="modal__foot">
+                <button class="btn btn-ghost" @onclick="CloseRemoveUser" disabled="@removingUser">Cancel</button>
+                <button class="btn" style="background:#DC2626;color:#fff;font-weight:800" disabled="@removingUser" @onclick="ConfirmRemoveUser">@(removingUser ? "Removing…" : "Remove")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // ── 🔍 User search ──
+    private string userQuery = "";
+    private List<CustomerSuggestion>? userResults;
+    private CustomerSuggestion? selectedUser;
+    private bool userDdOpen, userSearching;
+    private int userActiveIdx = -1;
+    private CancellationTokenSource? userSearchCts;
+    private long userSearchToken;
+
+    // ── 🎯 Access editor ──
+    private bool editingAccess;
+    private Dictionary<string, bool> userState = new();
+    private Dictionary<string, bool> baseline = new();
+    private readonly HashSet<string> changedKeys = new();
+    private string moduleSearch = "";
+    private bool dirty, saving, savedFlash, saveError;
+    private CancellationTokenSource? autoSaveCts;
+    private long autoSaveToken;
+
+    // ── 👥 Users With Backend Access ──
+    private List<BackendAccessUser>? backendUsers;
+    private string bulSearch = "";
+    private bool bulLoading;
+    private CancellationTokenSource? bulSearchCts;
+    private long bulSearchToken;
+
+    // ── Remove-user modal ──
+    private bool removeUserOpen, removingUser;
+    private BackendAccessUser? removeUserTarget;
+
+    private int ChangedCount => changedKeys.Count;
+    private string SaveBarClass =>
+        saveError ? "error"
+      : saving   ? "saving"
+      : savedFlash ? "saved"
+      : dirty   ? "dirty"
+      : "saved";
+    private string SaveBarMessage =>
+        saveError ? "✖ Unable to Save Permissions"
+      : saving   ? "🔵 Saving Permissions..."
+      : savedFlash ? "🟢 ✓ All Permissions Saved"
+      : dirty   ? $"🟠 Unsaved Changes ({ChangedCount})"
+      : "🟢 All Permissions Saved";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBackendUsersAsync();
+    }
+
+    private async Task LoadBackendUsersAsync()
+    {
+        bulLoading = true;
+        try { backendUsers = await Perms.ListBackendAccessUsersAsync(string.IsNullOrWhiteSpace(bulSearch) ? null : bulSearch.Trim()); }
+        finally { bulLoading = false; }
+    }
+
+    // Debounced filter on the table — 300ms, cancel-previous, stale-response guard.
+    private async Task OnBulSearchChanged()
+    {
+        bulSearchCts?.Cancel();
+        bulSearchCts = new CancellationTokenSource();
+        var token = ++bulSearchToken;
+        var ct = bulSearchCts.Token;
+        bulLoading = true;
+        try
+        {
+            await Task.Delay(300, ct);
+            if (ct.IsCancellationRequested || token != bulSearchToken) return;
+            var results = await Perms.ListBackendAccessUsersAsync(string.IsNullOrWhiteSpace(bulSearch) ? null : bulSearch.Trim());
+            if (token != bulSearchToken) return;
+            backendUsers = results;
+        }
+        catch (TaskCanceledException) { }
+        finally { if (token == bulSearchToken) { bulLoading = false; StateHasChanged(); } }
+    }
+
+    // ── User search ──
+    private async Task OnUserQueryChanged()
+    {
+        userSearchCts?.Cancel();
+        userSearchCts = new CancellationTokenSource();
+        var token = ++userSearchToken;
+        var ct = userSearchCts.Token;
+        var q = userQuery?.Trim() ?? "";
+        if (q.Length < 2) { userResults = null; userDdOpen = !string.IsNullOrEmpty(q); userSearching = false; return; }
+        userDdOpen = true; userSearching = true;
+        try
+        {
+            await Task.Delay(250, ct);
+            if (ct.IsCancellationRequested) return;
+            var results = await Users.SearchCustomersAsync(q, 10);
+            if (token != userSearchToken) return;
+            userResults = results;
+            userActiveIdx = results.Count > 0 ? 0 : -1;
+        }
+        catch (TaskCanceledException) { }
+        finally { if (token == userSearchToken) { userSearching = false; StateHasChanged(); } }
+    }
+    private async Task OnUserKey(KeyboardEventArgs e)
+    {
+        if (!userDdOpen) return;
+        var n = userResults?.Count ?? 0;
+        switch (e.Key)
+        {
+            case "ArrowDown": if (n > 0) userActiveIdx = (userActiveIdx + 1) % n; break;
+            case "ArrowUp":   if (n > 0) userActiveIdx = (userActiveIdx - 1 + n) % n; break;
+            case "Enter":     if (userActiveIdx >= 0 && userActiveIdx < n) await SelectUser(userActiveIdx); break;
+            case "Escape":    userDdOpen = false; break;
+        }
+    }
+    private async Task SelectUser(int idx)
+    {
+        if (userResults == null || idx < 0 || idx >= userResults.Count) return;
+        if (dirty && !await ConfirmDiscard()) return;
+        selectedUser = userResults[idx];
+        userDdOpen = false;
+        userQuery = selectedUser.FullName;
+        editingAccess = false;
+        await LoadUserOverrides(selectedUser.Id);
+    }
+
+    // ── Permission state ──
+    private async Task LoadUserOverrides(Guid userId)
+    {
+        var overrides = await Perms.GetUserOverridesAsync(userId);
+        userState = PermissionCatalog.AllKeys.ToDictionary(k => k, k => overrides?.Overrides.GetValueOrDefault(k) ?? false);
+        baseline = new Dictionary<string, bool>(userState);
+        changedKeys.Clear();
+        dirty = false; savedFlash = false; saveError = false;
+    }
+
+    private void ToggleEditAccess()
+    {
+        if (editingAccess && dirty) { _ = ConfirmCloseEditor(); return; }
+        editingAccess = !editingAccess;
+        if (!editingAccess) { changedKeys.Clear(); dirty = false; userState = new Dictionary<string, bool>(baseline); }
+    }
+    private async Task ConfirmCloseEditor()
+    {
+        if (!await ConfirmDiscard()) return;
+        editingAccess = false; changedKeys.Clear(); dirty = false;
+        userState = new Dictionary<string, bool>(baseline);
+    }
+
+    private void ToggleModule(PermissionRow row, ChangeEventArgs e)
+    {
+        var on = e.Value is true;
+        foreach (var k in row.AllKeys()) { userState[k] = on; UpdateChange(k); }
+        ClearFlash();
+        dirty = changedKeys.Count > 0;
+        if (dirty) ScheduleAutoSave();
+    }
+    private void Discard()   { autoSaveCts?.Cancel(); userState = new Dictionary<string, bool>(baseline); changedKeys.Clear(); dirty = false; ClearFlash(); }
+    private void UpdateChange(string key)
+    {
+        if (userState[key] == baseline.GetValueOrDefault(key)) changedKeys.Remove(key);
+        else changedKeys.Add(key);
+    }
+    private void ClearFlash() { savedFlash = false; saveError = false; }
+    private bool MatchesModuleSearch(PermissionRow r)
+        => string.IsNullOrWhiteSpace(moduleSearch) ||
+           r.Label.Contains(moduleSearch.Trim(), StringComparison.OrdinalIgnoreCase) ||
+           r.Key.Contains(moduleSearch.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private void ScheduleAutoSave()
+    {
+        autoSaveCts?.Cancel();
+        autoSaveCts = new CancellationTokenSource();
+        var token = ++autoSaveToken;
+        var ct = autoSaveCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try { await Task.Delay(800, ct); if (ct.IsCancellationRequested || token != autoSaveToken) return;
+                await InvokeAsync(async () => { if (dirty && !saving) await Save(); }); }
+            catch (TaskCanceledException) { }
+        });
+    }
+
+    private async Task Save()
+    {
+        if (selectedUser == null || changedKeys.Count == 0 || saving) return;
+        autoSaveCts?.Cancel();
+        saveError = false; savedFlash = false;
+        var snapshot = changedKeys.Select(k => new ChangedPermission(k, userState.GetValueOrDefault(k))).ToList();
+        var snapKeys = changedKeys.ToHashSet();
+        saving = true;
+        var (ok, error, _) = await Perms.ApplyUserOverridesDeltaAsync(
+            new SaveUserOverridesDeltaRequest { UserId = selectedUser.Id, ChangedPermissions = snapshot },
+            Guid.Empty, "admin", null);
+        saving = false;
+        if (!ok) { saveError = true; Toast.Error(error ?? "Unable to Save Permissions"); _ = FadeError(); return; }
+        foreach (var k in snapKeys) { baseline[k] = userState[k]; if (userState[k] == baseline[k]) changedKeys.Remove(k); }
+        dirty = changedKeys.Count > 0;
+        savedFlash = true;
+        Toast.Success("All Permissions Saved Successfully");
+        _ = FadeSuccess();
+        // The user now has at least one override → they belong in (or stay in) the backend-access list.
+        await LoadBackendUsersAsync();
+    }
+    private async Task FadeSuccess() { await Task.Delay(2000); if (savedFlash) { savedFlash = false; StateHasChanged(); } }
+    private async Task FadeError()   { await Task.Delay(3000); if (saveError)  { saveError = false;  StateHasChanged(); } }
+
+    private async Task<bool> ConfirmDiscard()
+    {
+        try { return await JS.InvokeAsync<bool>("confirm", "Discard unsaved changes?"); }
+        catch { return true; }
+    }
+
+    // ── Edit from the bottom table ──
+    private async Task EditUserFromList(BackendAccessUser u)
+    {
+        // Map BackendAccessUser → CustomerSuggestion (the editor's selected-user model).
+        selectedUser = new CustomerSuggestion(
+            u.Id, u.FullName, u.Initials, u.AvatarUrl, u.Email, u.Phone,
+            PrimaryRole: null, CourseInterest: null, CourseCount: 0,
+            IsActive: u.IsActive, JoinedDate: u.LastUpdated ?? DateTime.UtcNow);
+        userQuery = u.FullName;
+        editingAccess = true;
+        await LoadUserOverrides(u.Id);
+        await JS.InvokeVoidAsync("eval", "document.querySelector('.uc')?.scrollIntoView({behavior:'smooth',block:'start'})");
+    }
+
+    // ── Remove backend access entirely (wipe every override row for the user) ──
+    private void OpenRemoveUser(BackendAccessUser u) { removeUserTarget = u; removeUserOpen = true; }
+    private void CloseRemoveUser() { if (!removingUser) { removeUserOpen = false; removeUserTarget = null; } }
+    private async Task ConfirmRemoveUser()
+    {
+        if (removeUserTarget == null) return;
+        removingUser = true;
+        var (ok, error) = await Perms.RemoveUserOverridesAsync(removeUserTarget.Id, Guid.Empty, "admin", null);
+        removingUser = false;
+        if (!ok) { Toast.Error(error ?? "Remove failed"); return; }
+        Toast.Success("Backend access removed.");
+        // If the editor was open for this user, collapse it — they're back to no overrides.
+        if (selectedUser?.Id == removeUserTarget.Id) { editingAccess = false; userState.Clear(); baseline.Clear(); changedKeys.Clear(); dirty = false; }
+        removeUserOpen = false; removeUserTarget = null;
+        await LoadBackendUsersAsync();
+    }
+}

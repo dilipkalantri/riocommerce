@@ -1,0 +1,95 @@
+@page "/account"
+@attribute [Authorize]
+@inject IAccountService AccountSvc
+@inject AuthenticationStateProvider AuthProvider
+
+<SeoHead Seo="@(new SeoMetadata { Title = "My Account — RioCommerce" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">My Account</h1>
+    <AccountNav />
+
+    @if (d == null)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+    }
+    else
+    {
+        <p class="account-greeting">Welcome back, <strong>@d.FullName</strong> 👋</p>
+
+        <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-card__label">Active Courses</div><div class="kpi-card__value">@d.ActiveCourses</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Total Orders</div><div class="kpi-card__value" style="color:var(--green)">@d.TotalOrders</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Pending Orders</div><div class="kpi-card__value" style="color:var(--warning)">@d.PendingOrders</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Total Spent</div><div class="kpi-card__value">₹@d.TotalSpent.ToString("N0")</div></div>
+        </div>
+
+        <div class="account-grid">
+            <div class="data-card">
+                <div class="data-card__title" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>Recent Orders</span><a href="/account/orders" class="btn btn-ghost btn-sm">View All →</a>
+                </div>
+                <div class="table-wrap"><table>
+                    <thead><tr><th>Order #</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+                    <tbody>
+                        @if (d.RecentOrders.Count == 0) { <tr><td colspan="4" style="text-align:center;color:var(--gray-400)">No orders yet.</td></tr> }
+                        else
+                        {
+                            @foreach (var o in d.RecentOrders)
+                            {
+                                <tr>
+                                    <td><a href="/account/orders/@o.OrderNumber"><strong>#@o.OrderNumber</strong></a></td>
+                                    <td>@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                    <td>₹@o.Total.ToString("N0")</td>
+                                    <td><span class="status @StatusClass(o.Status)"><span class="dot"></span>@o.Status</span></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table></div>
+            </div>
+
+            <div class="data-card">
+                <div class="data-card__title" style="display:flex;justify-content:space-between;align-items:center">
+                    <span>My Courses</span><a href="/account/courses" class="btn btn-ghost btn-sm">View All →</a>
+                </div>
+                @if (d.RecentCourses.Count == 0)
+                {
+                    <p style="color:var(--gray-400);padding:10px 0">No courses yet. <a href="/courses/ca-foundation">Browse courses →</a></p>
+                }
+                else
+                {
+                    @foreach (var c in d.RecentCourses)
+                    {
+                        <div class="account-course-row">
+                            <div>
+                                <a href="/@c.Slug" class="account-course-row__title">@c.Title</a>
+                                <div class="account-course-row__meta">@c.FacultyName @(c.ModeName != null ? $"· {c.ModeName}" : "")</div>
+                            </div>
+                            <span class="account-progress">@c.ProgressPct.ToString("0")%</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private AccountDashboard? d;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        if (Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId))
+            d = await AccountSvc.GetDashboardAsync(userId);
+    }
+
+    private static string StatusClass(OrderStatus s) => s switch
+    {
+        OrderStatus.Confirmed or OrderStatus.Activated or OrderStatus.Delivered => "status--confirmed",
+        OrderStatus.Pending or OrderStatus.Draft => "status--pending",
+        OrderStatus.Processing => "status--processing",
+        _ => "status--cancelled"
+    };
+}

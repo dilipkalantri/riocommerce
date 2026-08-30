@@ -1,0 +1,153 @@
+@page "/admin/catalog/subjects"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ISubjectAdminService Svc
+<PageTitle>Subjects — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Subjects</h1>
+    <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ Add Subject</button>
+</div>
+<p style="color:var(--gray-400);margin-top:-8px">
+    The list behind the <em>Subject</em> dropdown on the product editor. Switching a subject off hides
+    it from that dropdown without touching the courses already assigned to it.
+</p>
+
+@if (editing != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editing.Id == null ? "New Subject" : "Edit Subject")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="form-label">Name <span class="required">*</span></label>
+                <input class="form-input" @bind="editing.Name" placeholder="e.g. Financial Management" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Slug</label>
+                <input class="form-input" @bind="editing.Slug" placeholder="leave blank to derive from the name" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Course level</label>
+                <select class="form-input" @bind="LevelValue">
+                    <option value="">— None —</option>
+                    <option value="@nameof(CourseLevel.CaFoundation)">CA Foundation</option>
+                    <option value="@nameof(CourseLevel.CaIntermediate)">CA Intermediate</option>
+                    <option value="@nameof(CourseLevel.CaFinal)">CA Final</option>
+                    <option value="@nameof(CourseLevel.Books)">Books</option>
+                    <option value="@nameof(CourseLevel.TestSeries)">Test Series</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Display order</label>
+                <input type="number" class="form-input" @bind="editing.DisplayOrder" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Active</label>
+                <div style="padding-top:8px"><input type="checkbox" @bind="editing.IsActive" /> <span style="color:var(--gray-400)">shown in the product editor's Subject dropdown</span></div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Slug</th><th>Course level</th><th>Order</th><th>Status</th><th>Used by</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No subjects yet.</td></tr> }
+            else
+            {
+                @foreach (var s in items)
+                {
+                    <tr>
+                        <td><strong>@s.Name</strong></td>
+                        <td style="color:var(--gray-400)">@s.Slug</td>
+                        <td>@LevelLabel(s.Level)</td>
+                        <td>@s.DisplayOrder</td>
+                        <td><span class="status @(s.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(s.IsActive ? "Active" : "Inactive")</span></td>
+                        <td>@s.UsedByProductCount course(s)</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(s.Id)">Edit</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(s.Id)">@(s.IsActive ? "Deactivate" : "Activate")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(s.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<SubjectAdminItem>? items;
+    private SubjectEditModel? editing;
+    private bool saving, msgOk;
+    private string? err, msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => items = await Svc.ListAsync();
+
+    // The enum is nullable and select binding wants a plain string, so the empty option maps to null
+    // rather than needing a sentinel value in CourseLevel itself.
+    private string LevelValue
+    {
+        get => editing?.Level?.ToString() ?? "";
+        set
+        {
+            if (editing == null) return;
+            editing.Level = string.IsNullOrEmpty(value) ? null : Enum.Parse<CourseLevel>(value);
+        }
+    }
+
+    private static string LevelLabel(CourseLevel? l) => l switch
+    {
+        CourseLevel.CaFoundation => "CA Foundation",
+        CourseLevel.CaIntermediate => "CA Intermediate",
+        CourseLevel.CaFinal => "CA Final",
+        CourseLevel.Books => "Books",
+        CourseLevel.TestSeries => "Test Series",
+        _ => "—"
+    };
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null ? new SubjectEditModel() : await Svc.GetAsync(id.Value);
+    }
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); Flash(true, "Subject saved."); }
+        else err = error;
+    }
+
+    private async Task Toggle(Guid id)
+    {
+        var (ok, error) = await Svc.ToggleAsync(id);
+        if (ok) { await Reload(); Flash(true, "Subject updated."); }
+        else Flash(false, error!);
+    }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteAsync(id);
+        if (ok) { await Reload(); Flash(true, "Subject deleted."); }
+        else Flash(false, error!);
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

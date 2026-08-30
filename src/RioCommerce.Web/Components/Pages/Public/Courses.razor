@@ -1,0 +1,232 @@
+@page "/courses/{Level}"
+@inject HttpClient Http
+
+<SeoHead Seo="@seo" />
+
+<style>
+    .spec-facets{display:flex;flex-direction:column;gap:8px;margin:14px 0}
+    .spec-facet{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+    .spec-facet__label{font-size:13px;font-weight:600;color:var(--gray-500);min-width:90px}
+    .spec-facet__chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:4px 10px;border:1px solid var(--gray-200);border-radius:999px;cursor:pointer;background:#fff}
+    .spec-facet__chip.active{border-color:var(--orange);background:#fff7ed;color:var(--orange)}
+    .spec-facet__chip input{margin:0}
+</style>
+
+<section class="page-hero">
+    <div class="section__inner">
+        <div class="breadcrumb" style="color:rgba(255,255,255,.5);justify-content:center">
+            <a href="/" style="color:rgba(255,255,255,.6)">Home</a><span>›</span><span class="current" style="color:rgba(255,255,255,.85)">@PageTitle</span>
+        </div>
+        <h1>@PageTitle</h1>
+        <p style="opacity:.8;margin-top:6px">Regular, Combo &amp; Face to Face — by expert faculty</p>
+    </div>
+</section>
+
+<section class="section" style="padding-top:32px">
+    <div class="section__inner">
+        <!-- Course mode buttons -->
+        <div class="course-modes">
+            <button class="course-mode-btn course-mode-btn--regular @(activeType == CourseType.Regular ? "active" : "")" @onclick="() => ToggleType(CourseType.Regular)">Regular Courses<small>For first-time learners &amp; freshers</small></button>
+            @* Fastrack retired (migration 0034) — every product moved to Exam Oriented, so this tab
+               could only ever show an empty list. The enum member stays; only the tab is gone. *@
+            <button class="course-mode-btn course-mode-btn--combo @(activeType == CourseType.Combo ? "active" : "")" @onclick="() => ToggleType(CourseType.Combo)">Combo Courses<small>Multiple subjects in one package</small></button>
+            <button class="course-mode-btn course-mode-btn--f2f @(activeType == CourseType.FaceToFace ? "active" : "")" @onclick="() => ToggleType(CourseType.FaceToFace)">Face To Face<small>Offline at Shukrawar Peth, Pune</small></button>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="filter-bar2">
+            <div class="filter-search">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" placeholder="Search courses…" @bind="search" @bind:event="oninput" @onkeydown="OnSearchKey" />
+            </div>
+            <select class="filter-select" @onchange="OnSubjectChange">
+                <option value="">All Subjects</option>
+                @foreach (var s in SubjectOptions) { <option value="@s.Id" selected="@(s.Id == subjectId)">@s.Name</option> }
+            </select>
+            <select class="filter-select" @onchange="OnFacultyChange">
+                <option value="">All Faculty</option>
+                @if (filters != null) { @foreach (var f in filters.Faculty) { <option value="@f.Id" selected="@(f.Id == facultyId)">@f.Name</option> } }
+            </select>
+            <button class="btn btn-primary btn-sm" @onclick="ApplyFilters">Search</button>
+        </div>
+
+        <!-- Spec facets -->
+        @if (filters?.SpecFilters.Count > 0)
+        {
+            <div class="spec-facets">
+                @foreach (var group in filters.SpecFilters)
+                {
+                    <div class="spec-facet">
+                        <span class="spec-facet__label">@group.Name:</span>
+                        @foreach (var o in group.Options)
+                        {
+                            <label class="spec-facet__chip @(specOptionIds.Contains(o.Id) ? "active" : "")">
+                                <input type="checkbox" checked="@specOptionIds.Contains(o.Id)" @onchange="e => ToggleSpec(o.Id, e)" /> @o.Name
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Grid -->
+        <div class="course-grid">
+            @if (loading)
+            {
+                <p style="text-align:center;grid-column:1/-1;color:var(--gray-400)">Loading…</p>
+            }
+            else if (items.Count == 0)
+            {
+                <p style="text-align:center;grid-column:1/-1;color:var(--gray-400)">No courses match your filters.</p>
+            }
+            else
+            {
+                @foreach (var p in items) { <CourseCard Product="p" /> }
+            }
+        </div>
+
+        <!-- Pagination -->
+        @if (TotalPages > 1)
+        {
+            <div class="pagination">
+                <button class="pg-btn" disabled="@(page <= 1)" @onclick="() => GoTo(page - 1)">← Prev</button>
+                @for (var i = 1; i <= TotalPages; i++)
+                {
+                    var n = i;
+                    <button class="pg-btn @(n == page ? "active" : "")" @onclick="() => GoTo(n)">@n</button>
+                }
+                <button class="pg-btn" disabled="@(page >= TotalPages)" @onclick="() => GoTo(page + 1)">Next →</button>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    [Parameter] public string Level { get; set; } = "ca-foundation";
+
+    private List<ProductListItem> items = new();
+    private FilterOptions? filters;
+    private CourseType? activeType;
+    private Guid? subjectId, facultyId;
+    private readonly HashSet<Guid> specOptionIds = new();
+    private string search = "";
+    private int page = 1;
+    private const int PageSize = 8;
+    private int totalCount;
+    private bool loading = true;
+    private SeoMetadata seo = new();
+
+    private int TotalPages => (int)Math.Ceiling(totalCount / (double)PageSize);
+    private string PageTitle => Level switch
+    {
+        "ca-foundation" => "CA Foundation Courses",
+        "ca-intermediate" => "CA Intermediate Courses",
+        "ca-final" => "CA Final Courses",
+        "books" => "Books & Study Material",
+        _ => "All Courses"
+    };
+    private CourseLevel? LevelEnum => Level switch
+    {
+        "ca-foundation" => CourseLevel.CaFoundation,
+        "ca-intermediate" => CourseLevel.CaIntermediate,
+        "ca-final" => CourseLevel.CaFinal,
+        "books" => CourseLevel.Books,
+        _ => null
+    };
+    private IEnumerable<SubjectOption> SubjectOptions =>
+        filters == null ? Enumerable.Empty<SubjectOption>()
+        : LevelEnum.HasValue ? filters.Subjects.Where(s => s.Level == LevelEnum) : filters.Subjects;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { var r = await Http.GetFromJsonAsync<ApiResponse<FilterOptions>>("/api/meta/filters"); filters = r?.Data; }
+        catch { }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        seo = new() { Title = $"{PageTitle} — RioCommerce" };
+        // reset filters when level changes via route
+        activeType = null; subjectId = null; facultyId = null; search = ""; page = 1; specOptionIds.Clear();
+        // The new level narrows Faculty and the spec facets; Subject keeps its existing client-side
+        // Level filter in SubjectOptions.
+        await CascadeFilters();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true; StateHasChanged();
+        var url = $"/api/products?Page={page}&PageSize={PageSize}";
+        if (LevelEnum.HasValue) url += $"&Level={(int)LevelEnum}";
+        if (activeType.HasValue) url += $"&CourseType={(int)activeType}";
+        if (subjectId.HasValue) url += $"&SubjectId={subjectId}";
+        if (facultyId.HasValue) url += $"&FacultyId={facultyId}";
+        if (!string.IsNullOrWhiteSpace(search)) url += $"&Search={Uri.EscapeDataString(search.Trim())}";
+        foreach (var sid in specOptionIds) url += $"&SpecOptionIds={sid}";
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ApiResponse<PagedResult<ProductListItem>>>(url);
+            items = r?.Data?.Items ?? new();
+            totalCount = r?.Data?.TotalCount ?? 0;
+        }
+        catch { items = new(); totalCount = 0; }
+        loading = false;
+    }
+
+    private async Task ToggleType(CourseType t) { activeType = activeType == t ? null : t; page = 1; await Load(); }
+    private async Task OnSubjectChange(ChangeEventArgs e)
+    {
+        subjectId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        page = 1;
+        await CascadeFilters();
+        await Load();
+    }
+
+    private async Task OnFacultyChange(ChangeEventArgs e)
+    {
+        facultyId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+        page = 1;
+        await CascadeFilters();
+        await Load();
+    }
+
+    /// <summary>
+    /// Re-reads the option lists for what is now picked, then drops only the selections the new
+    /// lists no longer offer.
+    ///
+    /// <para>Level → Subject stays exactly as it was: it is applied client-side in
+    /// <c>SubjectOptions</c> from each subject's own Level, and the server is not asked to repeat
+    /// it. Level is still sent, so it narrows Faculty and the spec facets.</para>
+    /// </summary>
+    private async Task CascadeFilters()
+    {
+        var url = "/api/meta/filters?";
+        if (facultyId.HasValue) url += $"facultyId={facultyId}&";
+        if (subjectId.HasValue) url += $"subjectId={subjectId}&";
+        if (LevelEnum.HasValue) url += $"level={(int)LevelEnum.Value}";
+
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ApiResponse<FilterOptions>>(url);
+            if (r?.Data is not { } fresh) return;
+            filters = fresh;
+
+            if (facultyId is { } f && fresh.Faculty.All(x => x.Id != f)) facultyId = null;
+            if (subjectId is { } s && fresh.Subjects.All(x => x.Id != s)) subjectId = null;
+            // A facet option that is no longer offered would silently return nothing.
+            var live = fresh.SpecFilters.SelectMany(g => g.Options).Select(o => o.Id).ToHashSet();
+            specOptionIds.RemoveWhere(id => !live.Contains(id));
+        }
+        catch { /* keep the lists we already have rather than emptying the filter bar */ }
+    }
+    private async Task ApplyFilters() { page = 1; await Load(); }
+    private async Task ToggleSpec(Guid optionId, ChangeEventArgs e)
+    {
+        if (e.Value is true) specOptionIds.Add(optionId); else specOptionIds.Remove(optionId);
+        page = 1;
+        await Load();
+    }
+    private async Task OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { page = 1; await Load(); } }
+    private async Task GoTo(int p) { if (p < 1 || p > TotalPages) return; page = p; await Load(); }
+}

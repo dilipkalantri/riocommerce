@@ -1,0 +1,10 @@
+@code { [Parameter] public SeoMetadata Seo { get; set; } = new(); }
+<HeadContent>
+    <title>@Seo.Title</title>
+    <meta name="description" content="@Seo.Description" />
+    @if (!string.IsNullOrEmpty(Seo.CanonicalUrl)) { <link rel="canonical" href="@Seo.CanonicalUrl" /> }
+    <meta property="og:title" content="@Seo.Title" />
+    <meta property="og:description" content="@Seo.Description" />
+    <meta property="og:type" content="@Seo.OgType" />
+    @if (!string.IsNullOrEmpty(Seo.JsonLd)) { <script type="application/ld+json">@((MarkupString)Seo.JsonLd)</script> }
+</HeadContent>

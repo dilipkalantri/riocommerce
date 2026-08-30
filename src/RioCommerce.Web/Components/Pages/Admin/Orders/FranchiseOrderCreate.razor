@@ -1,0 +1,1367 @@
+@page "/admin/franchise/orders/create"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@using RioCommerce.Core.Entities
+@using RioCommerce.Core.DTOs.Orders
+@using RioCommerce.Core.DTOs.Admin
+@using RioCommerce.Core.DTOs.Franchise
+@using RioCommerce.Core.DTOs.Referral
+@using RioCommerce.Core.Enums
+@inject IOrderAdminService Orders
+@inject IFranchiseService Franchises
+@inject IAdminUserService Users
+@inject IReferralService Referrals
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
+@inject IPaymentModeRegistry PaymentModes
+<PageTitle>Create Franchisee Order — RioCommerce Admin</PageTitle>
+
+<div class="fo-v2">
+    @* ─── Hero ─── *@
+    <header class="fo-hero">
+        <div>
+            <div class="fo-hero__crumb"><a href="/admin/franchise-orders">Franchise Orders</a> <span>›</span> New Order</div>
+            <h1 class="fo-hero__title">Create Franchisee Order</h1>
+            <p class="fo-hero__sub">Create and manage franchisee orders with automatic calculations, product attributes, and wallet-aware payment.</p>
+        </div>
+        <div class="fo-hero__actions">
+            <a href="/admin/franchise-orders" class="fo-btn fo-btn--ghost">Cancel</a>
+            @if (step < 6)
+            {
+                <button class="fo-btn fo-btn--outline" disabled="@saving" @onclick="GoBack" hidden="@(step == 1)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Back
+                </button>
+                <button class="fo-btn fo-btn--primary" disabled="@(saving || !CanGoForward())" @onclick="GoForward">
+                    @if (step == 5)
+                    {
+                        @if (saving)
+                        {
+                            <span class="fo-spinner" aria-hidden="true"></span>
+                            <span>Creating…</span>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                            <span>Create Order</span>
+                        }
+                    }
+                    else
+                    {
+                        <span>Continue</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    }
+                </button>
+            }
+        </div>
+    </header>
+
+    @* ─── Franchise picker (sticky, always visible — order must be tagged before anything else) ─── *@
+    <section class="fo-pick">
+        @if (selectedFranchise == null)
+        {
+            <div class="fo-pick__head">
+                <div class="fo-pick__title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>
+                    <span>Choose Franchisee</span>
+                </div>
+                <p>Pick the franchisee this order is being placed under. Wallet balance + commission rules apply.</p>
+            </div>
+            <div class="fo-pick__search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input placeholder="Search by name, code or city…" @bind="franchiseQuery" @bind:event="oninput" />
+            </div>
+            <div class="fo-pick__list">
+                @if (allFranchises == null)
+                {
+                    @for (var i = 0; i < 3; i++) { <div class="fo-skel"></div> }
+                }
+                else if (!FilteredFranchises.Any())
+                {
+                    <div class="fo-empty"><div>🔍</div><strong>No franchisee matches your search.</strong></div>
+                }
+                else
+                {
+                    @foreach (var f in FilteredFranchises.Take(6))
+                    {
+                        <button type="button" class="fo-pick__card" @onclick="() => SelectFranchise(f)">
+                            <div class="fo-pick__card-head">
+                                <strong>@f.Name</strong>
+                                <span class="fo-chip fo-chip--blue">@f.Code</span>
+                            </div>
+                            <div class="fo-pick__card-meta">
+                                @if (!string.IsNullOrEmpty(f.City)) { <span>📍 @f.City</span> }
+                                @if (!string.IsNullOrEmpty(f.ContactPerson)) { <span>👤 @f.ContactPerson</span> }
+                            </div>
+                            <div class="fo-pick__card-foot">
+                                <div><span>Wallet</span><strong>₹@f.Wallet.ToString("N0")</strong></div>
+                                <div><span>Credit</span><strong>₹@f.CreditLimit.ToString("N0")</strong></div>
+                                <div><span>Orders MTD</span><strong>@f.OrdersMtd</strong></div>
+                            </div>
+                        </button>
+                    }
+                }
+            </div>
+        }
+        else
+        {
+            <div class="fo-pick-card">
+                <div class="fo-pick-card__main">
+                    <div class="fo-pick-card__id">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/></svg>
+                    </div>
+                    <div class="fo-pick-card__body">
+                        <div class="fo-pick-card__name">@selectedFranchise.Name <span class="fo-chip fo-chip--blue">@selectedFranchise.Code</span></div>
+                        <div class="fo-pick-card__meta">
+                            @if (!string.IsNullOrEmpty(selectedFranchise.City)) { <span>📍 @selectedFranchise.City</span> }
+                            @if (!string.IsNullOrEmpty(selectedFranchise.ContactPerson)) { <span>👤 @selectedFranchise.ContactPerson</span> }
+                            @if (!string.IsNullOrEmpty(selectedFranchise.ContactPhone)) { <span>📞 @selectedFranchise.ContactPhone</span> }
+                        </div>
+                    </div>
+                </div>
+                <div class="fo-pick-card__stats">
+                    <div class="fo-wal">
+                        <span class="fo-wal__lbl">Wallet</span>
+                        <strong class="fo-wal__amt @(LowWallet ? "is-low" : "")">₹@selectedFranchise.Wallet.ToString("N0")</strong>
+                        <small>+ ₹@selectedFranchise.CreditLimit.ToString("N0") credit</small>
+                    </div>
+                    <button class="fo-btn fo-btn--ghost fo-btn--sm" @onclick="ChangeFranchise">Change</button>
+                </div>
+            </div>
+        }
+    </section>
+
+    @* ─── Stepper (only enabled once franchise is picked) ─── *@
+    @if (selectedFranchise != null)
+    {
+        <ol class="fo-steps">
+            @foreach (var (idx, label) in StepLabels)
+            {
+                var state = idx < step ? "done" : idx == step ? "active" : "future";
+                <li class="fo-step fo-step--@state">
+                    <span class="fo-step__num">@(idx < step ? "✓" : idx.ToString())</span>
+                    <span class="fo-step__lbl">@label</span>
+                    @if (idx < 5) { <span class="fo-step__bar @(idx < step ? "is-filled" : "")"></span> }
+                </li>
+            }
+        </ol>
+    }
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="fo-alert fo-alert--err">⚠ @error</div>
+    }
+
+    @if (selectedFranchise != null)
+    {
+        <div class="fo-grid">
+            <main class="fo-main">
+
+                @* ════════ STEP 1 — CUSTOMER ════════ *@
+                @if (step == 1)
+                {
+                    <section class="fo-card">
+                        @if (selectedProfile == null)
+                        {
+                            <h2 class="fo-card__title">Customer</h2>
+                            <p class="fo-card__sub">Search the customer database — name, mobile, email or customer ID.</p>
+
+                            <div class="fo-search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                                <input type="text" placeholder="🔍 Search customer by name, mobile, email or customer ID"
+                                       @bind="customerQuery" @bind:event="oninput" @bind:after="OnCustomerSearch" />
+                                @if (customerSearching) { <span class="fo-spinner fo-spinner--sm" aria-hidden="true"></span> }
+                            </div>
+
+                            @if (customerSuggestions != null && customerSuggestions.Count > 0)
+                            {
+                                <ul class="fo-cust-list">
+                                    @foreach (var c in customerSuggestions)
+                                    {
+                                        <li class="fo-cust-row" @onclick="() => SelectCustomer(c)">
+                                            <div class="fo-av">@c.Initials</div>
+                                            <div class="fo-cust-row__body">
+                                                <div class="fo-cust-row__name">@c.FullName</div>
+                                                <div class="fo-cust-row__meta">
+                                                    <span class="fo-chip fo-chip--mute">ID: @FriendlyId(c.Id)</span>
+                                                    @if (!string.IsNullOrEmpty(c.Phone)) { <span>📞 @c.Phone</span> }
+                                                    @if (!string.IsNullOrEmpty(c.Email)) { <span>✉ @c.Email</span> }
+                                                </div>
+                                            </div>
+                                            <span class="fo-chip @(c.IsActive ? "fo-chip--ok" : "fo-chip--off")">@(c.IsActive ? "Active" : "Inactive")</span>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            else if (customerSuggestions != null && !string.IsNullOrWhiteSpace(customerQuery))
+                            {
+                                <div class="fo-empty">
+                                    <div>🔍</div><strong>No customer found</strong>
+                                    <p>We couldn't find anyone matching "@customerQuery".</p>
+                                    <button class="fo-btn fo-btn--primary fo-btn--sm" @onclick="OpenAddCustomer">➕ Add New Customer</button>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="fo-prof">
+                                <div class="fo-prof__head">
+                                    <div class="fo-av fo-av--lg">@selectedProfile.Initials</div>
+                                    <div class="fo-prof__title">
+                                        <h3>@selectedProfile.FullName</h3>
+                                        <div class="fo-prof__meta">
+                                            <span class="fo-chip fo-chip--mute">ID: @selectedProfile.FriendlyId</span>
+                                            <span class="fo-chip @(selectedProfile.IsActive ? "fo-chip--ok" : "fo-chip--off")">@(selectedProfile.IsActive ? "Active" : "Inactive")</span>
+                                        </div>
+                                        <div class="fo-prof__contact">
+                                            @if (!string.IsNullOrEmpty(selectedProfile.Phone)) { <span>📞 @selectedProfile.Phone</span> }
+                                            @if (!string.IsNullOrEmpty(selectedProfile.Email)) { <span>✉ @selectedProfile.Email</span> }
+                                        </div>
+                                    </div>
+                                    <button class="fo-btn fo-btn--outline fo-btn--sm" @onclick="ClearCustomer">Change</button>
+                                </div>
+                                <div class="fo-prof__stats">
+                                    <div><span>Total Orders</span><strong>@selectedProfile.TotalOrders</strong></div>
+                                    <div><span>Lifetime Value</span><strong>₹@selectedProfile.LifetimeValue.ToString("N0")</strong></div>
+                                    <div><span>Last Order</span><strong>@(selectedProfile.LastOrderAt.HasValue ? selectedProfile.LastOrderAt.Value.ToLocalTime().ToString("dd MMM yyyy") : "—")</strong></div>
+                                    <div><span>Since</span><strong>@selectedProfile.JoinedDate.ToLocalTime().ToString("dd MMM yyyy")</strong></div>
+                                </div>
+                            </div>
+                        }
+                    </section>
+                }
+
+                @* ════════ STEP 2 — ADDRESS ════════ *@
+                @if (step == 2)
+                {
+                    <section class="fo-card">
+                        <h2 class="fo-card__title">Customer Address</h2>
+                        <p class="fo-card__sub">
+                            Pre-filled from the customer's default address. This is where the material is delivered.
+                            <strong>The tax invoice is raised in the franchisee's name</strong>@(selectedFranchise != null ? $" ({selectedFranchise.Name})" : "") —
+                            their registered address and GSTIN are used for billing, not the details below.
+                        </p>
+                        <div class="fo-form-grid">
+                            <div class="fo-field fo-field--full"><label>Address</label><input class="fo-input" @bind="req.BillingAddress" placeholder="Flat / street / area" /></div>
+                            <div class="fo-field"><label>City</label><input class="fo-input" @bind="req.BillingCity" /></div>
+                            <div class="fo-field"><label>State <span class="req">*</span></label><select class="fo-input" @bind="req.BillingState">@foreach (var s in States) { <option value="@s">@s</option> }</select></div>
+                            <div class="fo-field"><label>Pincode</label><input class="fo-input" @bind="req.BillingPincode" inputmode="numeric" maxlength="6" /></div>
+                            <div class="fo-field"><label>GSTIN (optional)</label><input class="fo-input" @bind="req.GstNumber" placeholder="For B2B invoice" /></div>
+                        </div>
+                    </section>
+
+                    <section class="fo-card">
+                        <div class="fo-card__title-row">
+                            <h2 class="fo-card__title">Shipping Address</h2>
+                            <label class="fo-switch">
+                                <input type="checkbox" @bind="sameAsBilling" />
+                                <span class="fo-switch__track"><span class="fo-switch__dot"></span></span>
+                                <span>Same as billing</span>
+                            </label>
+                        </div>
+                        @if (!sameAsBilling)
+                        {
+                            <div class="fo-form-grid">
+                                <div class="fo-field fo-field--full"><label>Address</label><input class="fo-input" @bind="req.ShippingAddress" /></div>
+                                <div class="fo-field"><label>City</label><input class="fo-input" @bind="req.ShippingCity" /></div>
+                                <div class="fo-field"><label>State</label><select class="fo-input" @bind="req.ShippingState">@foreach (var s in States) { <option value="@s">@s</option> }</select></div>
+                                <div class="fo-field"><label>Pincode</label><input class="fo-input" @bind="req.ShippingPincode" inputmode="numeric" maxlength="6" /></div>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="fo-card__sub" style="margin:0">Shipping address mirrors the billing fields above.</p>
+                        }
+                    </section>
+
+                    <section class="fo-card">
+                        <h2 class="fo-card__title">Referral Source <span class="req">*</span></h2>
+                        <p class="fo-card__sub">How did the customer hear about RioCommerce?</p>
+                        <div class="fo-radio-cards fo-radio-cards--ref">
+                            @if (referralOptions != null)
+                            {
+                                @foreach (var opt in referralOptions)
+                                {
+                                    var sel = req.ReferralSourceId == opt.Id;
+                                    <label class="fo-radio-card @(sel ? "is-selected" : "")" @onclick="() => req.ReferralSourceId = opt.Id">
+                                        <div class="fo-radio-card__title">@opt.Name</div>
+                                        <div class="fo-radio-card__sub">@opt.Type</div>
+                                    </label>
+                                }
+                            }
+                        </div>
+                    </section>
+                }
+
+                @* ════════ STEP 3 — PRODUCTS ════════ *@
+                @if (step == 3)
+                {
+                    <section class="fo-card">
+                        <div class="fo-card__title-row">
+                            <h2 class="fo-card__title">Products</h2>
+                            <button class="fo-btn fo-btn--outline fo-btn--sm" @onclick="OpenProductPicker">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                Add Product
+                            </button>
+                        </div>
+
+                        @if (req.Items.Count == 0)
+                        {
+                            <div class="fo-empty" @onclick="OpenProductPicker" style="cursor:pointer">
+                                <div>📦</div><strong>No products added yet</strong>
+                                <p>Click <b>Add Product</b> to search and add courses.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="fo-line-list">
+                                @for (var i = 0; i < req.Items.Count; i++)
+                                {
+                                    var line = req.Items[i];
+                                    var detail = lineDetails.TryGetValue(line.ProductId, out var d) ? d : null;
+                                    var idx = i;
+                                    <article class="fo-line">
+                                        <header class="fo-line__head">
+                                            <div class="fo-line__media">
+                                                @if (!string.IsNullOrEmpty(detail?.ImageUrl)) { <img src="@detail.ImageUrl" alt="" /> }
+                                                else { <span>@(detail?.Title?.Trim().FirstOrDefault().ToString().ToUpperInvariant() ?? "?")</span> }
+                                            </div>
+                                            <div class="fo-line__title-block">
+                                                <h3>@(detail?.Title ?? "Loading…")</h3>
+                                                <div class="fo-line__chips">
+                                                    @if (!string.IsNullOrEmpty(detail?.FacultyName)) { <span class="fo-chip">👨‍🏫 @detail.FacultyName</span> }
+                                                    @if (!string.IsNullOrEmpty(detail?.BatchStatusText)) { <span class="fo-chip fo-chip--blue">📅 @detail.BatchStatusText</span> }
+                                                </div>
+                                            </div>
+                                            <div class="fo-line__actions">
+                                                <button class="fo-icon-btn" title="Duplicate" @onclick="() => DuplicateLine(idx)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+                                                <button class="fo-icon-btn fo-icon-btn--danger" title="Remove" @onclick="() => RemoveLine(idx)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/></svg></button>
+                                            </div>
+                                        </header>
+
+                                        @if (detail != null)
+                                        {
+                                            @if (detail.Modes.Count > 0)
+                                            {
+                                                <div class="fo-attr">
+                                                    <div class="fo-attr__label">Mode of Lecture</div>
+                                                    <div class="fo-radio-cards">
+                                                        @foreach (var m in detail.Modes)
+                                                        {
+                                                            var sel = line.ProductModeId == m.Id;
+                                                            // Mode is an ADD-ON — show effective price (base + add-on).
+                                                            var __effective = detail.SellingPrice + m.Price;
+                                                            <label class="fo-radio-card @(sel ? "is-selected" : "")" @onclick="() => SetMode(idx, m.Id)">
+                                                                <div class="fo-radio-card__title">@m.Name</div>
+                                                                <div class="fo-radio-card__price">₹@__effective.ToString("N0")</div>
+                                                            </label>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
+                                            @foreach (var attr in detail.Attributes)
+                                            {
+                                                var multi = attr.ControlType?.Equals("Checkboxes", StringComparison.OrdinalIgnoreCase) == true;
+                                                <div class="fo-attr">
+                                                    <div class="fo-attr__label">@attr.Name @if (attr.IsRequired) { <span class="req">*</span> }</div>
+                                                    <div class="fo-radio-cards">
+                                                        @foreach (var v in attr.Values)
+                                                        {
+                                                            var sel = line.SelectedAttributeValueIds.Contains(v.Id);
+                                                            <label class="fo-radio-card @(sel ? "is-selected" : "") @(multi ? "fo-radio-card--multi" : "")"
+                                                                   @onclick="() => ToggleAttribute(idx, attr.MappingId, v.Id, multi)">
+                                                                <div class="fo-radio-card__title">@v.Name</div>
+                                                                @if (v.PriceAdjustment != 0)
+                                                                {
+                                                                    <div class="fo-radio-card__price">
+                                                                        @(v.PriceAdjustment > 0 ? "+" : "−")
+                                                                        @(v.PriceAdjustmentUsePercentage ? $"{Math.Abs(v.PriceAdjustment):0.##}%" : $"₹{Math.Abs(v.PriceAdjustment):N0}")
+                                                                    </div>
+                                                                }
+                                                            </label>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
+
+                                            <div class="fo-line__bottom">
+                                                <div class="fo-stepper">
+                                                    <button @onclick="() => SetQty(idx, line.Quantity - 1)">−</button>
+                                                    <input type="number" min="1" value="@line.Quantity" @onchange="@(e => SetQty(idx, int.TryParse(e.Value?.ToString(), out var q) ? q : 1))" />
+                                                    <button @onclick="() => SetQty(idx, line.Quantity + 1)">+</button>
+                                                </div>
+                                                <div class="fo-field fo-field--inline">
+                                                    <label>Discount (₹)</label>
+                                                    <input class="fo-input fo-input--sm" type="number" min="0" @bind="line.Discount" @bind:event="oninput" />
+                                                </div>
+                                                <div class="fo-line__total">
+                                                    <span>Line Total</span><strong>₹@LineTotal(line, detail).ToString("N0")</strong>
+                                                </div>
+                                            </div>
+                                        }
+                                    </article>
+                                }
+                            </div>
+                            <button class="fo-btn fo-btn--outline fo-btn--block" @onclick="OpenProductPicker">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                Add Another Product
+                            </button>
+                        }
+                    </section>
+                }
+
+                @* ════════ STEP 4 — PAYMENT ════════ *@
+                @if (step == 4)
+                {
+                    <section class="fo-card">
+                        <h2 class="fo-card__title">Payment Type</h2>
+                        <p class="fo-card__sub">Wallet / Net Payment / Postpay. Wallet uses the franchisee's balance + credit limit.</p>
+                        <div class="fo-radio-cards fo-radio-cards--pay">
+                            @foreach (var (mode, desc, ico) in TxnModeOptions)
+                            {
+                                var sel = txnMode == mode;
+                                <label class="fo-radio-card fo-radio-card--lg @(sel ? "is-selected" : "")" @onclick="() => SelectTxnMode(mode)">
+                                    <div class="fo-radio-card__ico">@ico</div>
+                                    <div>
+                                        <div class="fo-radio-card__title">@mode</div>
+                                        <div class="fo-radio-card__sub">@desc</div>
+                                    </div>
+                                </label>
+                            }
+                        </div>
+                    </section>
+
+                    @if (txnMode == FranchiseTxnMode.Wallet)
+                    {
+                        <section class="fo-card fo-card--wallet">
+                            <h2 class="fo-card__title">Wallet</h2>
+                            <div class="fo-wal-grid">
+                                <div><span>Wallet Balance</span><strong>₹@selectedFranchise!.Wallet.ToString("N0")</strong></div>
+                                <div><span>Credit Limit</span><strong>₹@selectedFranchise.CreditLimit.ToString("N0")</strong></div>
+                                <div><span>Max Spend</span><strong>₹@((selectedFranchise.Wallet + selectedFranchise.CreditLimit).ToString("N0"))</strong></div>
+                                <div class="@(GrandTotal > (selectedFranchise.Wallet + selectedFranchise.CreditLimit) ? "is-low" : "")">
+                                    <span>Order Total</span><strong>₹@GrandTotal.ToString("N0")</strong>
+                                </div>
+                            </div>
+                            @if (GrandTotal > selectedFranchise.Wallet + selectedFranchise.CreditLimit)
+                            {
+                                <div class="fo-alert fo-alert--err" style="margin-top:14px">Wallet + credit limit is below the order total. Top up the wallet or switch to <b>Net Payment</b>.</div>
+                            }
+                        </section>
+                    }
+
+                    @if (txnMode == FranchiseTxnMode.NetPayment)
+                    {
+                        <section class="fo-card">
+                            <div class="fo-card__title-row">
+                                <h2 class="fo-card__title">Payment Method</h2>
+                                <button class="fo-btn fo-btn--outline fo-btn--sm" @onclick="AddPaymentRow">+ Split</button>
+                            </div>
+                            <p class="fo-card__sub">Choose one method or split across multiple.</p>
+                            <div class="fo-pay">
+                                @for (var i = 0; i < req.Payments.Count; i++)
+                                {
+                                    var p = req.Payments[i]; var idx = i;
+                                    <div class="fo-pay__row">
+                                        <select class="fo-input" value="@p.Mode" @onchange="@(e => SetPaymentMode(idx, e))">
+                                            @foreach (var m in allowedPaymentModes) { <option value="@m">@m</option> }
+                                        </select>
+                                        <input class="fo-input" type="number" min="0" value="@p.Amount" @onchange="@(e => SetPaymentAmount(idx, e))" />
+                                        @if (req.Payments.Count > 1) { <button class="fo-icon-btn fo-icon-btn--danger" @onclick="() => RemovePaymentRow(idx)">×</button> }
+                                    </div>
+                                }
+                            </div>
+                            <div class="fo-pay__validate">
+                                <span>Payments: <strong>₹@PaymentSum.ToString("N0")</strong></span>
+                                <span class="@(PaymentMismatchClass)">Grand Total: <strong>₹@GrandTotal.ToString("N0")</strong></span>
+                            </div>
+                        </section>
+                    }
+                }
+
+                @* ════════ STEP 5 — REVIEW ════════ *@
+                @if (step == 5)
+                {
+                    <section class="fo-card fo-review">
+                        <h2 class="fo-card__title">Review &amp; Confirm</h2>
+                        <p class="fo-card__sub">Final check — clicking <b>Create Order</b> books it under <b>@selectedFranchise!.Name</b>.</p>
+
+                        <div class="fo-review__block">
+                            <h3>Franchisee</h3>
+                            <p><strong>@selectedFranchise.Name</strong> · <span class="fo-chip fo-chip--blue">@selectedFranchise.Code</span> · @selectedFranchise.City</p>
+                        </div>
+                        <div class="fo-review__block">
+                            <h3>Customer</h3>
+                            <p><strong>@req.StudentName</strong> · @req.StudentPhone @(string.IsNullOrEmpty(req.StudentEmail) ? "" : " · " + req.StudentEmail)</p>
+                        </div>
+                        <div class="fo-review__block">
+                            <h3>Billing</h3>
+                            <p>@(string.Join(", ", new[] { req.BillingAddress, req.BillingCity, req.BillingState, req.BillingPincode }.Where(x => !string.IsNullOrWhiteSpace(x))))</p>
+                        </div>
+                        @if (!sameAsBilling)
+                        {
+                            <div class="fo-review__block">
+                                <h3>Shipping</h3>
+                                <p>@(string.Join(", ", new[] { req.ShippingAddress, req.ShippingCity, req.ShippingState, req.ShippingPincode }.Where(x => !string.IsNullOrWhiteSpace(x))))</p>
+                            </div>
+                        }
+                        <div class="fo-review__block">
+                            <h3>Products</h3>
+                            <ul class="fo-review__items">
+                                @foreach (var line in req.Items)
+                                {
+                                    var d = lineDetails.GetValueOrDefault(line.ProductId);
+                                    <li>
+                                        <div>
+                                            <strong>@d?.Title</strong>
+                                            @if (line.ProductModeId.HasValue && d != null)
+                                            {
+                                                var mn = d.Modes.FirstOrDefault(m => m.Id == line.ProductModeId.Value)?.Name;
+                                                if (!string.IsNullOrEmpty(mn)) { <span class="fo-chip fo-chip--mute">@mn</span> }
+                                            }
+                                        </div>
+                                        <div>
+                                            <span class="fo-chip fo-chip--mute">Qty × @line.Quantity</span>
+                                            <strong>₹@LineTotal(line, d).ToString("N0")</strong>
+                                        </div>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                        <div class="fo-review__block">
+                            <h3>Payment</h3>
+                            <p><strong>@txnMode</strong> @(txnMode == FranchiseTxnMode.Wallet ? $"· debits ₹{GrandTotal:N0} from wallet" : "")</p>
+                            @if (txnMode == FranchiseTxnMode.NetPayment)
+                            {
+                                <ul class="fo-review__items">
+                                    @foreach (var p in req.Payments)
+                                    {
+                                        <li><div><span>@p.Mode</span></div><div><strong>₹@p.Amount.ToString("N0")</strong></div></li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </section>
+                }
+            </main>
+
+            @* ─── Sticky summary ─── *@
+            <aside class="fo-summary">
+                <div class="fo-summary__card">
+                    <header class="fo-summary__head">
+                        <h3>Order Summary</h3>
+                        <span class="fo-chip fo-chip--blue">@req.Items.Count item@(req.Items.Count == 1 ? "" : "s")</span>
+                    </header>
+                    <div class="fo-summary__body">
+                        <div class="fo-row"><span>Gross Amount</span><strong>₹@Subtotal.ToString("N0")</strong></div>
+                        @if (TotalDiscount > 0) { <div class="fo-row fo-row--save"><span>Discount</span><strong>− ₹@TotalDiscount.ToString("N0")</strong></div> }
+                        <div class="fo-row fo-row--gst"><span>GST (18%, incl.)</span><strong>₹@GstAmount.ToString("N0")</strong></div>
+                        <div class="fo-row fo-row--total"><span>Grand Total</span><strong>₹@GrandTotal.ToString("N0")</strong></div>
+
+                        <div class="fo-summary__meta">
+                            <div><span>Franchisee</span><strong>@(selectedFranchise!.Code)</strong></div>
+                            <div><span>Wallet</span><strong>₹@selectedFranchise.Wallet.ToString("N0")</strong></div>
+                            <div><span>Mode</span><strong>@txnMode</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    }
+</div>
+
+@* ─── Product Picker modal ─── *@
+@if (showPicker)
+{
+    <div class="fo-modal-bg" @onclick="ClosePicker"></div>
+    <div class="fo-modal" role="dialog" aria-modal="true">
+        <header class="fo-modal__head">
+            <h3>Add Product</h3>
+            <button class="fo-modal__close" @onclick="ClosePicker">×</button>
+        </header>
+        <div class="fo-modal__body">
+            <div class="fo-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" autofocus placeholder="Search by name or SKU…" @bind="productQuery" @bind:event="oninput" @bind:after="OnProductSearch" />
+                @if (productSearching) { <span class="fo-spinner fo-spinner--sm" aria-hidden="true"></span> }
+            </div>
+            @if (productResults == null) { <p class="fo-muted">Loading…</p> }
+            else if (productResults.Count == 0) { <p class="fo-muted">No products found.</p> }
+            else
+            {
+                <ul class="fo-prod-list">
+                    @foreach (var p in productResults)
+                    {
+                        <li class="fo-prod" @onclick="() => SelectProduct(p)">
+                            <div class="fo-prod__media">
+                                @if (!string.IsNullOrEmpty(p.ImageUrl)) { <img src="@p.ImageUrl" alt="" /> }
+                                else { <span>@(p.Title?.Trim().FirstOrDefault().ToString().ToUpperInvariant() ?? "?")</span> }
+                            </div>
+                            <div class="fo-prod__body">
+                                <div class="fo-prod__name">@p.Title</div>
+                                <div class="fo-prod__meta">
+                                    @if (!string.IsNullOrEmpty(p.FacultyName)) { <span>👨‍🏫 @p.FacultyName</span> }
+                                    @if (!string.IsNullOrEmpty(p.Sku)) { <span>SKU: @p.Sku</span> }
+                                </div>
+                            </div>
+                            <div class="fo-prod__price">₹@p.SellingPrice.ToString("N0")</div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    /* ════════════════════════════════════════════════════════════════
+       Franchisee Order — wizard (scoped to .fo-v2). Inherits the same
+       design language as /admin/orders/create.
+       ════════════════════════════════════════════════════════════════ */
+    .fo-v2{--c-ink:#0F1B33;--c-mute:#64748B;--c-line:#E5ECF4;--c-bg:#F8FAFC;--c-primary:#163A70;--c-accent:#F58220;--c-green:#22C55E;--c-blue:#3B82F6;--c-purple:#7C3AED;--c-radius:16px;color:var(--c-ink);padding-bottom:60px}
+    .fo-v2 .req{color:var(--c-accent);margin-left:2px}
+
+    /* Hero */
+    .fo-v2 .fo-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin:20px 0 18px;flex-wrap:wrap}
+    .fo-v2 .fo-hero__crumb{font-size:12px;color:var(--c-mute);font-weight:600;margin-bottom:6px}
+    .fo-v2 .fo-hero__crumb a{color:var(--c-mute);text-decoration:none}
+    .fo-v2 .fo-hero__crumb a:hover{color:var(--c-primary)}
+    .fo-v2 .fo-hero__crumb span{margin:0 6px}
+    .fo-v2 .fo-hero__title{margin:0;font-size:26px;font-weight:800;letter-spacing:-.4px}
+    .fo-v2 .fo-hero__sub{margin:6px 0 0;font-size:14px;color:var(--c-mute);max-width:740px;line-height:1.55}
+    .fo-v2 .fo-hero__actions{display:flex;gap:10px;flex-wrap:wrap}
+
+    /* Buttons */
+    .fo-v2 .fo-btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:12px;border:1.5px solid transparent;font-size:13.5px;font-weight:700;cursor:pointer;text-decoration:none;background:#fff;color:var(--c-ink);transition:transform .15s,filter .15s,background .2s,border-color .2s,box-shadow .2s}
+    .fo-v2 .fo-btn svg{width:15px;height:15px}
+    .fo-v2 .fo-btn:hover{transform:translateY(-1px)}
+    .fo-v2 .fo-btn[disabled]{opacity:.55;cursor:not-allowed;transform:none;filter:grayscale(.3)}
+    .fo-v2 .fo-btn--primary{background:linear-gradient(135deg,#F58220,#ffa05a);color:#fff;box-shadow:0 12px 24px -14px rgba(245,130,32,.55)}
+    .fo-v2 .fo-btn--primary:hover{filter:brightness(1.05)}
+    .fo-v2 .fo-btn--outline{background:#fff;border-color:#DBE5F2;color:var(--c-primary)}
+    .fo-v2 .fo-btn--outline:hover{background:#EFF4FB;border-color:var(--c-primary)}
+    .fo-v2 .fo-btn--ghost{background:transparent;border-color:var(--c-line);color:var(--c-mute)}
+    .fo-v2 .fo-btn--ghost:hover{color:var(--c-ink);background:#F8FAFC}
+    .fo-v2 .fo-btn--sm{height:34px;padding:0 14px;font-size:12.5px;border-radius:10px}
+    .fo-v2 .fo-btn--block{width:100%;justify-content:center;margin-top:12px}
+
+    .fo-v2 .fo-spinner{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:fo-spin .8s linear infinite}
+    .fo-v2 .fo-spinner--sm{width:12px;height:12px}
+    @@keyframes fo-spin{to{transform:rotate(360deg)}}
+
+    /* Franchise picker (sticky-feel banner card) */
+    .fo-v2 .fo-pick{background:linear-gradient(135deg,#0F1B33 0%,#1E3A6B 60%,#2a5fb0 100%);color:#fff;border-radius:20px;padding:22px 24px;margin-bottom:18px;box-shadow:0 18px 40px -22px rgba(15,27,51,.55);position:relative;overflow:hidden}
+    .fo-v2 .fo-pick::before{content:"";position:absolute;inset:0;background:radial-gradient(500px 220px at 100% 0,rgba(245,130,32,.22),transparent 60%);pointer-events:none}
+    .fo-v2 .fo-pick__head{position:relative}
+    .fo-v2 .fo-pick__title{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:800;letter-spacing:-.2px}
+    .fo-v2 .fo-pick__title svg{width:22px;height:22px;color:#FFB76E}
+    .fo-v2 .fo-pick__head p{margin:6px 0 14px;font-size:13px;color:rgba(255,255,255,.75)}
+    .fo-v2 .fo-pick__search{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:0 14px;height:44px;margin-bottom:14px;position:relative}
+    .fo-v2 .fo-pick__search svg{width:16px;height:16px;color:rgba(255,255,255,.7);flex:0 0 auto}
+    .fo-v2 .fo-pick__search input{flex:1;border:0;background:transparent;outline:none;font-size:14px;color:#fff}
+    .fo-v2 .fo-pick__search input::placeholder{color:rgba(255,255,255,.55)}
+    .fo-v2 .fo-pick__list{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;position:relative}
+    .fo-v2 .fo-pick__card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);border-radius:14px;padding:14px;color:#fff;text-align:left;cursor:pointer;transition:transform .15s,background .2s,border-color .2s;font-family:inherit}
+    .fo-v2 .fo-pick__card:hover{transform:translateY(-2px);background:rgba(255,255,255,.14);border-color:#FFB76E}
+    .fo-v2 .fo-pick__card-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .fo-v2 .fo-pick__card-head strong{font-size:14.5px;font-weight:800;color:#fff}
+    .fo-v2 .fo-pick__card-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:11.5px;color:rgba(255,255,255,.7)}
+    .fo-v2 .fo-pick__card-foot{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,255,255,.18);font-size:11px}
+    .fo-v2 .fo-pick__card-foot>div{display:flex;flex-direction:column;color:rgba(255,255,255,.6)}
+    .fo-v2 .fo-pick__card-foot strong{font-size:13px;color:#fff;font-weight:800;letter-spacing:-.2px}
+    .fo-v2 .fo-skel{height:104px;border-radius:14px;background:linear-gradient(90deg,rgba(255,255,255,.08) 25%,rgba(255,255,255,.16) 50%,rgba(255,255,255,.08) 75%);background-size:200% 100%;animation:fo-shimmer 1.4s linear infinite}
+    @@keyframes fo-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+
+    /* Selected franchise card */
+    .fo-v2 .fo-pick-card{display:flex;justify-content:space-between;align-items:center;gap:18px;position:relative;flex-wrap:wrap}
+    .fo-v2 .fo-pick-card__main{display:flex;align-items:center;gap:14px;min-width:0;flex:1}
+    .fo-v2 .fo-pick-card__id{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,#F58220,#ffa05a);color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 8px 18px -8px rgba(245,130,32,.6)}
+    .fo-v2 .fo-pick-card__id svg{width:22px;height:22px}
+    .fo-v2 .fo-pick-card__name{font-size:17px;font-weight:800;color:#fff;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .fo-v2 .fo-pick-card__meta{display:flex;gap:14px;margin-top:4px;font-size:12.5px;color:rgba(255,255,255,.75);flex-wrap:wrap}
+    .fo-v2 .fo-pick-card__stats{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+    .fo-v2 .fo-wal{display:flex;flex-direction:column;color:rgba(255,255,255,.75);font-size:12px}
+    .fo-v2 .fo-wal__lbl{font-weight:700;letter-spacing:.5px;text-transform:uppercase;font-size:10.5px}
+    .fo-v2 .fo-wal__amt{font-size:22px;font-weight:800;color:#fff;letter-spacing:-.3px}
+    .fo-v2 .fo-wal__amt.is-low{color:#FCA5A5}
+    .fo-v2 .fo-wal small{font-size:11px;color:rgba(255,255,255,.55)}
+    .fo-v2 .fo-pick-card .fo-btn--ghost{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.18);color:#fff}
+
+    /* Stepper */
+    .fo-v2 .fo-steps{display:flex;list-style:none;margin:0 0 18px;padding:0}
+    .fo-v2 .fo-step{display:flex;align-items:center;gap:8px;flex:1;font-size:13px;font-weight:600;color:var(--c-mute)}
+    .fo-v2 .fo-step__num{width:30px;height:30px;border-radius:50%;background:#F1F5F9;color:var(--c-mute);display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;border:2px solid #F1F5F9;flex:0 0 auto;transition:all .25s}
+    .fo-v2 .fo-step__bar{flex:1;height:2px;background:#E5ECF4;margin:0 6px;border-radius:999px}
+    .fo-v2 .fo-step--active{color:var(--c-accent)}
+    .fo-v2 .fo-step--active .fo-step__num{background:linear-gradient(135deg,#F58220,#ffa05a);color:#fff;border-color:#FCD9C0;box-shadow:0 6px 14px -6px rgba(245,130,32,.55)}
+    .fo-v2 .fo-step--done{color:#15803D}
+    .fo-v2 .fo-step--done .fo-step__num{background:var(--c-green);color:#fff;border-color:#BBF7D0}
+    .fo-v2 .fo-step__bar.is-filled{background:linear-gradient(90deg,#16A34A,#22C55E)}
+
+    .fo-v2 .fo-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start}
+    .fo-v2 .fo-main{display:flex;flex-direction:column;gap:18px}
+
+    .fo-v2 .fo-card{background:#fff;border:1px solid var(--c-line);border-radius:var(--c-radius);padding:24px;box-shadow:0 10px 28px -22px rgba(15,27,51,.22);animation:fo-fade .3s ease both}
+    .fo-v2 .fo-card__title{margin:0 0 4px;font-size:17px;font-weight:700}
+    .fo-v2 .fo-card__sub{margin:0 0 16px;font-size:13px;color:var(--c-mute)}
+    .fo-v2 .fo-card__title-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;flex-wrap:wrap}
+    @@keyframes fo-fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+    /* Customer search */
+    .fo-v2 .fo-search{display:flex;align-items:center;gap:8px;background:#F8FAFC;border:1px solid var(--c-line);border-radius:12px;padding:0 14px;height:48px;margin-bottom:10px}
+    .fo-v2 .fo-search svg{width:16px;height:16px;color:var(--c-mute);flex:0 0 auto}
+    .fo-v2 .fo-search input{flex:1;border:0;background:transparent;outline:none;font-size:14px;color:var(--c-ink)}
+
+    .fo-v2 .fo-cust-list{list-style:none;margin:0;padding:6px;background:#fff;border:1px solid var(--c-line);border-radius:14px;box-shadow:0 18px 36px -22px rgba(15,27,51,.3);max-height:380px;overflow:auto}
+    .fo-v2 .fo-cust-row{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .15s}
+    .fo-v2 .fo-cust-row:hover{background:#FFF7EF}
+    .fo-v2 .fo-cust-row__name{font-weight:700;font-size:14px;color:var(--c-ink)}
+    .fo-v2 .fo-cust-row__meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:3px;font-size:12px;color:var(--c-mute)}
+
+    .fo-v2 .fo-av{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#163A70,#1f4d92);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex:0 0 auto}
+    .fo-v2 .fo-av--lg{width:54px;height:54px;font-size:18px}
+
+    /* Profile */
+    .fo-v2 .fo-prof{background:#fff;border:1px solid var(--c-line);border-radius:14px;overflow:hidden}
+    .fo-v2 .fo-prof__head{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:14px;align-items:center;padding:18px;background:linear-gradient(135deg,#EFF4FB,#fff);border-bottom:1px solid var(--c-line)}
+    .fo-v2 .fo-prof__title h3{margin:0;font-size:17px;font-weight:800}
+    .fo-v2 .fo-prof__meta{display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap}
+    .fo-v2 .fo-prof__contact{display:flex;gap:14px;margin-top:6px;font-size:12.5px;color:var(--c-mute);flex-wrap:wrap}
+    .fo-v2 .fo-prof__stats{display:grid;grid-template-columns:repeat(4,1fr)}
+    .fo-v2 .fo-prof__stats>div{padding:14px 18px;border-right:1px solid var(--c-line);display:flex;flex-direction:column}
+    .fo-v2 .fo-prof__stats>div:last-child{border-right:0}
+    .fo-v2 .fo-prof__stats span{font-size:10.5px;font-weight:800;color:var(--c-mute);text-transform:uppercase;letter-spacing:.5px}
+    .fo-v2 .fo-prof__stats strong{font-size:18px;font-weight:800;letter-spacing:-.3px;margin-top:4px}
+
+    /* Form */
+    .fo-v2 .fo-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .fo-v2 .fo-field{display:flex;flex-direction:column;gap:6px}
+    .fo-v2 .fo-field--full{grid-column:1 / -1}
+    .fo-v2 .fo-field--inline{flex-direction:row;align-items:center;gap:8px}
+    .fo-v2 .fo-field--inline label{margin:0;font-size:12px}
+    .fo-v2 .fo-field label{font-size:12px;font-weight:700;color:var(--c-ink);letter-spacing:.2px;text-transform:uppercase}
+    .fo-v2 .fo-input{height:44px;padding:0 14px;border:1.5px solid var(--c-line);border-radius:12px;font-size:14px;color:var(--c-ink);outline:none;background:#fff;transition:border-color .2s,box-shadow .2s;font-family:inherit}
+    .fo-v2 .fo-input:focus{border-color:var(--c-accent);box-shadow:0 0 0 3px rgba(245,130,32,.15)}
+    .fo-v2 .fo-input--sm{height:36px;font-size:13px;padding:0 10px;max-width:130px}
+    .fo-v2 select.fo-input{appearance:none;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='%2364748B' d='M5 6L0 1l1.5-1.5L5 3l3.5-3.5L10 1z'/></svg>") right 12px center/10px 6px no-repeat;padding-right:36px;cursor:pointer}
+
+    /* Toggle switch */
+    .fo-v2 .fo-switch{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;font-weight:700;color:var(--c-ink)}
+    .fo-v2 .fo-switch input{position:absolute;opacity:0}
+    .fo-v2 .fo-switch__track{position:relative;width:36px;height:20px;background:#CBD5E1;border-radius:999px;flex:0 0 auto;transition:background .2s}
+    .fo-v2 .fo-switch__dot{position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+    .fo-v2 .fo-switch input:checked + .fo-switch__track{background:linear-gradient(135deg,#F58220,#ffa05a)}
+    .fo-v2 .fo-switch input:checked + .fo-switch__track .fo-switch__dot{transform:translateX(16px)}
+
+    /* Empty state */
+    .fo-v2 .fo-empty{text-align:center;padding:40px 24px;border:2px dashed var(--c-line);border-radius:14px;color:var(--c-mute)}
+    .fo-v2 .fo-empty div{font-size:42px;margin-bottom:8px}
+    .fo-v2 .fo-empty strong{font-size:16px;color:var(--c-ink);display:block;margin-bottom:4px}
+    .fo-v2 .fo-empty p{margin:0;font-size:13px}
+
+    /* Line cards */
+    .fo-v2 .fo-line-list{display:flex;flex-direction:column;gap:14px}
+    .fo-v2 .fo-line{padding:18px;border:1px solid var(--c-line);border-radius:14px}
+    .fo-v2 .fo-line__head{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:14px;align-items:center;margin-bottom:14px}
+    .fo-v2 .fo-line__media{width:64px;height:64px;border-radius:12px;background:#F1F5F9;border:1px solid var(--c-line);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:20px;font-weight:800;color:var(--c-mute)}
+    .fo-v2 .fo-line__media img{width:100%;height:100%;object-fit:cover}
+    .fo-v2 .fo-line__title-block h3{margin:0;font-size:15px;font-weight:700}
+    .fo-v2 .fo-line__chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+    .fo-v2 .fo-line__actions{display:flex;gap:4px}
+    .fo-v2 .fo-icon-btn{width:32px;height:32px;border-radius:8px;background:transparent;border:1px solid var(--c-line);color:var(--c-mute);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+    .fo-v2 .fo-icon-btn:hover{background:#F8FAFC;color:var(--c-ink)}
+    .fo-v2 .fo-icon-btn svg{width:14px;height:14px}
+    .fo-v2 .fo-icon-btn--danger:hover{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
+
+    /* Chips */
+    .fo-v2 .fo-chip{display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;background:#F1F5F9;color:#475569;border:1px solid var(--c-line);gap:4px}
+    .fo-v2 .fo-chip--blue{background:#DBEAFE;color:#1D4ED8;border-color:#BFDBFE}
+    .fo-v2 .fo-chip--ok{background:#DCFCE7;color:#15803D;border-color:#BBF7D0}
+    .fo-v2 .fo-chip--off{background:#F1F5F9;color:#94A3B8}
+    .fo-v2 .fo-chip--mute{background:#F1F5F9;color:var(--c-mute)}
+
+    /* Attribute cards */
+    .fo-v2 .fo-attr{margin-bottom:14px}
+    .fo-v2 .fo-attr__label{font-size:12px;font-weight:800;color:var(--c-ink);text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px}
+    .fo-v2 .fo-radio-cards{display:flex;flex-wrap:wrap;gap:8px}
+    .fo-v2 .fo-radio-cards--ref{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .fo-v2 .fo-radio-cards--pay{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .fo-v2 .fo-radio-card{position:relative;padding:12px 14px;background:#fff;border:1.5px solid var(--c-line);border-radius:12px;cursor:pointer;transition:border-color .2s,background .2s,box-shadow .2s;flex:1 1 140px;min-width:140px;max-width:240px}
+    .fo-v2 .fo-radio-card:hover{border-color:#cad6e6}
+    .fo-v2 .fo-radio-card.is-selected{border-color:var(--c-accent);background:linear-gradient(135deg,#FFFBF5,#FFF7EF);box-shadow:0 0 0 3px rgba(245,130,32,.18)}
+    .fo-v2 .fo-radio-card--lg{display:flex;align-items:center;gap:14px}
+    .fo-v2 .fo-radio-card__ico{width:40px;height:40px;border-radius:12px;background:#EFF4FB;display:inline-flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto}
+    .fo-v2 .fo-radio-card__title{font-size:13.5px;font-weight:800;color:var(--c-ink)}
+    .fo-v2 .fo-radio-card__price{font-size:12px;color:var(--c-accent);font-weight:700;margin-top:3px}
+    .fo-v2 .fo-radio-card__sub{font-size:11.5px;color:var(--c-mute);margin-top:2px}
+    .fo-v2 .fo-radio-card--multi::before{content:"";position:absolute;top:8px;right:8px;width:14px;height:14px;border:2px solid var(--c-line);border-radius:4px;background:#fff}
+    .fo-v2 .fo-radio-card--multi.is-selected::before{background:var(--c-accent);border-color:var(--c-accent);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3'><path d='M5 12l5 5L20 7'/></svg>");background-size:80% 80%;background-position:center;background-repeat:no-repeat}
+
+    /* Line bottom row */
+    .fo-v2 .fo-line__bottom{display:flex;align-items:center;gap:14px;padding-top:14px;border-top:1px dashed var(--c-line);flex-wrap:wrap}
+    .fo-v2 .fo-stepper{display:inline-flex;align-items:center;background:#F8FAFC;border:1px solid var(--c-line);border-radius:10px;overflow:hidden}
+    .fo-v2 .fo-stepper button{width:34px;height:36px;border:0;background:transparent;color:var(--c-ink);font-size:18px;cursor:pointer}
+    .fo-v2 .fo-stepper input{width:50px;height:36px;border:0;background:transparent;text-align:center;font-size:14px;font-weight:700;color:var(--c-ink);outline:none;border-left:1px solid var(--c-line);border-right:1px solid var(--c-line)}
+    .fo-v2 .fo-line__total{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;font-size:13px;color:var(--c-mute)}
+    .fo-v2 .fo-line__total strong{font-size:18px;color:var(--c-ink);font-weight:800;margin-top:2px}
+
+    /* Wallet card */
+    .fo-v2 .fo-card--wallet{background:linear-gradient(135deg,#F8FAFC,#fff)}
+    .fo-v2 .fo-wal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .fo-v2 .fo-wal-grid>div{padding:14px;background:#fff;border:1px solid var(--c-line);border-radius:12px;display:flex;flex-direction:column}
+    .fo-v2 .fo-wal-grid>div span{font-size:10.5px;font-weight:800;color:var(--c-mute);text-transform:uppercase;letter-spacing:.4px}
+    .fo-v2 .fo-wal-grid>div strong{font-size:18px;font-weight:800;color:var(--c-ink);margin-top:4px}
+    .fo-v2 .fo-wal-grid>div.is-low{background:#FEF2F2;border-color:#FECACA}
+    .fo-v2 .fo-wal-grid>div.is-low strong{color:#B91C1C}
+
+    /* Payment rows */
+    .fo-v2 .fo-pay{display:flex;flex-direction:column;gap:10px}
+    .fo-v2 .fo-pay__row{display:grid;grid-template-columns:1fr 180px auto;gap:10px;align-items:center}
+    .fo-v2 .fo-pay__validate{display:flex;justify-content:space-between;margin-top:12px;padding:10px 14px;background:#F8FAFC;border:1px solid var(--c-line);border-radius:10px;font-size:13px;color:var(--c-mute)}
+    .fo-v2 .fo-pay__validate strong{color:var(--c-ink)}
+    .fo-v2 .fo-pay__validate .mismatch{color:#B91C1C}
+    .fo-v2 .fo-pay__validate .mismatch strong{color:#B91C1C}
+
+    /* Review */
+    .fo-v2 .fo-review__block{padding:14px 0;border-bottom:1px dashed var(--c-line)}
+    .fo-v2 .fo-review__block:last-child{border-bottom:0}
+    .fo-v2 .fo-review__block h3{margin:0 0 6px;font-size:11.5px;font-weight:800;color:var(--c-mute);text-transform:uppercase;letter-spacing:.5px}
+    .fo-v2 .fo-review__block p{margin:0;font-size:14px;color:var(--c-ink);line-height:1.55}
+    .fo-v2 .fo-review__items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+    .fo-v2 .fo-review__items li{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:10px;background:#F8FAFC;border:1px solid var(--c-line);border-radius:10px}
+
+    /* Alert */
+    .fo-v2 .fo-alert{padding:12px 16px;border-radius:12px;margin-bottom:14px;font-size:13.5px;font-weight:600}
+    .fo-v2 .fo-alert--err{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+
+    /* Summary rail */
+    .fo-v2 .fo-summary{position:sticky;top:18px}
+    .fo-v2 .fo-summary__card{background:#fff;border:1px solid var(--c-line);border-radius:var(--c-radius);overflow:hidden;box-shadow:0 14px 32px -22px rgba(15,27,51,.25)}
+    .fo-v2 .fo-summary__head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;background:linear-gradient(135deg,#0F1B33,#1E3A6B);color:#fff}
+    .fo-v2 .fo-summary__head h3{margin:0;font-size:14.5px;font-weight:800}
+    .fo-v2 .fo-summary__head .fo-chip--blue{background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.2)}
+    .fo-v2 .fo-summary__body{padding:14px 18px}
+    .fo-v2 .fo-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13.5px;color:var(--c-mute);font-weight:500}
+    .fo-v2 .fo-row strong{color:var(--c-ink);font-weight:700}
+    .fo-v2 .fo-row--save,.fo-v2 .fo-row--save strong{color:#16A34A}
+    .fo-v2 .fo-row--gst{border-top:1px dashed var(--c-line);margin-top:4px;padding-top:10px}
+    .fo-v2 .fo-row--total{margin-top:10px;padding:12px 14px;background:linear-gradient(135deg,#FFF7EF,#FFEEDD);border-radius:12px;border:1px solid #F8D7B8}
+    .fo-v2 .fo-row--total span{font-size:13.5px;font-weight:700;color:var(--c-ink)}
+    .fo-v2 .fo-row--total strong{color:var(--c-accent);font-weight:800;font-size:20px;letter-spacing:-.3px}
+    .fo-v2 .fo-summary__meta{display:flex;flex-direction:column;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--c-line)}
+    .fo-v2 .fo-summary__meta>div{display:flex;justify-content:space-between;font-size:12px;color:var(--c-mute);font-weight:500}
+    .fo-v2 .fo-summary__meta strong{color:var(--c-ink);font-weight:700;font-size:12.5px}
+
+    /* Product picker modal */
+    .fo-modal-bg{position:fixed;inset:0;background:rgba(15,27,51,.5);backdrop-filter:blur(3px);z-index:9998}
+    .fo-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:640px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;background:#fff;border-radius:18px;box-shadow:0 40px 80px -20px rgba(0,0,0,.4);z-index:9999}
+    .fo-modal__head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;background:linear-gradient(135deg,#0F1B33,#1E3A6B);color:#fff;border-radius:18px 18px 0 0}
+    .fo-modal__head h3{margin:0;font-size:16px;font-weight:800}
+    .fo-modal__close{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;cursor:pointer;font-size:18px}
+    .fo-modal__body{padding:18px 22px;overflow:auto;flex:1}
+    .fo-muted{color:#64748B;font-size:13px;text-align:center;padding:20px 0}
+    .fo-prod-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow:auto}
+    .fo-prod{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px;border:1px solid #E5ECF4;border-radius:12px;cursor:pointer;transition:border-color .2s,background .2s}
+    .fo-prod:hover{border-color:#F58220;background:#FFF7EF}
+    .fo-prod__media{width:56px;height:56px;border-radius:10px;background:#F1F5F9;border:1px solid #E5ECF4;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:18px;font-weight:800;color:#64748B}
+    .fo-prod__media img{width:100%;height:100%;object-fit:cover}
+    .fo-prod__name{font-size:14px;font-weight:700;color:#0F1B33}
+    .fo-prod__meta{display:flex;gap:12px;margin-top:3px;font-size:11.5px;color:#64748B;flex-wrap:wrap}
+    .fo-prod__price{font-size:15px;font-weight:800;color:#0F1B33}
+
+    /* Responsive */
+    @@media(max-width:980px){
+        .fo-v2 .fo-grid{grid-template-columns:1fr}
+        .fo-v2 .fo-summary{position:static}
+        .fo-v2 .fo-pick__list{grid-template-columns:1fr 1fr}
+        .fo-v2 .fo-prof__stats{grid-template-columns:1fr 1fr}
+        .fo-v2 .fo-prof__stats>div{border-bottom:1px solid var(--c-line)}
+        .fo-v2 .fo-wal-grid,.fo-v2 .fo-radio-cards--ref,.fo-v2 .fo-radio-cards--pay{grid-template-columns:1fr 1fr}
+    }
+    @@media(max-width:640px){
+        .fo-v2 .fo-pick__list{grid-template-columns:1fr}
+        .fo-v2 .fo-form-grid{grid-template-columns:1fr}
+        .fo-v2 .fo-pay__row{grid-template-columns:1fr 120px auto}
+        .fo-v2 .fo-step__lbl{display:none}
+        .fo-v2 .fo-step--active .fo-step__lbl{display:inline}
+    }
+
+    /* Add-customer modal */
+    .fo-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+    .fo-modal{background:#fff;border-radius:14px;width:100%;max-width:560px;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+    .fo-modal__head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--gray-100)}
+    .fo-modal__head h3{margin:0;font-size:16px}
+    .fo-modal__x{border:0;background:none;font-size:16px;cursor:pointer;color:var(--gray-500)}
+    .fo-modal__body{padding:18px 20px}
+    .fo-modal__foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--gray-100)}
+    .fo-alert--err{background:#FEF2F2;color:#991B1B;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+</style>
+
+@* ── Add New Customer modal (inline create with duplicate validation) ── *@
+@if (showAddCustomer)
+{
+    <div class="fo-modal-backdrop" @onclick="CloseAddCustomer">
+        <div class="fo-modal" @onclick:stopPropagation="true">
+            <div class="fo-modal__head">
+                <h3>Add New Customer</h3>
+                <button class="fo-modal__x" @onclick="CloseAddCustomer">✕</button>
+            </div>
+            <div class="fo-modal__body">
+                @if (addCustomerError != null) { <div class="fo-alert fo-alert--err">@addCustomerError</div> }
+                <div class="fo-form-grid">
+                    <div class="fo-field fo-field--full">
+                        <label>Full name <span class="req">*</span></label>
+                        <input class="fo-input" @bind="newCustomer.FullName" @ref="firstFieldRef" placeholder="Customer name" />
+                    </div>
+                    <div class="fo-field">
+                        <label>Mobile <span class="req">*</span></label>
+                        <input class="fo-input" @bind="newCustomer.Phone" placeholder="10-digit mobile" maxlength="10" />
+                    </div>
+                    <div class="fo-field">
+                        <label>Email</label>
+                        <input class="fo-input" @bind="newCustomer.Email" placeholder="name@example.com" />
+                    </div>
+                    <div class="fo-field fo-field--full"><label>Address</label><input class="fo-input" @bind="newCustomer.Address" placeholder="Flat / street / area" /></div>
+                    <div class="fo-field"><label>City</label><input class="fo-input" @bind="newCustomer.City" /></div>
+                    <div class="fo-field"><label>State</label><select class="fo-input" @bind="newCustomer.State">@foreach (var s in States) { <option value="@s">@s</option> }</select></div>
+                    <div class="fo-field"><label>Pincode</label><input class="fo-input" @bind="newCustomer.Pincode" maxlength="6" /></div>
+                    <div class="fo-field"><label>GST (optional)</label><input class="fo-input" @bind="newCustomer.GstNumber" /></div>
+                </div>
+            </div>
+            <div class="fo-modal__foot">
+                <button class="fo-btn fo-btn--ghost" @onclick="CloseAddCustomer" disabled="@addingCustomer">Cancel</button>
+                <button class="fo-btn fo-btn--primary" @onclick="SaveNewCustomer" disabled="@addingCustomer">@(addingCustomer ? "Creating…" : "Create & Select")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private CreateOrderRequestV2 req = new() { Payments = new() { new() { Mode = PaymentMode.BankTransfer, Amount = 0 } } };
+    private int step = 1;
+    private bool saving;
+    private string? error;
+    private bool sameAsBilling = true;
+    private FranchiseTxnMode txnMode = FranchiseTxnMode.Wallet;
+
+    // Franchise picker
+    private List<FranchiseCard>? allFranchises;
+    private FranchiseCard? selectedFranchise;
+    private string franchiseQuery = "";
+
+    // Customer search
+    private string customerQuery = "";
+    private List<CustomerSuggestion>? customerSuggestions;
+    private bool customerSearching;
+    private CancellationTokenSource? customerCts;
+    private CustomerOrderProfile? selectedProfile;
+
+    // Product picker
+    private bool showPicker;
+    private string productQuery = "";
+    private List<ProductPickItem>? productResults;
+    private bool productSearching;
+    private CancellationTokenSource? productCts;
+
+    private readonly Dictionary<Guid, ProductPickDetail> lineDetails = new();
+    private List<ReferralSourceOption>? referralOptions;
+
+    private static readonly string[] States =
+    {
+        "Maharashtra","Andhra Pradesh","Assam","Bihar","Chhattisgarh","Delhi","Goa","Gujarat",
+        "Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Manipur",
+        "Meghalaya","Odisha","Punjab","Rajasthan","Tamil Nadu","Telangana","Uttar Pradesh",
+        "Uttarakhand","West Bengal","Other"
+    };
+
+    private (int idx, string lbl)[] StepLabels =>
+        new[] { (1, "Customer"), (2, "Address"), (3, "Products"), (4, "Payment"), (5, "Review & Create") };
+
+    private (FranchiseTxnMode mode, string desc, string ico)[] TxnModeOptions => new[]
+    {
+        (FranchiseTxnMode.Wallet,     "Pay from franchisee wallet — instant settlement.", "👛"),
+        (FranchiseTxnMode.NetPayment, "Customer pays directly via cash / UPI / online.",   "💳"),
+        (FranchiseTxnMode.Postpay,    "Bill the franchisee later — no wallet movement.",   "🗓"),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { allFranchises = (await Franchises.FranchisesAsync()).Where(f => f.Wallet >= -100_000_000).ToList(); }
+        catch { allFranchises = new(); }
+        try { referralOptions = await Referrals.ListActiveAsync(); }
+        catch { referralOptions = new(); }
+        // Allowed payment modes — Razorpay/Easebuzz only when their gateway is configured + enabled
+        // in /admin/payment-settings. BankTransfer is always available.
+        try { allowedPaymentModes = await PaymentModes.GetAvailableAsync(); }
+        catch { allowedPaymentModes = new() { PaymentMode.BankTransfer }; }
+    }
+
+    private List<PaymentMode> allowedPaymentModes = new();
+
+    private IEnumerable<FranchiseCard> FilteredFranchises
+    {
+        get
+        {
+            if (allFranchises == null) return Enumerable.Empty<FranchiseCard>();
+            if (string.IsNullOrWhiteSpace(franchiseQuery)) return allFranchises;
+            var q = franchiseQuery.Trim();
+            return allFranchises.Where(f =>
+                (f.Name?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (f.Code?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (f.City?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+    }
+
+    private bool LowWallet => selectedFranchise != null && selectedFranchise.Wallet + selectedFranchise.CreditLimit < 1000;
+
+    private void SelectFranchise(FranchiseCard f) { selectedFranchise = f; }
+    private void ChangeFranchise() { selectedFranchise = null; step = 1; }
+
+    // ── Customer ────────────────────────────────────────────────
+    private async Task OnCustomerSearch()
+    {
+        customerCts?.Cancel(); customerCts = new();
+        var ct = customerCts.Token;
+        var q = (customerQuery ?? "").Trim();
+        if (q.Length < 2) { customerSuggestions = null; return; }
+        customerSearching = true;
+        try
+        {
+            await Task.Delay(300, ct);
+            if (ct.IsCancellationRequested) return;
+            customerSuggestions = await Users.SearchCustomersAsync(q, 12);
+        }
+        catch (OperationCanceledException) { }
+        finally { if (!ct.IsCancellationRequested) customerSearching = false; }
+    }
+
+    private async Task SelectCustomer(CustomerSuggestion c)
+    {
+        customerSuggestions = null;
+        customerQuery = "";
+        try { selectedProfile = await Users.GetCustomerOrderProfileAsync(c.Id); } catch { }
+        if (selectedProfile == null) return;
+        req.UserId = selectedProfile.Id;
+        req.StudentName = selectedProfile.FullName;
+        req.StudentEmail = selectedProfile.Email;
+        req.StudentPhone = selectedProfile.Phone ?? "";
+        if (!string.IsNullOrEmpty(selectedProfile.Address)) req.BillingAddress = selectedProfile.Address;
+        if (!string.IsNullOrEmpty(selectedProfile.City))    req.BillingCity = selectedProfile.City;
+        if (!string.IsNullOrEmpty(selectedProfile.State))   req.BillingState = selectedProfile.State!;
+        if (!string.IsNullOrEmpty(selectedProfile.Pincode)) req.BillingPincode = selectedProfile.Pincode;
+        SyncPaymentAmount();
+    }
+
+    // ── Inline create-new-customer (with duplicate validation) ──
+    private bool showAddCustomer;
+    private bool addingCustomer;
+    private string? addCustomerError;
+    private CreateOrderCustomerRequest newCustomer = new();
+    private ElementReference firstFieldRef;
+
+    private async Task OpenAddCustomer()
+    {
+        addCustomerError = null;
+        var typedDigits = new string((customerQuery ?? "").Where(char.IsDigit).ToArray());
+        newCustomer = new CreateOrderCustomerRequest
+        {
+            FullName = "",
+            // Pre-fill mobile with whatever digits were typed in the search box.
+            Phone = typedDigits.Length is > 0 and <= 10 ? typedDigits : "",
+            State = "Maharashtra",
+        };
+        showAddCustomer = true;
+        customerSuggestions = null;
+        await Task.Yield();
+        try { await firstFieldRef.FocusAsync(); } catch { }
+    }
+
+    private void CloseAddCustomer()
+    {
+        showAddCustomer = false;
+        addCustomerError = null;
+    }
+
+    private async Task SaveNewCustomer()
+    {
+        addCustomerError = null;
+        if (string.IsNullOrWhiteSpace(newCustomer.FullName) || newCustomer.FullName.Trim().Length < 2)
+        { addCustomerError = "Enter the customer's full name."; return; }
+        var digits = new string((newCustomer.Phone ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length != 10)
+        { addCustomerError = "Enter a valid 10-digit mobile number."; return; }
+        newCustomer.Phone = digits;
+
+        addingCustomer = true;
+        try
+        {
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            Guid actorId = Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var aid) ? aid : Guid.Empty;
+            var actorName = auth.User.Identity?.Name ?? "franchise";
+
+            var (ok, err, newId, dup) = await Users.CreateCustomerForOrderAsync(newCustomer, actorId, actorName);
+            if (!ok)
+            {
+                addCustomerError = err ?? "Could not create customer.";
+                // Duplicate (mobile/email already exists) → auto-select the existing customer.
+                if (dup?.Existing?.Id is { } existingId && existingId != Guid.Empty)
+                {
+                    var existing = await Users.GetCustomerOrderProfileAsync(existingId);
+                    if (existing != null)
+                    {
+                        showAddCustomer = false;
+                        await SelectCustomer(new CustomerSuggestion(
+                            existing.Id, existing.FullName, existing.Initials, existing.AvatarUrl,
+                            existing.Email, existing.Phone, null, null, existing.TotalOrders,
+                            existing.IsActive, existing.JoinedDate));
+                    }
+                }
+                return;
+            }
+
+            showAddCustomer = false;
+            var profile = await Users.GetCustomerOrderProfileAsync(newId);
+            if (profile != null)
+            {
+                await SelectCustomer(new CustomerSuggestion(
+                    profile.Id, profile.FullName, profile.Initials, profile.AvatarUrl,
+                    profile.Email, profile.Phone, null, null, profile.TotalOrders,
+                    profile.IsActive, profile.JoinedDate));
+            }
+        }
+        catch (Exception ex) { addCustomerError = ex.Message; }
+        finally { addingCustomer = false; }
+    }
+
+    private void ClearCustomer()
+    {
+        req.UserId = null; req.StudentName = ""; req.StudentEmail = null; req.StudentPhone = "";
+        selectedProfile = null;
+    }
+
+    private static string FriendlyId(Guid id) => $"RIO-{id.ToString("N")[..6].ToUpperInvariant()}";
+
+    // ── Products ────────────────────────────────────────────────
+    private async Task OpenProductPicker() { showPicker = true; productQuery = ""; await OnProductSearch(); }
+    private void ClosePicker() => showPicker = false;
+
+    private async Task OnProductSearch()
+    {
+        productCts?.Cancel(); productCts = new();
+        var ct = productCts.Token;
+        productSearching = true;
+        try
+        {
+            await Task.Delay(200, ct);
+            if (ct.IsCancellationRequested) return;
+            productResults = await Orders.SearchProductsAsync(productQuery, 20);
+        }
+        catch (OperationCanceledException) { }
+        finally { if (!ct.IsCancellationRequested) productSearching = false; }
+    }
+
+    private async Task SelectProduct(ProductPickItem p)
+    {
+        ClosePicker();
+        if (!lineDetails.ContainsKey(p.Id))
+        {
+            var d = await Orders.GetProductPickDetailAsync(p.Id);
+            if (d != null) lineDetails[p.Id] = d;
+        }
+        var detail = lineDetails.GetValueOrDefault(p.Id);
+        var firstMode = detail?.Modes.FirstOrDefault();
+        var preselected = detail?.Attributes.SelectMany(a => a.Values.Where(v => v.IsPreSelected).Select(v => v.Id)).ToList() ?? new();
+        req.Items.Add(new CreateOrderLineV2
+        {
+            ProductId = p.Id, ProductModeId = firstMode?.Id, Quantity = 1, SelectedAttributeValueIds = preselected,
+        });
+        SyncPaymentAmount();
+        StateHasChanged();
+    }
+
+    private void SetMode(int idx, Guid modeId) { req.Items[idx].ProductModeId = modeId; SyncPaymentAmount(); }
+
+    private void ToggleAttribute(int lineIdx, Guid mappingId, Guid valueId, bool multi)
+    {
+        var line = req.Items[lineIdx];
+        var detail = lineDetails.GetValueOrDefault(line.ProductId);
+        var group = detail?.Attributes.FirstOrDefault(a => a.MappingId == mappingId);
+        if (group == null) return;
+        var siblingIds = group.Values.Select(v => v.Id).ToHashSet();
+        if (multi)
+        {
+            if (line.SelectedAttributeValueIds.Contains(valueId)) line.SelectedAttributeValueIds.Remove(valueId);
+            else line.SelectedAttributeValueIds.Add(valueId);
+        }
+        else
+        {
+            line.SelectedAttributeValueIds = line.SelectedAttributeValueIds.Where(id => !siblingIds.Contains(id)).ToList();
+            line.SelectedAttributeValueIds.Add(valueId);
+        }
+        SyncPaymentAmount();
+    }
+
+    private void SetQty(int idx, int q) { req.Items[idx].Quantity = Math.Max(1, q); SyncPaymentAmount(); }
+    private void DuplicateLine(int idx)
+    {
+        var src = req.Items[idx];
+        req.Items.Insert(idx + 1, new CreateOrderLineV2 { ProductId = src.ProductId, ProductModeId = src.ProductModeId, Quantity = src.Quantity, Discount = src.Discount, SelectedAttributeValueIds = new List<Guid>(src.SelectedAttributeValueIds) });
+        SyncPaymentAmount();
+    }
+    private void RemoveLine(int idx) { req.Items.RemoveAt(idx); SyncPaymentAmount(); }
+
+    // ── Pricing engine ──────────────────────────────────────────
+    private decimal LineBaseUnitPrice(CreateOrderLineV2 line, ProductPickDetail? d)
+    {
+        if (d == null) return 0;
+        // Mode is ADDITIVE — base + selected-mode add-on.
+        var modeAddOn = line.ProductModeId.HasValue
+            ? (d.Modes.FirstOrDefault(m => m.Id == line.ProductModeId.Value)?.Price ?? 0m)
+            : 0m;
+        var basePrice = d.SellingPrice + modeAddOn;
+        decimal adjust = 0;
+        foreach (var attr in d.Attributes)
+            foreach (var v in attr.Values)
+                if (line.SelectedAttributeValueIds.Contains(v.Id))
+                    adjust += v.PriceAdjustmentUsePercentage ? Math.Round(basePrice * v.PriceAdjustment / 100m, 2) : v.PriceAdjustment;
+        return Math.Max(0m, basePrice + adjust);
+    }
+
+    private decimal LineTotal(CreateOrderLineV2 line, ProductPickDetail? d)
+    {
+        var unit = LineBaseUnitPrice(line, d);
+        var lineGross = unit * line.Quantity;
+        return lineGross - Math.Clamp(line.Discount, 0m, lineGross);
+    }
+
+    private decimal Subtotal => req.Items.Sum(l => LineBaseUnitPrice(l, lineDetails.GetValueOrDefault(l.ProductId)) * l.Quantity);
+    private decimal TotalDiscount => req.Items.Sum(l => Math.Clamp(l.Discount, 0m, LineBaseUnitPrice(l, lineDetails.GetValueOrDefault(l.ProductId)) * l.Quantity));
+    private decimal GrandTotal => req.Items.Sum(l => LineTotal(l, lineDetails.GetValueOrDefault(l.ProductId)));
+    private decimal GstAmount => Math.Round(GrandTotal * 18m / 118m, 2);
+    private decimal PaymentSum => req.Payments.Sum(p => p.Amount);
+    private string PaymentMismatchClass => Math.Abs(PaymentSum - GrandTotal) > 1m ? "mismatch" : "";
+
+    // ── Payment splits ──────────────────────────────────────────
+    private void SelectTxnMode(FranchiseTxnMode m)
+    {
+        txnMode = m;
+        if (m == FranchiseTxnMode.Wallet)
+        {
+            req.Payments = new() { new() { Mode = PaymentMode.BankTransfer, Amount = GrandTotal } };
+        }
+        else if (m == FranchiseTxnMode.Postpay)
+        {
+            req.Payments = new() { new() { Mode = PaymentMode.BankTransfer, Amount = GrandTotal } };
+        }
+        else
+        {
+            // NetPayment: keep at least one row
+            if (req.Payments.Count == 0) req.Payments.Add(new() { Mode = PaymentMode.BankTransfer, Amount = GrandTotal });
+        }
+    }
+
+    private void AddPaymentRow() => req.Payments.Add(new() { Mode = PaymentMode.BankTransfer, Amount = Math.Max(0, GrandTotal - PaymentSum) });
+    private void RemovePaymentRow(int idx) { if (req.Payments.Count > 1) req.Payments.RemoveAt(idx); }
+    private void SetPaymentMode(int idx, ChangeEventArgs e) { if (Enum.TryParse<PaymentMode>(e.Value?.ToString(), out var m)) req.Payments[idx].Mode = m; }
+    private void SetPaymentAmount(int idx, ChangeEventArgs e) { if (decimal.TryParse(e.Value?.ToString(), out var a)) req.Payments[idx].Amount = a; }
+    private void SyncPaymentAmount() { if (req.Payments.Count == 1) req.Payments[0].Amount = GrandTotal; }
+
+    // ── Navigation ──────────────────────────────────────────────
+    private bool CanGoForward() => step switch
+    {
+        1 => selectedFranchise != null && selectedProfile != null,
+        2 => req.ReferralSourceId.HasValue && !string.IsNullOrWhiteSpace(req.BillingState),
+        3 => req.Items.Count > 0 && req.Items.All(l => { var d = lineDetails.GetValueOrDefault(l.ProductId); return d != null && d.Attributes.Where(a => a.IsRequired).All(a => a.Values.Any(v => l.SelectedAttributeValueIds.Contains(v.Id))); }),
+        4 => selectedFranchise != null && txnMode switch
+        {
+            FranchiseTxnMode.Wallet => GrandTotal <= selectedFranchise.Wallet + selectedFranchise.CreditLimit,
+            FranchiseTxnMode.NetPayment => req.Payments.Count > 0 && Math.Abs(PaymentSum - GrandTotal) <= 1m,
+            FranchiseTxnMode.Postpay => true,
+            _ => false
+        },
+        5 => true,
+        _ => false,
+    };
+
+    private void GoBack() { if (step > 1) step--; error = null; }
+
+    private async Task GoForward()
+    {
+        error = null;
+        if (step < 5)
+        {
+            if (!CanGoForward())
+            {
+                error = step switch
+                {
+                    1 => "Pick a franchisee and a customer to continue.",
+                    2 => "Choose a referral source and fill the billing state.",
+                    3 => "Add at least one product and select all required attributes.",
+                    4 => "Payment doesn't satisfy this step — check wallet balance or split totals.",
+                    _ => "Complete this step before continuing.",
+                };
+                return;
+            }
+            step++;
+            SyncPaymentAmount();
+            return;
+        }
+
+        // step == 5 → submit
+        saving = true;
+        try
+        {
+            // Mirror shipping fields when "Same as billing"
+            if (sameAsBilling)
+            {
+                req.ShippingAddress = req.BillingAddress;
+                req.ShippingCity = req.BillingCity;
+                req.ShippingState = req.BillingState;
+                req.ShippingPincode = req.BillingPincode;
+            }
+            req.FranchiseId = selectedFranchise!.Id;
+            req.FranchiseTxnMode = txnMode;
+            req.Source = OrderSource.Franchisee;
+
+            // For Wallet / Postpay we still send a single payment row so the service can store it.
+            if (txnMode != FranchiseTxnMode.NetPayment)
+                req.Payments = new() { new() { Mode = PaymentMode.BankTransfer, Amount = GrandTotal } };
+
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            Guid? actorId = Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var aid) ? aid : null;
+            var actorName = auth.User.Identity?.Name ?? "admin";
+
+            // Online gateway (net-payment) → create Pending; the gateway callback marks it Paid.
+            if (txnMode == FranchiseTxnMode.NetPayment
+                && req.Payments.Any(p => p.Mode is PaymentMode.Razorpay or PaymentMode.Easebuzz))
+                req.Status = OrderStatus.Pending;
+
+            var orderId = await Orders.CreateOrderV2Async(req, actorId, actorName);
+
+            // Net-payment franchise orders with an online gateway mode → open the gateway-launch
+            // page in a new tab to collect payment (order Pending; callback marks it Paid).
+            if (txnMode == FranchiseTxnMode.NetPayment)
+            {
+                var onlineMode = req.Payments.Select(p => p.Mode)
+                    .FirstOrDefault(m => m is PaymentMode.Razorpay or PaymentMode.Easebuzz);
+                if (req.Payments.Any(p => p.Mode is PaymentMode.Razorpay or PaymentMode.Easebuzz))
+                {
+                    var detail = await Orders.GetDetailAsync(orderId);
+                    var orderNo = detail?.OrderNumber;
+                    if (!string.IsNullOrWhiteSpace(orderNo))
+                    {
+                        var gw = onlineMode == PaymentMode.Easebuzz ? "easebuzz" : "razorpay";
+                        var url = $"/admin/orders/pay?order={Uri.EscapeDataString(orderNo)}&gateway={gw}"
+                                + $"&name={Uri.EscapeDataString(req.StudentName ?? "")}"
+                                + $"&email={Uri.EscapeDataString(req.StudentEmail ?? "")}"
+                                + $"&phone={Uri.EscapeDataString(req.StudentPhone ?? "")}";
+                        try { await JS.InvokeVoidAsync("window.open", url, "_blank"); } catch { }
+                    }
+                }
+            }
+            Nav.NavigateTo($"/admin/orders/{orderId}");
+        }
+        catch (Exception ex) { error = ex.Message; saving = false; }
+    }
+}

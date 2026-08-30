@@ -1,0 +1,148 @@
+@page "/admin/users"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IAdminUserService Svc
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>Users & Roles — RioCommerce Admin</PageTitle>
+
+<div class="page__header"><h1>Users &amp; Access Control</h1></div>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-card__label">Total Users</div><div class="kpi-card__value">@(stats?.Total ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Active</div><div class="kpi-card__value" style="color:var(--green)">@(stats?.Active ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Staff</div><div class="kpi-card__value">@(stats?.Staff ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Students</div><div class="kpi-card__value">@(stats?.Students ?? 0)</div></div>
+</div>
+
+<div class="filter-bar2" style="margin-top:18px">
+    <div class="filter-search">
+        <input type="text" placeholder="Search name, email or phone…" @bind="search" @bind:event="oninput" @onkeydown="OnKey" />
+    </div>
+    <button class="btn btn-primary btn-sm" @onclick="Reload">Search</button>
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:12px 0">@msg</div> }
+
+@if (rolePanel != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">Roles — @rolePanel.FullName</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+            @foreach (var r in roles)
+            {
+                var has = rolePanel.Roles.Contains(r.Name);
+                <button class="btn btn-sm @(has ? "btn-success" : "btn-outline")" @onclick="() => ToggleRole(rolePanel.Id, r.Name, has)">
+                    @(has ? "✓ " : "+ ")@r.DisplayName
+                </button>
+            }
+        </div>
+        <div class="form-actions" style="margin-top:14px"><button class="btn btn-ghost" @onclick="() => rolePanel = null">Close</button></div>
+    </div>
+}
+
+@if (exportData != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">GDPR Export — @exportData.FullName</div>
+        <pre class="export-json">@exportJson</pre>
+        <div class="form-actions"><button class="btn btn-ghost" @onclick="() => exportData = null">Close</button></div>
+    </div>
+}
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Contact</th><th>Roles</th><th>Status</th><th>Last Login</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (users == null) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (users.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No users found.</td></tr> }
+            else
+            {
+                @foreach (var u in users)
+                {
+                    <tr>
+                        <td><strong>@u.FullName</strong></td>
+                        <td style="font-size:12px">@u.Email<div style="color:var(--gray-400)">@u.Phone</div></td>
+                        <td>@if (u.Roles.Count == 0) { <span style="color:var(--gray-400)">—</span> } else { @foreach (var r in u.Roles) { <span class="role-chip">@r</span> } }</td>
+                        <td><span class="status @(u.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(u.IsActive ? "Active" : "Inactive")</span></td>
+                        <td style="font-size:12px">@(u.LastLoginAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
+                        <td>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenRoles(u)">Roles</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => ToggleActive(u.Id)">@(u.IsActive ? "Deactivate" : "Activate")</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Export(u.Id)">Export</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Anonymize(u.Id, u.FullName)">Anonymise</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<AdminUserItem>? users;
+    private List<RoleOption> roles = new();
+    private AdminUserStats? stats;
+    private AdminUserItem? rolePanel;
+    private UserDataExport? exportData;
+    private string? exportJson;
+    private string search = "";
+    private bool msgOk;
+    private string? msg;
+    private Guid actorId;
+    private string actorName = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out actorId);
+        actorName = state.User.Identity?.Name ?? "admin";
+        roles = await Svc.RolesAsync();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        users = await Svc.ListAsync(string.IsNullOrWhiteSpace(search) ? null : search);
+        stats = await Svc.StatsAsync();
+        if (rolePanel != null) rolePanel = users.FirstOrDefault(u => u.Id == rolePanel.Id);
+    }
+
+    private async Task OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Reload(); }
+
+    private void OpenRoles(AdminUserItem u) { msg = null; exportData = null; rolePanel = u; }
+
+    private async Task ToggleRole(Guid userId, string role, bool has)
+    {
+        var (ok, error) = has
+            ? await Svc.RevokeRoleAsync(userId, role, actorId, actorName)
+            : await Svc.GrantRoleAsync(userId, role, actorId, actorName);
+        await Reload();
+        Flash(ok, ok ? $"Role {(has ? "revoked" : "granted")}." : error!);
+    }
+
+    private async Task ToggleActive(Guid id)
+    {
+        var (ok, error) = await Svc.ToggleActiveAsync(id, actorId, actorName);
+        await Reload();
+        Flash(ok, ok ? "User updated." : error!);
+    }
+
+    private async Task Export(Guid id)
+    {
+        rolePanel = null;
+        exportData = await Svc.ExportUserDataAsync(id);
+        exportJson = exportData == null ? "" : System.Text.Json.JsonSerializer.Serialize(exportData,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private async Task Anonymize(Guid id, string name)
+    {
+        var (ok, error) = await Svc.AnonymizeUserAsync(id, actorId, actorName);
+        await Reload();
+        Flash(ok, ok ? $"{name} anonymised (GDPR erasure)." : error!);
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

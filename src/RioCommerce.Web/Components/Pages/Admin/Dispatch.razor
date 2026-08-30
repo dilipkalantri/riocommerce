@@ -1,0 +1,343 @@
+@page "/admin/dispatch"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IOperationsService Svc
+@inject IJSRuntime JS
+<PageTitle>Dispatch — RioCommerce Admin</PageTitle>
+
+<div class="page__header"><h1>Dispatch &amp; Shipments</h1></div>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-card__label">Pending Dispatch</div><div class="kpi-card__value" style="color:var(--warning)">@(stats?.PendingDispatch ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Dispatched</div><div class="kpi-card__value" style="color:var(--blue,#2563EB)">@(stats?.Dispatched ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Delivered</div><div class="kpi-card__value" style="color:var(--green)">@(stats?.Delivered ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Open Returns</div><div class="kpi-card__value">@(stats?.OpenReturns ?? 0)</div></div>
+</div>
+
+<div class="tab-group" style="margin-top:20px">
+    @foreach (var s in new[] { "", "Pending", "Dispatched", "Delivered" })
+    {
+        <button class="tab-group__btn @(filter == s ? "active" : "")" @onclick="() => SetFilter(s)">@(s == "" ? "All" : s)</button>
+    }
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+@* The shipment editor is NOT rendered here. It is rendered as a row directly beneath the order it
+   belongs to (see ShipmentEditor below), so acting on a consignment never moves the admin away from
+   the row they clicked. *@
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Order #</th><th>Student</th><th>City</th><th>Course</th><th>Tracking</th><th>Shipment</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (rows == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (rows.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Nothing to dispatch here.</td></tr> }
+            else
+            {
+                @foreach (var r in rows)
+                {
+                    @* Arriving from an order's detail page: mark the row that was asked for so the
+                       admin can see which consignment the open editor belongs to. *@
+                    <tr style="@(FocusOrderId == r.OrderId ? "background:var(--gray-50,#F9FAFB);box-shadow:inset 3px 0 0 var(--navy)" : "")">
+                        <td><strong>#@r.OrderNumber</strong></td>
+                        <td>@r.StudentName<div style="font-size:12px;color:var(--gray-400)">@r.StudentPhone</div></td>
+                        <td>@(r.City ?? "—")</td>
+                        <td style="max-width:220px">@r.ProductSummary</td>
+                        @* Courier always shown when set; the number and Track link only for a courier
+                           that actually tracks, so PCMC reads "—" rather than looking incomplete. *@
+                        <td>
+                            @if (string.IsNullOrEmpty(r.Courier))
+                            {
+                                <span style="color:var(--gray-400)">—</span>
+                            }
+                            else
+                            {
+                                var url = Couriers.TrackingUrl(r.Courier);
+                                <div><strong>@r.Courier</strong></div>
+                                @if (Couriers.RequiresTracking(r.Courier))
+                                {
+                                    <div style="font-size:12px">@(string.IsNullOrEmpty(r.TrackingNumber) ? "—" : r.TrackingNumber)</div>
+                                    @if (url != null && !string.IsNullOrEmpty(r.TrackingNumber))
+                                    {
+                                        <a href="@url" target="_blank" rel="noopener"
+                                           style="font-size:12px;color:var(--navy);font-weight:600">Track Shipment →</a>
+                                    }
+                                }
+                                else
+                                {
+                                    <div style="font-size:12px;color:var(--gray-400)">—</div>
+                                }
+                            }
+                        </td>
+                        <td><span class="status @ShipClass(r.ShipmentStatus)"><span class="dot"></span>@r.ShipmentStatus</span></td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(r)">Tracking</button>
+                                @if (r.ShipmentStatus != "Dispatched" && r.ShipmentStatus != "Delivered")
+                                { <button class="btn btn-primary btn-sm" @onclick="() => MarkDispatch(r)">Dispatch</button> }
+                                @if (r.ShipmentStatus != "Delivered")
+                                { <button class="btn btn-success btn-sm" @onclick="() => Deliver(r)">Delivered</button> }
+                            </div>
+                        </td>
+                    </tr>
+
+                    @* ── The editor for THIS order, in THIS order's place in the table ──
+                       Rendering it here rather than above the table is the whole point: nothing
+                       above the clicked row changes, so the browser has no reason to move and the
+                       admin stays exactly where they were. *@
+                    @if (editingOrderId == r.OrderId && editing != null)
+                    {
+                        <tr>
+                            <td colspan="7" style="padding:0;background:var(--gray-50,#F9FAFB)">
+                                <div class="form-card" id="shipment-editor" style="margin:0;border-radius:0">
+                                    <div class="form-card__title">Shipment — order #@editingOrderNo</div>
+
+                                    @* The service's own validation message, shown next to the fields
+                                       that caused it instead of in a banner off the top of the page. *@
+                                    @if (editError != null)
+                                    {
+                                        <div class="inline-alert inline-alert--err" style="margin-bottom:12px">@editError</div>
+                                    }
+
+                                    <div class="form-grid">
+                                        @* Courier is a fixed list, not free text — the tracking rules and the tracking URL are
+                                           both keyed off this value, and a typo would silently lose both. *@
+                                        <div class="form-group">
+                                            <label class="form-label">Courier <span class="required">*</span></label>
+                                            <select class="form-input" value="@editing.Courier" @onchange="OnCourierChanged">
+                                                <option value="">Select courier…</option>
+                                                @foreach (var c in Couriers.All)
+                                                {
+                                                    <option value="@c.Name">@c.Name</option>
+                                                }
+                                            </select>
+                                            @if (SelectedCourier is { RequiresTracking: false })
+                                            {
+                                                <div class="form-hint">Local same-day delivery — no tracking number.</div>
+                                            }
+                                        </div>
+
+                                        @* Hidden outright for a courier that has no tracking, rather than shown disabled: an empty
+                                           greyed box invites someone to hunt for a number that does not exist. *@
+                                        @if (SelectedCourier is null or { RequiresTracking: true })
+                                        {
+                                            <div class="form-group">
+                                                <label class="form-label">Tracking Number @if (SelectedCourier != null) { <span class="required">*</span> }</label>
+                                                <input class="form-input" @bind="editing.TrackingNumber" placeholder="Enter tracking number" />
+                                            </div>
+                                        }
+                                        <div class="form-group form-group--full"><label class="form-label">Notes</label><input class="form-input" @bind="editing.Notes" /></div>
+                                    </div>
+                                    <div class="form-actions">
+                                        <button class="btn btn-primary" disabled="@saving" @onclick="SaveShipment">
+                                            @(saving ? "Saving…" : dispatchOnSave ? "Save & Dispatch" : "Save")
+                                        </button>
+                                        <button class="btn btn-ghost" @onclick="CloseEditor">Cancel</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    else if (rowMsgOrderId == r.OrderId && rowMsg != null)
+                    {
+                        @* Result of a Dispatch/Delivered press, reported at the row it acted on. *@
+                        <tr>
+                            <td colspan="7" style="padding:8px 12px">
+                                <div class="inline-alert @(rowMsgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:0">@rowMsg</div>
+                            </td>
+                        </tr>
+                    }
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<DispatchRow>? rows;
+    private OperationsStats? stats;
+    /// <summary>The courier currently picked in the editor, or null when none is selected yet.</summary>
+    private CourierOption? SelectedCourier => Couriers.Find(editing?.Courier);
+
+    /// <summary>Switching to a courier that does not track clears any number already typed — leaving
+    /// it would persist a value the shipment cannot use, and the server drops it anyway.</summary>
+    private void OnCourierChanged(ChangeEventArgs e)
+    {
+        if (editing == null) return;
+        editing.Courier = e.Value?.ToString();
+        if (SelectedCourier is { RequiresTracking: false }) editing.TrackingNumber = null;
+    }
+
+    private ShipmentSaveRequest? editing;
+    /// <summary>Which row the editor is currently rendered under. One value, so only one form can
+    /// ever be open — opening another order's editor replaces this and the first one disappears.</summary>
+    private Guid? editingOrderId;
+    private string editingOrderNo = "";
+    /// <summary>Set when the editor was opened by pressing Dispatch rather than Tracking: saving
+    /// then continues on to dispatch the consignment, which is what the admin actually asked for.</summary>
+    private bool dispatchOnSave;
+    /// <summary>Validation message from the service, shown inside the open editor.</summary>
+    private string? editError;
+
+    // Result of a row action (Dispatch / Delivered), reported under the row it acted on rather than
+    // in the page-level banner, which sits off-screen once the admin has scrolled down the board.
+    private Guid? rowMsgOrderId;
+    private string? rowMsg;
+    private bool rowMsgOk;
+
+    private string filter = "";
+    private bool saving, msgOk;
+    private string? msg;
+
+    /// <summary>Optional deep link from an order's detail page: <c>/admin/dispatch?orderId={guid}</c>.
+    /// The board already keys every action on OrderId (OpenEditor, MarkDispatched, MarkDelivered),
+    /// so this reuses that identifier rather than introducing another one. Absent — plain
+    /// <c>/admin/dispatch</c> — nothing below runs and the page behaves exactly as it always has.</summary>
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "orderId")]
+    public Guid? FocusOrderId { get; set; }
+
+    private bool scrollPending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+        FocusRequestedOrder();
+    }
+
+    /// <summary>Opens the shipment editor for the requested order so the admin lands on that exact
+    /// consignment instead of having to find it on an unfiltered board.</summary>
+    private void FocusRequestedOrder()
+    {
+        if (FocusOrderId is not { } id) return;
+
+        var row = rows?.FirstOrDefault(r => r.OrderId == id);
+        if (row == null)
+        {
+            // The board only lists confirmed / processing / activated / delivered orders. Say so,
+            // rather than silently showing an unfocused list and looking like the link is broken.
+            Flash(false, "That order is not on the dispatch board — only confirmed, processing, activated and delivered orders appear here.");
+            return;
+        }
+
+        OpenEditor(row);
+        scrollPending = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!scrollPending) return;
+        scrollPending = false;
+        // block:'nearest' scrolls the minimum needed to bring the editor into view — and does
+        // nothing at all when it is already visible, so arriving at an order near the top of the
+        // board does not shunt the page around.
+        await JS.InvokeVoidAsync("eval",
+            "document.getElementById('shipment-editor')?.scrollIntoView({behavior:'smooth',block:'nearest'})");
+    }
+
+    private async Task Reload()
+    {
+        stats = await Svc.StatsAsync();
+        rows = await Svc.DispatchBoardAsync(string.IsNullOrEmpty(filter) ? null : filter);
+    }
+
+    /// <summary>Switching tabs re-queries the board, so an editor left open could end up under a row
+    /// that is no longer listed. Close it first.</summary>
+    private async Task SetFilter(string s)
+    {
+        CloseEditor();
+        ClearRowMessage();
+        filter = s;
+        await Reload();
+    }
+
+    /// <summary>Opens the editor under <paramref name="r"/>'s row, seeded with whatever that
+    /// shipment already holds. Any editor open on another row is replaced, never stacked.</summary>
+    private void OpenEditor(DispatchRow r, bool thenDispatch = false, string? error = null)
+    {
+        msg = null;
+        ClearRowMessage();
+        editingOrderId = r.OrderId;
+        editingOrderNo = r.OrderNumber;
+        dispatchOnSave = thenDispatch;
+        editError = error;
+        editing = new ShipmentSaveRequest { OrderId = r.OrderId, Courier = r.Courier, TrackingNumber = r.TrackingNumber };
+    }
+
+    /// <summary>Closes the editor. Nothing else moves, so the row stays where it is on screen.</summary>
+    private void CloseEditor()
+    {
+        editing = null;
+        editingOrderId = null;
+        dispatchOnSave = false;
+        editError = null;
+    }
+
+    /// <summary>
+    /// Saves the courier/tracking through the existing service, then — when the editor was opened
+    /// by the Dispatch action — dispatches the consignment through the existing service too. Both
+    /// validations stay entirely server-side; this only decides which of the two calls to make.
+    /// </summary>
+    private async Task SaveShipment()
+    {
+        if (editing == null) return;
+        var orderId = editing.OrderId;
+
+        saving = true;
+        var (ok, error) = await Svc.SaveShipmentAsync(editing);
+
+        // Only once the courier and number are stored can the dispatch validation pass — so this
+        // runs second, and a failure here leaves the editor open with the reason why.
+        if (ok && dispatchOnSave)
+        {
+            (ok, error) = await Svc.MarkDispatchedAsync(orderId);
+        }
+        saving = false;
+
+        if (!ok)
+        {
+            // Keep the editor open, under the same row, showing the service's own message.
+            editError = error;
+            return;
+        }
+
+        var dispatched = dispatchOnSave;
+        CloseEditor();
+        await Reload();
+        RowFlash(orderId, true, dispatched ? "Dispatched." : "Shipment saved.");
+    }
+
+    /// <summary>
+    /// Dispatches straight away when the consignment is already complete. When the service refuses
+    /// — no courier chosen, or a tracked courier with no number — the editor opens under that same
+    /// row carrying the reason, so the admin fills in what is missing without leaving the row.
+    /// No validation is duplicated here: the service decides, this only reacts.
+    /// </summary>
+    private async Task MarkDispatch(DispatchRow r)
+    {
+        var (ok, e) = await Svc.MarkDispatchedAsync(r.OrderId);
+        if (!ok) { OpenEditor(r, thenDispatch: true, error: e); return; }
+        await Reload();
+        RowFlash(r.OrderId, true, "Marked dispatched.");
+    }
+
+    private async Task Deliver(DispatchRow r)
+    {
+        var (ok, e) = await Svc.MarkDeliveredAsync(r.OrderId);
+        await Reload();
+        RowFlash(r.OrderId, ok, ok ? "Marked delivered." : e!);
+    }
+
+    private void RowFlash(Guid orderId, bool ok, string m) { rowMsgOrderId = orderId; rowMsgOk = ok; rowMsg = m; }
+    private void ClearRowMessage() { rowMsgOrderId = null; rowMsg = null; }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+
+    private static string ShipClass(string s) => s switch
+    {
+        "Delivered" => "status--confirmed",
+        "Dispatched" => "status--processing",
+        _ => "status--pending"
+    };
+}

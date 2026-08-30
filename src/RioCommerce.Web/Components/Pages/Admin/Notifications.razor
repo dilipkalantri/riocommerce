@@ -1,0 +1,524 @@
+@page "/admin/notifications"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject INotificationService Svc
+@inject IEmailTemplateRenderer Renderer
+@inject ITemplateTokenCatalog Catalog
+@inject IEmailLogService LogSvc
+@inject IJSRuntime JS
+<PageTitle>Notifications — RioCommerce Admin</PageTitle>
+
+@* ══════════════════════════════════════════════════════════════════════════
+   Notification Center (V2)
+   ─────────────────────────
+   Replaces the old single-table view with: KPI dashboard strip, searchable +
+   filtered template list with paging, and a split-layout editor with an
+   "Available Tokens" panel scoped to the selected trigger key.
+   ══════════════════════════════════════════════════════════════════════════ *@
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <h1>Notification Center</h1>
+    <div style="display:flex;gap:8px">
+        <a href="/admin/email-logs" class="btn btn-outline btn-sm">📧 Email Logs</a>
+        <a href="/admin/settings/email-api" class="btn btn-outline btn-sm">⚙ Provider</a>
+        <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ New Template</button>
+    </div>
+</div>
+
+@* ── Dashboard cards ────────────────────────────────────────────────────── *@
+<div class="kpi-grid" style="margin-bottom:18px">
+    <div class="kpi-card"><div class="kpi-card__label">📧 Email Templates</div><div class="kpi-card__value">@CountByChannel("Email")</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">📱 SMS Templates</div><div class="kpi-card__value">@CountByChannel("SMS")</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">💬 WhatsApp Templates</div><div class="kpi-card__value">@CountByChannel("WhatsApp")</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">✅ Active</div><div class="kpi-card__value" style="color:#15803D">@CountActive()</div></div>
+    @if (stats != null)
+    {
+        <div class="kpi-card"><div class="kpi-card__label">📤 Sent Today</div><div class="kpi-card__value">@stats.Today</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">❌ Failed</div><div class="kpi-card__value" style="color:#B91C1C">@stats.Failed</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">📨 Pending</div><div class="kpi-card__value" style="color:#B45309">@stats.Pending</div></div>
+    }
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:14px">@msg</div> }
+
+@* ── Editor ─────────────────────────────────────────────────────────────── *@
+@if (editing != null)
+{
+    var triggerTokens = Catalog.GetForTrigger(editing.Key);
+    <div class="form-card nf-editor" style="margin-bottom:20px">
+        <div class="form-card__title">@(editing.Id == null ? "New Template" : "Edit Template")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+
+        <div class="nf-editor__split">
+            <div>
+                <div class="form-grid">
+                    <div class="form-group"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="editing.Name" /></div>
+                    <div class="form-group">
+                        <label class="form-label">Trigger Key <span class="required">*</span></label>
+                        <select class="form-input" @bind="editing.Key" @bind:after="OnTriggerChanged">
+                            <option value="@editing.Key" disabled hidden>@(string.IsNullOrEmpty(editing.Key) ? "Choose…" : editing.Key)</option>
+                            @foreach (var k in Catalog.KnownTriggerKeys.OrderBy(x => x))
+                            {
+                                <option value="@k">@k</option>
+                            }
+                            <option value="__custom">+ Custom key…</option>
+                        </select>
+                        @if (customKey)
+                        {
+                            <input class="form-input" style="margin-top:6px" @bind="editing.Key" placeholder="my_custom_trigger" />
+                        }
+                    </div>
+                    <div class="form-group"><label class="form-label">Channel</label><select class="form-input" @bind="editing.Channel"><option value="Email">Email</option><option value="WhatsApp">WhatsApp</option><option value="SMS">SMS</option></select></div>
+                    <div class="form-group" style="display:flex;align-items:flex-end;gap:8px"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="editing.IsActive" /> Active</label></div>
+                    @* CC is an Email-header concept — there is nothing to copy on SMS/WhatsApp, so the
+                       field is only offered where it does something. *@
+                    @if (string.Equals(editing.Channel, "Email", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div class="form-group form-group--full">
+                            <label class="form-label">CC Email Addresses <span class="nf-optional">(Optional)</span></label>
+                            <input class="form-input" @bind="editing.CcEmails" maxlength="512"
+                                   placeholder="staff1@riocommerce.com, staff2@riocommerce.com" />
+                            <div class="form-hint">Enter up to 2 email addresses separated by comma. They receive a copy of every email this template sends.</div>
+                        </div>
+                    }
+                    <div class="form-group form-group--full">
+                        <label class="form-label">Subject</label>
+                        <input class="form-input" id="nfSubject" data-nf-field="subject" @bind="editing.Subject"
+                               @onfocus='() => focusedField = "subject"' />
+                    </div>
+                    <div class="form-group form-group--full">
+                        <label class="form-label">Body</label>
+                        <textarea class="form-input" id="nfBody" data-nf-field="body" rows="10" @bind="editing.Body"
+                                  @onfocus='() => focusedField = "body"'></textarea>
+                        <div class="form-hint">Click a token on the right to insert it into the focused field.</div>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Available Tokens panel (per-trigger) ── *@
+            <aside class="nf-tokens">
+                <div class="nf-tokens__head">
+                    <span>🔖 Available Tokens</span>
+                    <span class="nf-tokens__count">@triggerTokens.Count</span>
+                </div>
+                @if (triggerTokens.Count == 0)
+                {
+                    <div class="nf-tokens__empty">
+                        Pick a known trigger key on the left to see its tokens — or use the cross-trigger commons
+                        (<code>{{name}}</code>, <code>{{order_number}}</code>, <code>{{total}}</code> …).
+                    </div>
+                }
+                else
+                {
+                    <div class="nf-tokens__list">
+                        @foreach (var t in triggerTokens)
+                        {
+                            <button type="button" class="nf-token" title="@t.Description · sample: @t.SampleValue" @onclick="() => InsertToken(t.Name)">
+                                <code>{{@t.Name}}</code>
+                                <span class="nf-token__desc">@t.Description</span>
+                            </button>
+                        }
+                    </div>
+                }
+            </aside>
+        </div>
+
+        <div class="form-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+            <button class="btn btn-primary" disabled="@saving" @onclick="() => Save(false)">@(saving ? "Saving…" : "Save")</button>
+            <button class="btn btn-primary" disabled="@saving" @onclick="() => Save(true)">Save &amp; Continue Edit</button>
+            <button class="btn btn-outline" @onclick="PreviewEditingTemplate">👁 Preview</button>
+            <button class="btn btn-outline" @onclick="OpenTestForEditing">📧 Send Test</button>
+            @if (editing.Id != null)
+            {
+                <button class="btn btn-outline" @onclick="DuplicateEditing">📑 Duplicate</button>
+            }
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@* ── Template list with search + filter + pagination ────────────────────── *@
+<div class="data-card">
+    <div class="data-card__title">Templates</div>
+
+    <div class="form-card" style="margin:10px 16px;background:#FAFBFC">
+        <div class="form-grid">
+            <div class="form-group form-group--full"><label class="form-label">Search</label><input class="form-input" placeholder="Name · Trigger key · Subject" @bind="searchQuery" @bind:after="ResetPage" /></div>
+            <div class="form-group"><label class="form-label">Channel</label>
+                <select class="form-input" @bind="filterChannel" @bind:after="ResetPage">
+                    <option value="">All channels</option>
+                    <option value="Email">Email</option>
+                    <option value="SMS">SMS</option>
+                    <option value="WhatsApp">WhatsApp</option>
+                </select>
+            </div>
+            <div class="form-group"><label class="form-label">Status</label>
+                <select class="form-input" @bind="filterStatus" @bind:after="ResetPage">
+                    <option value="">All</option>
+                    <option value="active">Active</option>
+                    <option value="disabled">Disabled</option>
+                </select>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end;justify-content:flex-end">
+                <button class="btn btn-ghost btn-sm" @onclick="ClearFilters">Clear filters</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-wrap"><table>
+        <thead><tr>
+            <th>Template Name</th>
+            <th>Trigger Key</th>
+            <th>Channel</th>
+            <th>Subject</th>
+            <th>Status</th>
+            <th>Last Updated</th>
+            <th>Actions</th>
+        </tr></thead>
+        <tbody>
+            @if (templates == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (PageItems.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No templates match these filters.</td></tr> }
+            else
+            {
+                @foreach (var t in PageItems)
+                {
+                    <tr>
+                        <td><strong>@t.Name</strong></td>
+                        <td><code>@t.Key</code></td>
+                        <td>@t.Channel</td>
+                        <td class="nf-trim">@t.Subject</td>
+                        <td><span class="status @(t.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(t.IsActive ? "Active" : "Disabled")</span></td>
+                        <td>—</td>
+                        <td>
+                            <div class="nf-actions">
+                                <button class="nf-act" title="Preview"      @onclick="() => PreviewTemplateAsync(t.Id)">👁</button>
+                                <button class="nf-act" title="Send Test"    @onclick="() => OpenTestForTemplate(t.Key)">📧</button>
+                                <button class="nf-act" title="Edit"         @onclick="() => OpenEditor(t.Id)">✏</button>
+                                <button class="nf-act" title="Duplicate"    @onclick="() => DuplicateTemplateAsync(t.Id)">📑</button>
+                                <button class="nf-act" title="@(t.IsActive ? "Disable" : "Enable")" @onclick="() => Toggle(t.Id)">⏸</button>
+                                <button class="nf-act nf-act--danger" title="Delete" @onclick="() => Delete(t.Id)">🗑</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+
+    @if (templates != null && FilteredCount > 0)
+    {
+        var totalPages = Math.Max(1, (int)Math.Ceiling((double)FilteredCount / pageSize));
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--gray-200);font-size:13px;color:var(--gray-500)">
+            <span>Showing @((currentPage - 1) * pageSize + 1) – @(Math.Min(currentPage * pageSize, FilteredCount)) of @FilteredCount</span>
+            <div style="display:flex;gap:6px;align-items:center">
+                <button class="btn btn-ghost btn-sm" disabled="@(currentPage <= 1)"          @onclick="() => Goto(currentPage - 1)">‹ Prev</button>
+                <span style="font-weight:700;color:var(--navy)">@currentPage / @totalPages</span>
+                <button class="btn btn-ghost btn-sm" disabled="@(currentPage >= totalPages)" @onclick="() => Goto(currentPage + 1)">Next ›</button>
+            </div>
+        </div>
+    }
+</div>
+
+@* ══════════════════════════════════════════════════════════════════════════
+   Preview Modal
+   ══════════════════════════════════════════════════════════════════════════ *@
+@if (previewOpen && previewModel != null)
+{
+    <div class="nf-modal-bg" @onclick="ClosePreview"></div>
+    <div class="nf-modal" role="dialog" aria-label="Email preview">
+        <div class="nf-modal__head">
+            <div>
+                <div class="nf-modal__title">👁 Email Preview</div>
+                <div class="nf-modal__sub">@previewModel.Name · @previewModel.Channel · sample data for <code>@previewModel.Key</code></div>
+            </div>
+            <button class="nf-modal__close" @onclick="ClosePreview" aria-label="Close">×</button>
+        </div>
+        <div class="nf-modal__body">
+            <div class="nf-lbl">Subject</div>
+            <div class="nf-subject">@previewSubject</div>
+            <div class="nf-lbl" style="margin-top:12px">Body</div>
+            <iframe class="nf-frame" sandbox="" srcdoc="@previewBody" title="Rendered email body"></iframe>
+            <details style="margin-top:10px">
+                <summary style="font-size:12px;color:var(--gray-500);cursor:pointer">Sample tokens used</summary>
+                <pre class="nf-pre" style="margin-top:8px">@previewTokensJson</pre>
+            </details>
+        </div>
+        <div class="nf-modal__foot">
+            <button class="btn btn-ghost" @onclick="ClosePreview">Close</button>
+        </div>
+    </div>
+}
+
+@* ══════════════════════════════════════════════════════════════════════════
+   Send Test Modal
+   ══════════════════════════════════════════════════════════════════════════ *@
+@if (testOpen)
+{
+    <div class="nf-modal-bg" @onclick="CloseTest"></div>
+    <div class="nf-modal" role="dialog" aria-label="Send test email">
+        <div class="nf-modal__head">
+            <div>
+                <div class="nf-modal__title">📧 Send Test Email</div>
+                <div class="nf-modal__sub">Template: <strong>@testKey</strong></div>
+            </div>
+            <button class="nf-modal__close" @onclick="CloseTest" aria-label="Close">×</button>
+        </div>
+        <div class="nf-modal__body">
+            <div class="form-group"><label class="form-label">Recipient email *</label><input class="form-input" @bind="testRecipient" placeholder="you@example.com" autocomplete="off" /></div>
+            <p class="form-hint" style="margin:0">Tokens are auto-filled from the sample set for <strong>@testKey</strong>.</p>
+            @if (testResult is { } tr)
+            {
+                <div class="@(tr.Ok ? "inline-alert inline-alert--ok" : "inline-alert inline-alert--err")" style="margin-top:10px">
+                    @(tr.Ok ? "✅ Test email dispatched." : tr.Error ?? "Send failed.")
+                </div>
+            }
+        </div>
+        <div class="nf-modal__foot">
+            <button class="btn btn-ghost"   @onclick="CloseTest" disabled="@sending">Cancel</button>
+            <button class="btn btn-primary" @onclick="TestSendFromModal" disabled="@sending">@(sending ? "Sending…" : "Send")</button>
+        </div>
+    </div>
+}
+
+<style>
+    /* ── Editor split layout ───────────────────────────────────────────── */
+    .nf-editor{}
+    .nf-editor__split{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}
+    @@media(max-width:980px){ .nf-editor__split{grid-template-columns:1fr} }
+
+    /* Counterpart to the red .required asterisk — says "you may leave this blank". */
+    .nf-optional{font-size:11.5px;font-weight:600;color:var(--gray-500)}
+
+    .nf-tokens{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:14px;padding:14px;position:sticky;top:8px;max-height:80vh;overflow:auto}
+    .nf-tokens__head{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:800;color:var(--navy);margin-bottom:8px}
+    .nf-tokens__count{font-size:11px;font-weight:700;color:#fff;background:var(--orange);padding:2px 8px;border-radius:999px}
+    .nf-tokens__empty{font-size:12.5px;color:var(--gray-500);line-height:1.55}
+    .nf-tokens__list{display:flex;flex-direction:column;gap:6px}
+    .nf-token{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:8px 10px;cursor:pointer;transition:transform .15s,border-color .15s,background .15s}
+    .nf-token:hover{transform:translateY(-1px);border-color:var(--orange);background:#FFF7ED}
+    .nf-token code{font-size:12.5px;color:var(--navy);font-weight:700}
+    .nf-token__desc{font-size:11px;color:var(--gray-500)}
+
+    /* ── List actions ─────────────────────────────────────────────────── */
+    .nf-trim{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .nf-actions{display:flex;gap:4px}
+    .nf-act{width:32px;height:32px;border-radius:8px;border:1px solid var(--gray-200);background:#fff;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,color .15s,border-color .15s,transform .15s}
+    .nf-act:hover{background:var(--orange);color:#fff;border-color:var(--orange);transform:translateY(-1px)}
+    .nf-act--danger:hover{background:#B91C1C;border-color:#B91C1C}
+
+    /* ── Modal ────────────────────────────────────────────────────────── */
+    .nf-modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(2px);z-index:90}
+    .nf-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(720px,calc(100vw - 32px));max-height:90vh;background:#fff;border-radius:18px;box-shadow:0 28px 60px -20px rgba(15,23,42,.5);z-index:91;display:flex;flex-direction:column;overflow:hidden}
+    .nf-modal__head{display:flex;align-items:flex-start;gap:10px;padding:16px 20px;border-bottom:1px solid var(--gray-200)}
+    .nf-modal__title{font-size:16px;font-weight:800;color:var(--navy)}
+    .nf-modal__sub{font-size:12px;color:var(--gray-500);margin-top:3px}
+    .nf-modal__close{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:var(--gray-100);color:var(--gray-600);font-size:18px;cursor:pointer}
+    .nf-modal__body{padding:16px 20px;overflow-y:auto}
+    .nf-modal__foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;background:var(--gray-50);border-top:1px solid var(--gray-200)}
+    .nf-subject{font-size:14px;font-weight:700;color:var(--navy);background:var(--gray-50);padding:9px 12px;border-radius:8px}
+    .nf-frame{width:100%;height:380px;border:1px solid var(--gray-200);border-radius:10px;background:#fff;margin-top:6px}
+    .nf-pre{background:#0F172A;color:#E2E8F0;padding:10px 12px;border-radius:8px;font-size:11.5px;line-height:1.45;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0}
+    .nf-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-500);margin-bottom:3px}
+</style>
+
+@code {
+    private List<MessageTemplateItem>? templates;
+    private EmailLogStats? stats;
+    private MessageTemplateEditModel? editing;
+    private bool saving, sending, msgOk;
+    private string? err, msg;
+    private bool customKey;
+
+    // ── Filter + search + paging state ──
+    private string searchQuery = "";
+    private string filterChannel = "";
+    private string filterStatus = "";
+    private int currentPage = 1;
+    private const int pageSize = 15;
+
+    // ── Preview modal state ──
+    private bool previewOpen;
+    private MessageTemplateEditModel? previewModel;
+    private string previewSubject = "";
+    private string previewBody = "";
+    private string previewTokensJson = "";
+
+    // ── Send Test modal state ──
+    private bool testOpen;
+    private string testKey = "welcome_email";
+    private string testRecipient = "";
+    private (bool Ok, string? Error)? testResult;
+
+    // ── Token-insertion target ──
+    private string focusedField = "body";
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        templates = await Svc.ListTemplatesAsync();
+        try { stats = await LogSvc.StatsAsync(); } catch { /* fresh install, table may be empty */ }
+    }
+
+    // ── Filtered + paged view ───────────────────────────────────────────────
+    private IReadOnlyList<MessageTemplateItem> Filtered
+    {
+        get
+        {
+            if (templates == null) return Array.Empty<MessageTemplateItem>();
+            IEnumerable<MessageTemplateItem> q = templates;
+            if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                var s = searchQuery.Trim();
+                q = q.Where(t =>
+                    (t.Name?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                 || (t.Key?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                 || (t.Subject?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            if (!string.IsNullOrWhiteSpace(filterChannel))
+                q = q.Where(t => string.Equals(t.Channel, filterChannel, StringComparison.OrdinalIgnoreCase));
+            if (filterStatus == "active")   q = q.Where(t => t.IsActive);
+            if (filterStatus == "disabled") q = q.Where(t => !t.IsActive);
+            return q.OrderBy(t => t.Name).ToList();
+        }
+    }
+    private int FilteredCount => Filtered.Count;
+    private IReadOnlyList<MessageTemplateItem> PageItems
+        => Filtered.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+
+    private void ResetPage() { currentPage = 1; }
+    private void Goto(int p) { currentPage = Math.Max(1, p); }
+    private void ClearFilters() { searchQuery = ""; filterChannel = ""; filterStatus = ""; currentPage = 1; }
+
+    private int CountByChannel(string ch) => templates?.Count(t => string.Equals(t.Channel, ch, StringComparison.OrdinalIgnoreCase)) ?? 0;
+    private int CountActive() => templates?.Count(t => t.IsActive) ?? 0;
+
+    // ── Editor ────────────────────────────────────────────────────────────
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null; customKey = false;
+        editing = id == null ? new MessageTemplateEditModel { Channel = "Email", IsActive = true } : await Svc.GetTemplateAsync(id.Value);
+    }
+
+    private void OnTriggerChanged()
+    {
+        if (editing?.Key == "__custom") { customKey = true; editing.Key = ""; }
+        else customKey = false;
+    }
+
+    private async Task Save(bool stay)
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, id) = await Svc.SaveTemplateAsync(editing);
+        saving = false;
+        if (ok)
+        {
+            await Reload();
+            if (stay) editing = await Svc.GetTemplateAsync(id);
+            else editing = null;
+            Flash(true, stay ? "Template saved — keep editing." : "Template saved.");
+        }
+        else err = error;
+    }
+
+    private async Task DuplicateEditing()
+    {
+        if (editing == null) return;
+        // Strip Id + bump key so SaveAsync inserts a new row.
+        editing = new MessageTemplateEditModel
+        {
+            Id = null,
+            Name    = editing.Name + " (Copy)",
+            Key     = editing.Key + "_copy",
+            Channel = editing.Channel,
+            Subject = editing.Subject,
+            Body    = editing.Body,
+            CcEmails = editing.CcEmails,
+            IsActive = false,   // start disabled so admins remember to flip it on
+        };
+        Flash(true, "Editor populated with a copy. Update the trigger key and save.");
+        await Task.CompletedTask;
+    }
+
+    private async Task DuplicateTemplateAsync(Guid id)
+    {
+        var t = await Svc.GetTemplateAsync(id);
+        if (t == null) return;
+        await OpenEditor(null);
+        editing!.Name    = t.Name + " (Copy)";
+        editing.Key      = t.Key + "_copy";
+        editing.Channel  = t.Channel;
+        editing.Subject  = t.Subject;
+        editing.Body     = t.Body;
+        editing.CcEmails = t.CcEmails;
+        editing.IsActive = false;
+        Flash(true, "Editor populated with a copy. Update the trigger key and save.");
+    }
+
+    private async Task Toggle(Guid id) { await Svc.ToggleTemplateAsync(id); await Reload(); }
+    private async Task Delete(Guid id) { var (ok, e) = await Svc.DeleteTemplateAsync(id); await Reload(); Flash(ok, ok ? "Template deleted." : e!); }
+
+    // ── Token insertion ──────────────────────────────────────────────────
+    private async Task InsertToken(string token)
+    {
+        if (editing == null) return;
+        var snippet = "{{" + token + "}}";
+        // Try a JS-level caret insertion first — it preserves focus + cursor in
+        // the subject/body field. If JS isn't available we fall back to append.
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("eval",
+                $"(function(){{var el=document.getElementById('nf{(focusedField == "subject" ? "Subject" : "Body")}');if(!el)return null;var s=el.selectionStart||0,e=el.selectionEnd||0;el.value=el.value.substring(0,s)+'{snippet.Replace("'", "\\'")}'+el.value.substring(e);el.selectionStart=el.selectionEnd=s+{snippet.Length};el.focus();return el.value;}})()");
+            if (raw != null)
+            {
+                if (focusedField == "subject") editing.Subject = raw;
+                else editing.Body = raw;
+                return;
+            }
+        }
+        catch { }
+        // Fallback — append.
+        if (focusedField == "subject") editing.Subject = (editing.Subject ?? "") + snippet;
+        else editing.Body = (editing.Body ?? "") + snippet;
+    }
+
+    // ── Preview ──────────────────────────────────────────────────────────
+    private void PreviewEditingTemplate() { if (editing != null) RenderPreview(editing); }
+    private async Task PreviewTemplateAsync(Guid id)
+    {
+        var t = await Svc.GetTemplateAsync(id);
+        if (t != null) RenderPreview(t);
+    }
+    private void RenderPreview(MessageTemplateEditModel m)
+    {
+        previewModel = m;
+        var sample = Catalog.BuildSampleData(m.Key);
+        previewSubject = Renderer.Render(m.Subject, sample) ?? "(no subject)";
+        previewBody    = Renderer.Render(m.Body, sample) ?? "(no body)";
+        previewTokensJson = System.Text.Json.JsonSerializer.Serialize(sample, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        previewOpen = true;
+    }
+    private void ClosePreview() { previewOpen = false; previewModel = null; }
+
+    // ── Send Test ────────────────────────────────────────────────────────
+    private void OpenTestForEditing() { if (editing != null) { testKey = editing.Key; testResult = null; testOpen = true; } }
+    private void OpenTestForTemplate(string key) { testKey = key; testResult = null; testOpen = true; }
+    private void CloseTest() => testOpen = false;
+    private async Task TestSendFromModal()
+    {
+        if (string.IsNullOrWhiteSpace(testRecipient)) { testResult = (false, "Enter a recipient."); return; }
+        sending = true; testResult = null;
+        var sample = Catalog.BuildSampleData(testKey);
+        var tokens = sample.ToDictionary(k => k.Key, v => v.Value ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+        var to = new RioCommerce.Core.Interfaces.NotificationRecipient(Email: testRecipient);
+        var (ok, error, sent) = await Svc.SendAsync(testKey, to, tokens, triggeredBy: "Admin Test");
+        sending = false;
+        await Reload();
+        testResult = (ok, ok ? null : error);
+        if (ok) Flash(true, $"Test email dispatched ({sent} channel(s)).");
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

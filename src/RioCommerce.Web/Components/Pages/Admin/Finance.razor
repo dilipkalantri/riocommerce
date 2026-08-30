@@ -1,0 +1,230 @@
+@page "/admin/finance"
+@page "/admin/approvals"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@implements IDisposable
+@inject IFinanceReportService Reports
+@inject IApprovalWorkflowService Approvals
+@inject IRefundService Refunds
+@inject ISettlementService Settlements
+@inject ToastService Toast
+@inject IRealtimeBus Bus
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+<PageTitle>Finance — RioCommerce Admin</PageTitle>
+
+<style>
+    .fin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;align-items:start}
+    .fin-card{background:#fff;border:1px solid var(--gray-200);border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .fin-card h3{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+    .fin-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid var(--gray-50)}
+    .fin-row .v{font-weight:600;color:var(--navy)}
+    .fin-trend{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:8px}
+    .fin-trend__bar{flex:1;background:linear-gradient(180deg,var(--orange),#fdba74);border-radius:3px 3px 0 0;min-height:2px;transition:height .2s}
+    .appr-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--gray-50);flex-wrap:wrap}
+    .appr-row__main{min-width:0;flex:1}
+    .appr-title{font-weight:600;color:var(--navy);font-size:13.5px}
+    .appr-meta{font-size:11.5px;color:var(--gray-400)}
+</style>
+
+<div class="page__header" style="display:flex;align-items:center;gap:10px"><h1>Finance</h1><span class="live-dot">● Live</span></div>
+
+@if (data == null)
+{
+    <div class="kpi-grid">@for (var i = 0; i < 4; i++) { <div class="kpi-card"><div class="skel" style="height:14px;width:60%;margin-bottom:10px"></div><div class="skel" style="height:22px;width:50%"></div></div> }</div>
+}
+else
+{
+    @* ── headline KPIs ── *@
+    <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-card__label">Gross Revenue</div><div class="kpi-card__value">₹@Fmt(data.Revenue.GrossRevenue)</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Net Revenue</div><div class="kpi-card__value" style="color:var(--green)">₹@Fmt(data.Revenue.NetRevenue)</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Refunds</div><div class="kpi-card__value" style="color:var(--error)">₹@Fmt(data.Revenue.RefundTotal)</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Pending Payments</div><div class="kpi-card__value" style="color:var(--warning)">₹@Fmt(data.Revenue.PendingPayments)</div></div>
+    </div>
+
+    <div class="fin-grid" style="margin-top:16px">
+        @* revenue periods + trend *@
+        <div class="fin-card">
+            <h3>Revenue</h3>
+            <div class="fin-row"><span>Today</span><span class="v">₹@Fmt(data.Revenue.Today)</span></div>
+            <div class="fin-row"><span>This week</span><span class="v">₹@Fmt(data.Revenue.Week)</span></div>
+            <div class="fin-row"><span>This month</span><span class="v">₹@Fmt(data.Revenue.Month)</span></div>
+            <div class="fin-trend">
+                @{ var max = data.Trend.Count == 0 ? 1m : Math.Max(1m, data.Trend.Max(t => t.Revenue)); }
+                @foreach (var t in data.Trend)
+                {
+                    <div class="fin-trend__bar" style="height:@(((double)(t.Revenue / max)) * 100)%" title="@t.Date.ToString("dd MMM"): ₹@Fmt(t.Revenue)"></div>
+                }
+            </div>
+        </div>
+
+        @* payment gateway health *@
+        <div class="fin-card">
+            <h3>Payment health <span class="status @(data.Payments.SuccessRate >= 80 ? "status--confirmed" : "status--pending")">@data.Payments.SuccessRate% success</span></h3>
+            <div class="fin-row"><span>Successful</span><span class="v" style="color:var(--green)">@data.Payments.Success</span></div>
+            <div class="fin-row"><span>Failed</span><span class="v" style="color:var(--error)">@data.Payments.Failed</span></div>
+            <div class="fin-row"><span>Pending</span><span class="v">@data.Payments.Pending</span></div>
+            @foreach (var m in data.Payments.ByMethod) { <div class="fin-row"><span>@m.Method</span><span class="v">@m.Count · ₹@Fmt(m.Amount)</span></div> }
+        </div>
+
+        @* refund analytics *@
+        <div class="fin-card">
+            <h3>Refunds</h3>
+            <div class="fin-row"><span>Total refunded</span><span class="v">₹@Fmt(data.Refunds.TotalRefunded)</span></div>
+            <div class="fin-row"><span>Refund count</span><span class="v">@data.Refunds.RefundCount</span></div>
+            <div class="fin-row"><span>Refund rate</span><span class="v">@data.Refunds.RefundRate%</span></div>
+            <div class="fin-row"><span>Pending approvals</span><span class="v" style="color:var(--warning)">@data.Refunds.PendingApprovals</span></div>
+        </div>
+
+        @* payouts & liabilities *@
+        <div class="fin-card">
+            <h3>Payouts <a href="/admin/payouts" style="font-size:11px;font-weight:600">View all →</a></h3>
+            @if (payouts == null) { <div class="skel" style="height:40px"></div> }
+            else
+            {
+                <div class="fin-row"><span>Pending payouts</span><span class="v" style="color:var(--warning)">@payouts.PendingPayoutsCount · ₹@Fmt(payouts.PendingPayoutsAmount)</span></div>
+                <div class="fin-row"><span>Outstanding liabilities</span><span class="v" style="color:var(--error)">₹@Fmt(payouts.OutstandingLiabilities)</span></div>
+                <div class="fin-row"><span>Paid liabilities</span><span class="v" style="color:var(--green)">₹@Fmt(payouts.PaidLiabilities)</span></div>
+                <div class="fin-row"><span>Open settlements</span><span class="v">@payouts.UpcomingSettlements</span></div>
+                <div class="fin-row"><span>Settlement success</span><span class="v">@payouts.SettlementSuccessRate%</span></div>
+            }
+        </div>
+
+        @* payable by beneficiary *@
+        <div class="fin-card">
+            <h3>Payable by beneficiary <a href="/admin/settlements" style="font-size:11px;font-weight:600">Settlements →</a></h3>
+            @if (payouts == null) { <div class="skel" style="height:40px"></div> }
+            else if (payouts.Payable.Count == 0) { <div style="color:var(--gray-400);font-size:13px;padding:8px 0">Nothing outstanding 🎉</div> }
+            else { @foreach (var s in payouts.Payable) { <div class="fin-row"><span>@s.BeneficiaryType</span><span class="v">@s.Count · ₹@Fmt(s.Amount)</span></div> } }
+        </div>
+
+        @* pending approvals widget *@
+        <div class="fin-card" style="grid-column:1/-1">
+            <h3>Pending approvals @(pending?.Count > 0 ? $"({pending.Count})" : "")</h3>
+            @if (pending == null) { <div class="skel" style="height:40px"></div> }
+            else if (pending.Count == 0) { <AdminGridEmptyState Text="No approvals pending 🎉" Icon="✅" /> }
+            else
+            {
+                @foreach (var a in pending)
+                {
+                    <div class="appr-row">
+                        <span class="status status--pending">@a.Type</span>
+                        <div class="appr-row__main">
+                            <div class="appr-title">@a.Title</div>
+                            <div class="appr-meta">Requested by @a.RequestedByName · @a.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")@(a.Amount.HasValue ? $" · ₹{a.Amount:N0}" : "")</div>
+                        </div>
+                        <div style="display:flex;gap:6px">
+                            <button class="btn btn-success btn-sm" @onclick="() => OpenDecision(a, true)">Approve</button>
+                            <button class="btn btn-danger btn-sm" @onclick="() => OpenDecision(a, false)">Reject</button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        @* top courses / faculty / franchise *@
+        <div class="fin-card"><h3>Top courses</h3>@NamedTable(data.TopCourses)</div>
+        <div class="fin-card"><h3>Top faculty</h3>@NamedTable(data.TopFaculty)</div>
+        <div class="fin-card"><h3>Franchise earnings</h3>@NamedTable(data.Franchises)</div>
+    </div>
+}
+
+@* ── decision modal ── *@
+<Modal @bind-Visible="showDecision" Title="@(decisionApprove ? "Approve request" : "Reject request")" Size="sm">
+    <ChildContent>
+        @if (decisionReq != null)
+        {
+            <p style="margin-bottom:10px">@decisionReq.Title</p>
+            <div class="form-group form-group--full">
+                <label class="form-label">Notes @(decisionApprove ? "(optional)" : "")</label>
+                <textarea class="form-input" rows="3" @bind="decisionNotes" placeholder="@(decisionApprove ? "Approval note…" : "Reason for rejection…")"></textarea>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showDecision = false">Cancel</button>
+        <button class="btn @(decisionApprove ? "btn-success" : "btn-danger")" disabled="@busy" @onclick="ConfirmDecision">@(decisionApprove ? "Approve" : "Reject")</button>
+    </Footer>
+</Modal>
+
+@code {
+    private FinanceDashboardDto? data;
+    private PayoutDashboardDto? payouts;
+    private List<ApprovalRequestDto>? pending;
+    private bool showDecision, decisionApprove, busy;
+    private ApprovalRequestDto? decisionReq;
+    private string decisionNotes = "";
+    private Guid? actorId; private string actorName = "admin";
+    private int reloadToken;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+        await Load();
+        Bus.DataChanged += OnData;
+    }
+
+    private async Task Load()
+    {
+        data = await Reports.GetDashboardAsync();
+        payouts = await Settlements.GetDashboardAsync();
+        pending = await Approvals.ListAsync(ApprovalStatus.Pending);
+    }
+
+    private void OnData(RealtimeEvent e)
+    {
+        if (e.Scope is "approvals" or "dashboard" or "orders" or "payouts") _ = Debounced();
+    }
+    private async Task Debounced()
+    {
+        var token = ++reloadToken;
+        await Task.Delay(400);
+        if (token != reloadToken) return;
+        await InvokeAsync(async () => { await Load(); StateHasChanged(); });
+    }
+
+    private void OpenDecision(ApprovalRequestDto a, bool approve) { decisionReq = a; decisionApprove = approve; decisionNotes = ""; showDecision = true; }
+
+    private static bool IsPayoutApproval(ApprovalType t) => t is ApprovalType.FacultyPayoutApproval
+        or ApprovalType.FranchisePayoutApproval or ApprovalType.AffiliatePayoutApproval or ApprovalType.VendorPayoutApproval;
+
+    private async Task ConfirmDecision()
+    {
+        if (decisionReq == null) return;
+        busy = true;
+        (bool ok, string? error) result;
+        if (decisionReq.Type == ApprovalType.RefundApproval)
+            result = await Refunds.ResolveRefundApprovalAsync(decisionReq.Id, decisionApprove, decisionNotes, actorId, actorName);
+        else if (IsPayoutApproval(decisionReq.Type))
+            result = await Settlements.ResolveBatchApprovalAsync(decisionReq.Id, decisionApprove, decisionNotes, actorId, actorName);
+        else
+            result = decisionApprove
+                ? await Approvals.ApproveAsync(decisionReq.Id, decisionNotes, actorId, actorName)
+                : await Approvals.RejectAsync(decisionReq.Id, decisionNotes, actorId, actorName);
+        busy = false;
+        if (result.ok) { showDecision = false; await Load(); Toast.Success(decisionApprove ? "Approved." : "Rejected."); }
+        else Toast.Error(result.error ?? "Action failed.");
+    }
+
+    public void Dispose() => Bus.DataChanged -= OnData;
+
+    private RenderFragment NamedTable(List<NamedRevenueDto> rows) => __builder =>
+    {
+        if (rows.Count == 0)
+        {
+            <div style="color:var(--gray-400);font-size:13px;padding:8px 0">No data yet.</div>
+        }
+        else
+        {
+            @foreach (var r in rows)
+            {
+                <div class="fin-row"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%">@r.Name<span style="color:var(--gray-400);font-size:11px"> · @r.Orders</span></span><span class="v">₹@Fmt(r.Revenue)</span></div>
+            }
+        }
+    };
+
+    private static string Fmt(decimal v) => v >= 100000 ? $"{v / 100000m:0.##}L" : v.ToString("N0");
+}

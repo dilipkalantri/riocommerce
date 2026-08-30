@@ -1,0 +1,125 @@
+@page "/admin/banners"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IBannerService Svc
+@inject IJSRuntime JS
+@implements IDisposable
+<PageTitle>Homepage Banners — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <h1>Homepage Banners</h1>
+    <div style="display:flex;gap:8px">
+        <a href="/admin/banners/settings" class="btn btn-ghost btn-sm">⚙️ Slider settings</a>
+        <a href="/admin/banners/new" class="btn btn-primary btn-sm">➕ New Banner</a>
+    </div>
+</div>
+
+<p style="color:var(--gray-500);margin:6px 0 16px;font-size:14px">
+    Shown directly below the site header. Drag the ⠿ handle to reorder — active banners play as a
+    carousel in that order. A banner is <strong>live</strong> only when it's active and inside its
+    date window.
+</p>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:12px 0">@msg</div> }
+
+<div class="data-card" style="margin-top:8px">
+    <div class="table-wrap"><table>
+        <thead><tr><th style="width:34px"></th><th>Preview</th><th>Banner</th><th>Link</th><th>Schedule</th><th>Order</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody @ref="tbodyRef">
+            @if (items == null) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No banners yet. Create one to show a slider below the header.</td></tr> }
+            else
+            {
+                @foreach (var b in items)
+                {
+                    <tr draggable="true" data-id="@b.Id">
+                        <td style="cursor:grab;color:var(--gray-400);font-size:18px;text-align:center" title="Drag to reorder">⠿</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(b.DesktopImageUrl))
+                            {
+                                <img src="@b.DesktopImageUrl" alt="@b.Name" style="width:120px;height:38px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200)" loading="lazy" />
+                            }
+                            else { <span style="color:var(--gray-400)">—</span> }
+                        </td>
+                        <td>
+                            <strong>@b.Name</strong>
+                            @if (!string.IsNullOrWhiteSpace(b.Title)) { <div style="font-size:12px;color:var(--gray-500)">@b.Title</div> }
+                            @if (string.IsNullOrWhiteSpace(b.MobileImageUrl)) { <div style="font-size:11px;color:var(--warning)">No mobile image — desktop used on phones</div> }
+                        </td>
+                        <td style="font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis">@(string.IsNullOrWhiteSpace(b.LinkUrl) ? "—" : b.LinkUrl)</td>
+                        <td style="font-size:12px">@ScheduleText(b)</td>
+                        <td>@b.DisplayOrder</td>
+                        <td>
+                            @if (b.IsLive) { <span class="status status--success"><span class="dot"></span>Live</span> }
+                            else if (b.IsActive) { <span class="status status--warning"><span class="dot"></span>Scheduled</span> }
+                            else { <span class="status status--neutral"><span class="dot"></span>Inactive</span> }
+                        </td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <a href="/admin/banners/@b.Id" class="btn btn-ghost btn-sm">✏️ Edit</a>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(b.Id)">@(b.IsActive ? "Disable" : "Enable")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(b.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<BannerAdminItem>? items;
+    private bool msgOk;
+    private string? msg;
+    private ElementReference tbodyRef;
+    private DotNetObjectReference<Banners>? selfRef;
+    private bool dndWired;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        items = await Svc.ListAsync();
+        dndWired = false;   // re-wire drag handlers against the new rows after next render
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (dndWired || items is not { Count: > 0 }) return;
+        dndWired = true;
+        selfRef ??= DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("hjc.bannerReorder.init", tbodyRef, selfRef); } catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnReordered(string[] ids)
+    {
+        var ordered = ids.Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+        if (ordered.Count == 0) return;
+        await Svc.ReorderAsync(ordered);
+        await Reload();
+        msgOk = true; msg = "Banner order saved.";
+        StateHasChanged();
+    }
+
+    private async Task Toggle(Guid id) { await Svc.ToggleAsync(id); await Reload(); }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteAsync(id);
+        if (ok) { await Reload(); msgOk = true; msg = "Banner deleted."; }
+        else { msgOk = false; msg = error; }
+    }
+
+    private static string ScheduleText(BannerAdminItem b)
+    {
+        string F(DateTime? d) => d?.ToLocalTime().ToString("dd MMM yyyy") ?? "";
+        if (b.StartDate is null && b.EndDate is null) return "Always";
+        if (b.StartDate is not null && b.EndDate is null) return $"From {F(b.StartDate)}";
+        if (b.StartDate is null && b.EndDate is not null) return $"Until {F(b.EndDate)}";
+        return $"{F(b.StartDate)} → {F(b.EndDate)}";
+    }
+
+    public void Dispose() => selfRef?.Dispose();
+}

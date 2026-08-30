@@ -1,0 +1,371 @@
+@page "/admin/faculty-sharing"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@using RioCommerce.Core.DTOs.Faculty
+@inject IFacultySharingService Svc
+@inject ToastService Toast
+<PageTitle>Faculty Revenue Sharing — RioCommerce Admin</PageTitle>
+
+@*
+    Product faculty share administration. A product can carry MANY faculty on different rates, so the
+    list groups by product and always shows the COMBINED allocation — a flat per-rule list hides the
+    only number that can actually lose money (three faculty individually on a fine 40% is 120% of the
+    sale). Individual rates are best edited on the product itself (Products → Faculty Share), which is
+    where the allocation meter and the live preview live; this page is the cross-product view.
+*@
+
+<style>
+    .fsp-sum { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px }
+    .fsp-sum__card { flex:1 1 190px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; padding:14px 16px }
+    .fsp-sum__k { font-size:11.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--gray-500) }
+    .fsp-sum__v { font-size:20px; font-weight:800; color:var(--navy); margin-top:4px }
+    .fsp-sum__h { font-size:11.5px; color:var(--gray-500); margin-top:3px; line-height:1.45 }
+
+    .fsp-prod { background:#F8FAFC; font-weight:700 }
+    .fsp-prod td { padding-top:10px; padding-bottom:10px }
+    .fsp-prod--over { background:#FEF2F2 }
+    .fsp-pct { font-weight:800 }
+    .fsp-pct--over { color:#B91C1C }
+    .fsp-sub { font-size:11px; color:var(--gray-500); display:flex; align-items:center; gap:5px; margin-top:2px }
+    .fsp-tag { font-size:9.5px; font-weight:700; padding:1px 5px; border-radius:5px; background:var(--gray-200); color:var(--gray-600) }
+    .fsp-tag--gst { background:#D1FAE5; color:#065F46 }
+    .fsp-tag--warn { background:#FEF3C7; color:#92400E }
+    .ta-r { text-align:right }
+    .fsp-filter { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px }
+</style>
+
+<div class="page__header">
+    <h1>Faculty Revenue Sharing</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn btn-ghost btn-sm" href="/admin/faculty/bulk-assign">⚡ Bulk Assign</a>
+        <a class="btn btn-ghost btn-sm" href="/admin/faculty-share-settings">⚙ Share Settings</a>
+        <a class="btn btn-ghost btn-sm" href="/admin/revenue-sharing">⇅ Bulk Excel</a>
+        <button class="btn btn-primary" @onclick="ToggleForm">@(showForm ? "Close" : "➕ Define New Sharing")</button>
+    </div>
+</div>
+
+@if (showForm)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(edit.Id == null ? "Define" : "Edit") Faculty Share Rule</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="form-label">Product <span class="required">*</span></label>
+                <select class="form-input" value="@edit.ProductId" @onchange="e => edit.ProductId = ParseGuid(e.Value)">
+                    <option value="">— Select Product —</option>
+                    @if (options != null)
+                    {
+                        @foreach (var p in options.Products)
+                        {
+                            <option value="@p.Id" selected="@(p.Id == edit.ProductId)">@p.Name</option>
+                        }
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Faculty <span class="required">*</span></label>
+                <select class="form-input" value="@edit.FacultyId" @onchange="e => edit.FacultyId = ParseGuid(e.Value)">
+                    <option value="">— Select Faculty —</option>
+                    @if (options != null)
+                    {
+                        @foreach (var fac in options.Faculty)
+                        {
+                            <option value="@fac.Id" selected="@(fac.Id == edit.FacultyId)">@fac.Name</option>
+                        }
+                    }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Sharing Type</label>
+                <select class="form-input" @bind="edit.ShareType">
+                    <option value="@SharingType.Percentage">Percentage (%)</option>
+                    <option value="@SharingType.FixedAmount">Fixed Amount (₹)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Value</label>
+                <input type="number" step="0.01" min="0" class="form-input" @bind="edit.ShareValue" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Effective from</label>
+                <input type="date" class="form-input" @bind="edit.EffectiveFrom" />
+                <small class="form-hint">Blank = applies immediately.</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Effective to</label>
+                <input type="date" class="form-input" @bind="edit.EffectiveTo" />
+                <small class="form-hint">Blank = runs indefinitely. Set this to date a rate change without deleting the old agreement.</small>
+            </div>
+            <div class="form-group" style="display:flex;align-items:flex-end">
+                <label class="pe-chk"><input type="checkbox" @bind="edit.IsActive" /> Active</label>
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Notes</label>
+                <input class="form-input" @bind="edit.Notes" placeholder="Optional — e.g. agreed rate reference" />
+            </div>
+        </div>
+        <div class="form-hint">
+            A percentage applies to the <strong>pre-GST base</strong> of the effective price; GST is added on
+            top only for GST-registered faculty. The product's combined faculty share is validated on save.
+            <br />
+            The faculty must already be on the product's <strong>Faculty</strong> list — add them there first
+            for a new share. An existing share stays editable even if they were later removed from the product.
+        </div>
+        @if (!string.IsNullOrEmpty(error)) { <p style="color:var(--error);font-weight:600">@error</p> }
+        <div class="form-actions">
+            <button class="btn btn-primary" @onclick="Save" disabled="@saving">@(saving ? "Saving…" : "Save Rule")</button>
+            <button class="btn btn-ghost" @onclick="ToggleForm">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (summaries != null)
+{
+    var overCount = summaries.Count(s => s.ExceedsConfiguredCap);
+    <div class="fsp-sum">
+        <div class="fsp-sum__card">
+            <div class="fsp-sum__k">Products with shares</div>
+            <div class="fsp-sum__v">@summaries.Count</div>
+            <div class="fsp-sum__h">Active products where at least one faculty earns.</div>
+        </div>
+        <div class="fsp-sum__card">
+            <div class="fsp-sum__k">Share cost / unit</div>
+            <div class="fsp-sum__v">₹@summaries.Sum(s => s.TotalShareAmount).ToString("N2")</div>
+            <div class="fsp-sum__h">Sum of the bare shares across these products — the institute's cost.</div>
+        </div>
+        <div class="fsp-sum__card">
+            <div class="fsp-sum__k">GST on shares / unit</div>
+            <div class="fsp-sum__v">₹@summaries.Sum(s => s.TotalGstOnShare).ToString("N2")</div>
+            <div class="fsp-sum__h">Charged by registered faculty; recoverable as input tax credit once they file.</div>
+        </div>
+        <div class="fsp-sum__card" style="@(overCount > 0 ? "border-color:#FCA5A5;background:#FEF2F2" : "")">
+            <div class="fsp-sum__k">Over-allocated</div>
+            <div class="fsp-sum__v" style="@(overCount > 0 ? "color:#B91C1C" : "")">@overCount</div>
+            <div class="fsp-sum__h">Products whose combined faculty share exceeds the configured limit.</div>
+        </div>
+    </div>
+}
+
+<div class="fsp-filter">
+    <label class="pe-chk"><input type="checkbox" @bind="onlyWithShare" @bind:after="Reload" /> Only products with a share</label>
+    <label class="pe-chk"><input type="checkbox" @bind="onlyOverAllocated" /> Only over-allocated</label>
+    <input class="form-input" style="max-width:260px" placeholder="Filter by product or faculty…" @bind="search" @bind:event="oninput" />
+</div>
+
+<div class="data-card">
+    <div class="data-card__title">Product-wise Faculty Shares</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Product / Faculty</th>
+                    <th>Level</th>
+                    <th class="ta-r">Effective price</th>
+                    <th class="ta-r">Taxable base</th>
+                    <th>Rule</th>
+                    <th class="ta-r">Share (₹)</th>
+                    <th class="ta-r">GST (₹)</th>
+                    <th class="ta-r">Payout (₹)</th>
+                    <th class="ta-r">% of base</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (summaries == null)
+                {
+                    <tr><td colspan="10" style="text-align:center;color:var(--gray-400)">Loading…</td></tr>
+                }
+                else
+                {
+                    var shown = Filtered().ToList();
+                    if (shown.Count == 0)
+                    {
+                        <tr><td colspan="10" style="text-align:center;color:var(--gray-400)">No faculty shares match.</td></tr>
+                    }
+                    else
+                    {
+                        @foreach (var s in shown)
+                        {
+                            <tr class="fsp-prod @(s.ExceedsConfiguredCap ? "fsp-prod--over" : "")">
+                                <td>
+                                    <a href="/admin/products/@s.ProductId">@s.ProductTitle</a>
+                                    <div class="fsp-sub">
+                                        @(string.IsNullOrWhiteSpace(s.Sku) ? "no SKU" : s.Sku)
+                                        · @s.FacultyCount faculty
+                                        @if (s.WasCappedToBase) { <span class="fsp-tag fsp-tag--warn" title="Combined share exceeded the taxable base — every line was scaled down">capped to base</span> }
+                                    </div>
+                                </td>
+                                <td>@LevelLabel(s.Level)</td>
+                                <td class="ta-r">₹@s.EffectivePrice.ToString("N2")</td>
+                                <td class="ta-r">₹@s.TaxableBase.ToString("N2")</td>
+                                <td>@s.GstRate.ToString("0.##")% GST</td>
+                                <td class="ta-r">@s.TotalShareAmount.ToString("N2")</td>
+                                <td class="ta-r">@s.TotalGstOnShare.ToString("N2")</td>
+                                <td class="ta-r">@s.TotalPayout.ToString("N2")</td>
+                                <td class="ta-r">
+                                    <span class="fsp-pct @(s.ExceedsConfiguredCap ? "fsp-pct--over" : "")">@s.TotalSharePctOfBase.ToString("0.##")%</span>
+                                </td>
+                                <td><a class="btn btn-ghost btn-sm" href="/admin/products/@s.ProductId">Edit shares</a></td>
+                            </tr>
+                            @foreach (var line in s.Lines)
+                            {
+                                <tr>
+                                    <td style="padding-left:26px">
+                                        @line.FacultyName
+                                        <div class="fsp-sub">
+                                            @line.FacultyShortCode
+                                            @if (line.FacultyIsGstRegistered) { <span class="fsp-tag fsp-tag--gst">GST</span> }
+                                            else { <span class="fsp-tag">No GST</span> }
+                                            @if (line.Source == FacultyShareSource.ProductDefault) { <span class="fsp-tag">default</span> }
+                                        </div>
+                                    </td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td>@(line.ShareType == SharingType.Percentage ? $"{line.ShareValue:0.##}%" : $"₹{line.ShareValue:0.##}/unit")</td>
+                                    <td class="ta-r">@line.ShareAmount.ToString("N2")</td>
+                                    <td class="ta-r">@line.GstOnShare.ToString("N2")</td>
+                                    <td class="ta-r"><strong>@line.TotalPayout.ToString("N2")</strong></td>
+                                    <td class="ta-r">@line.SharePctOfBase.ToString("0.##")%</td>
+                                    <td>
+                                        @if (line.RuleId is Guid rid)
+                                        {
+                                            <button class="btn btn-ghost btn-sm" style="color:var(--error)" @onclick="() => Delete(rid)">Delete</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="data-card" style="margin-top:20px">
+    <div class="data-card__title">Faculty Payout — This Month</div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Faculty</th>
+                    <th class="ta-r">Orders</th>
+                    <th class="ta-r">Share (₹)</th>
+                    <th class="ta-r">GST on share (₹)</th>
+                    <th class="ta-r">Total payout (₹)</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (payout == null || payout.Count == 0)
+                {
+                    <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No payouts this month.</td></tr>
+                }
+                else
+                {
+                    @foreach (var p in payout)
+                    {
+                        <tr>
+                            <td><strong>@p.FacultyName</strong></td>
+                            <td class="ta-r">@p.Orders</td>
+                            <td class="ta-r">@p.Earnings.ToString("N2")</td>
+                            <td class="ta-r">@p.GstOnShare.ToString("N2")</td>
+                            <td class="ta-r"><strong>@p.TotalPayout.ToString("N2")</strong></td>
+                        </tr>
+                    }
+                    <tr class="fsp-prod">
+                        <td>Total</td>
+                        <td class="ta-r">—</td>
+                        <td class="ta-r">@payout.Sum(p => p.Earnings).ToString("N2")</td>
+                        <td class="ta-r">@payout.Sum(p => p.GstOnShare).ToString("N2")</td>
+                        <td class="ta-r">@payout.Sum(p => p.TotalPayout).ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="form-hint" style="padding:0 4px 4px">
+        Share is the faculty's taxable fee; GST is added only for registered faculty and is recoverable as
+        input tax credit. TDS is applied at payout time, on the fee excluding GST.
+        <a href="/admin/reports-exports">Export the full ledger →</a>
+    </div>
+</div>
+
+@code {
+    private List<ProductFacultyShareSummary>? summaries;
+    private List<FacultyPayout>? payout;
+    private SharingOptions? options;
+    private bool showForm, saving, onlyWithShare = true, onlyOverAllocated;
+    private string search = "";
+    private SharingRuleEdit edit = new();
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        options = await Svc.OptionsAsync();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        summaries = await Svc.ListProductSharesAsync(onlyWithShare);
+        var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        payout = await Svc.PayoutAsync(monthStart, monthStart.AddMonths(1));
+    }
+
+    private IEnumerable<ProductFacultyShareSummary> Filtered()
+    {
+        var rows = summaries ?? new();
+        if (onlyOverAllocated) rows = rows.Where(s => s.ExceedsConfiguredCap).ToList();
+        if (string.IsNullOrWhiteSpace(search)) return rows;
+
+        // Matches the product OR any of its faculty, so searching a faculty name surfaces every
+        // product they earn from rather than nothing.
+        var q = search.Trim().ToLowerInvariant();
+        return rows.Where(s =>
+            s.ProductTitle.ToLowerInvariant().Contains(q)
+            || (s.Sku ?? "").ToLowerInvariant().Contains(q)
+            || s.Lines.Any(l => l.FacultyName.ToLowerInvariant().Contains(q)
+                                || l.FacultyShortCode.ToLowerInvariant().Contains(q)));
+    }
+
+    private static Guid ParseGuid(object? value) =>
+        Guid.TryParse(value?.ToString(), out var g) ? g : Guid.Empty;
+
+    private void ToggleForm()
+    {
+        showForm = !showForm;
+        if (showForm) { edit = new SharingRuleEdit(); error = null; }
+    }
+
+    private async Task Save()
+    {
+        saving = true; error = null;
+        try
+        {
+            var (ok, err) = await Svc.SaveRuleAsync(edit);
+            if (!ok) { error = err; Toast.Error(err ?? "Could not save the rule."); return; }
+            showForm = false;
+            Toast.Success("Sharing rule saved.");
+            await Reload();
+        }
+        catch (Exception ex) { error = ex.Message; Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task Delete(Guid id)
+    {
+        await Svc.DeleteRuleAsync(id);
+        Toast.Info("Sharing rule deleted.");
+        await Reload();
+    }
+
+    private static string LevelLabel(CourseLevel l) => l switch
+    {
+        CourseLevel.CaFoundation => "CA Foundation",
+        CourseLevel.CaIntermediate => "CA Intermediate",
+        CourseLevel.CaFinal => "CA Final",
+        CourseLevel.Books => "Books",
+        _ => l.ToString()
+    };
+}

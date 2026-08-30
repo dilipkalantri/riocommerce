@@ -1,0 +1,336 @@
+@page "/admin/franchise/dashboard"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@using RioCommerce.Core.DTOs.Franchise
+@using RioCommerce.Core.Enums
+@inject IFranchiseService Franchises
+@inject NavigationManager Nav
+<PageTitle>Franchise Dashboard — RioCommerce Admin</PageTitle>
+
+<div class="fd-v2">
+    <header class="fd-hero">
+        <div>
+            <h1 class="fd-hero__title">🏢 Franchisees Dashboard</h1>
+            <p class="fd-hero__sub">A live snapshot of franchise performance — orders, revenue, wallet balances and pending settlements.</p>
+        </div>
+        <div class="fd-hero__actions">
+            <a href="/admin/franchise-orders" class="fd-btn fd-btn--outline">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                All Franchise Orders
+            </a>
+            <a href="/admin/franchise/orders/create" class="fd-btn fd-btn--primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Create Franchise Order
+            </a>
+        </div>
+    </header>
+
+    @if (loading)
+    {
+        <div class="fd-skel-grid">
+            @for (var i = 0; i < 5; i++) { <div class="fd-skel fd-skel--card"></div> }
+        </div>
+    }
+    else
+    {
+        @* ─── KPI cards ─── *@
+        <div class="fd-kpis">
+            <div class="fd-kpi fd-kpi--blue">
+                <div class="fd-kpi__ico">🏢</div>
+                <div class="fd-kpi__big">@totalFranchises</div>
+                <div class="fd-kpi__lbl">Total Franchisees</div>
+            </div>
+            <div class="fd-kpi fd-kpi--green">
+                <div class="fd-kpi__ico">✓</div>
+                <div class="fd-kpi__big">@(stats?.ActiveFranchises ?? 0)</div>
+                <div class="fd-kpi__lbl">Active Franchisees</div>
+            </div>
+            <div class="fd-kpi fd-kpi--orange">
+                <div class="fd-kpi__ico">📦</div>
+                <div class="fd-kpi__big">@todayOrders</div>
+                <div class="fd-kpi__lbl">Today's Orders</div>
+            </div>
+            <div class="fd-kpi fd-kpi--purple">
+                <div class="fd-kpi__ico">📅</div>
+                <div class="fd-kpi__big">@(stats?.OrdersMtd ?? 0)</div>
+                <div class="fd-kpi__lbl">Orders This Month</div>
+            </div>
+            <div class="fd-kpi fd-kpi--teal">
+                <div class="fd-kpi__ico">💰</div>
+                <div class="fd-kpi__big">₹@FormatK(stats?.Revenue ?? 0)</div>
+                <div class="fd-kpi__lbl">Revenue MTD</div>
+            </div>
+            <div class="fd-kpi fd-kpi--red">
+                <div class="fd-kpi__ico">⏳</div>
+                <div class="fd-kpi__big">@(stats?.PendingApproval ?? 0)</div>
+                <div class="fd-kpi__lbl">Pending Approval</div>
+            </div>
+            <div class="fd-kpi fd-kpi--amber">
+                <div class="fd-kpi__ico">💳</div>
+                <div class="fd-kpi__big">₹@FormatK(totalPendingPayments)</div>
+                <div class="fd-kpi__lbl">Pending Payments</div>
+            </div>
+            <div class="fd-kpi fd-kpi--navy">
+                <div class="fd-kpi__ico">💼</div>
+                <div class="fd-kpi__big">₹@FormatK(totalWallet)</div>
+                <div class="fd-kpi__lbl">Collections (Wallets)</div>
+            </div>
+        </div>
+
+        <div class="fd-grid">
+            @* ─── Top performing franchisees ─── *@
+            <section class="fd-card fd-card--span">
+                <div class="fd-card__head">
+                    <h2>Top Performing Franchisees</h2>
+                    <a href="/admin/franchises" class="fd-link">View all →</a>
+                </div>
+                @if (topFranchises.Count == 0)
+                {
+                    <div class="fd-empty"><div>🏢</div><strong>No franchisees yet.</strong><p>Approved franchisees will appear here once they're onboarded.</p></div>
+                }
+                else
+                {
+                    <table class="fd-table">
+                        <thead>
+                            <tr>
+                                <th>Franchise</th>
+                                <th>City</th>
+                                <th class="r">Wallet</th>
+                                <th class="r">Orders MTD</th>
+                                <th class="r">Revenue MTD</th>
+                                <th class="r">Pending</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in topFranchises)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="fd-fr__name">@f.Name</div>
+                                        <div class="fd-fr__meta">
+                                            <span class="fd-chip fd-chip--blue">@f.Code</span>
+                                            @if (!string.IsNullOrEmpty(f.ContactPerson)) { <span>👤 @f.ContactPerson</span> }
+                                        </div>
+                                    </td>
+                                    <td>@(f.City ?? "—")</td>
+                                    @* Balance links straight to the ledger behind it. *@
+                                    <td class="r">
+                                        <a href="@($"/admin/franchises/{f.Id}/wallet")" title="View wallet ledger">
+                                            <strong class="@(f.Wallet < 0 ? "fd-neg" : "")">₹@f.Wallet.ToString("N0")</strong>
+                                        </a>
+                                    </td>
+                                    <td class="r">@f.OrdersMtd</td>
+                                    <td class="r">₹@f.Revenue.ToString("N0")</td>
+                                    <td class="r">
+                                        @if (f.Pending > 0) { <span class="fd-chip fd-chip--warn">@f.Pending</span> }
+                                        else { <span class="fd-mute">—</span> }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </section>
+
+            @* ─── Recent franchise orders ─── *@
+            <section class="fd-card">
+                <div class="fd-card__head">
+                    <h2>Recent Activity</h2>
+                    <a href="/admin/franchise-orders" class="fd-link">View all →</a>
+                </div>
+                @if (recentOrders.Count == 0)
+                {
+                    <div class="fd-empty"><div>🧾</div><strong>No orders yet.</strong><p>Franchise orders will appear here as soon as they're placed.</p></div>
+                }
+                else
+                {
+                    <ul class="fd-feed">
+                        @foreach (var o in recentOrders)
+                        {
+                            <li class="fd-feed__row">
+                                <div class="fd-feed__dot fd-feed__dot--@StatusClass(o.Status)"></div>
+                                <div class="fd-feed__body">
+                                    <div class="fd-feed__top">
+                                        <a class="fd-feed__num" href="@($"/admin/orders/{o.Id}")">#@o.OrderNumber</a>
+                                        <strong>₹@o.TotalAmount.ToString("N0")</strong>
+                                    </div>
+                                    <div class="fd-feed__meta">
+                                        <span class="fd-chip fd-chip--mute">@o.FranchiseName</span>
+                                        <span>@o.StudentName</span>
+                                        <span class="fd-chip fd-chip--@StatusClass(o.Status)">@o.Status</span>
+                                    </div>
+                                    <div class="fd-feed__sub">@o.ProductSummary · @o.CreatedAt.ToLocalTime().ToString("dd MMM, h:mm tt")</div>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+        </div>
+    }
+</div>
+
+<style>
+    /* Scoped to .fd-v2 — premium franchise dashboard */
+    .fd-v2{--c-ink:#0F1B33;--c-mute:#64748B;--c-line:#E5ECF4;--c-bg:#F8FAFC;--c-primary:#163A70;--c-accent:#F58220;--c-green:#22C55E;--c-radius:16px;color:var(--c-ink);padding-bottom:60px;font-size:14px}
+
+    .fd-v2 .fd-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin:20px 0 22px;flex-wrap:wrap}
+    .fd-v2 .fd-hero__title{margin:0;font-size:26px;font-weight:800;letter-spacing:-.4px}
+    .fd-v2 .fd-hero__sub{margin:6px 0 0;font-size:14px;color:var(--c-mute);max-width:680px;line-height:1.55}
+    .fd-v2 .fd-hero__actions{display:flex;gap:10px;flex-wrap:wrap}
+
+    .fd-v2 .fd-btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:12px;border:1.5px solid transparent;font-size:13.5px;font-weight:700;cursor:pointer;text-decoration:none;background:#fff;color:var(--c-ink);transition:transform .15s,box-shadow .2s,filter .15s,background .2s,border-color .2s}
+    .fd-v2 .fd-btn svg{width:15px;height:15px}
+    .fd-v2 .fd-btn:hover{transform:translateY(-1px)}
+    .fd-v2 .fd-btn--primary{background:linear-gradient(135deg,#F58220,#ffa05a);color:#fff;box-shadow:0 12px 24px -14px rgba(245,130,32,.55)}
+    .fd-v2 .fd-btn--primary:hover{filter:brightness(1.05)}
+    .fd-v2 .fd-btn--outline{background:#fff;border-color:#DBE5F2;color:var(--c-primary)}
+    .fd-v2 .fd-btn--outline:hover{background:#EFF4FB;border-color:var(--c-primary)}
+
+    /* KPI cards */
+    .fd-v2 .fd-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:20px}
+    .fd-v2 .fd-kpi{background:#fff;border:1px solid var(--c-line);border-radius:var(--c-radius);padding:16px 18px;box-shadow:0 10px 28px -22px rgba(15,27,51,.2);transition:transform .15s,box-shadow .2s;position:relative;overflow:hidden}
+    .fd-v2 .fd-kpi:hover{transform:translateY(-2px);box-shadow:0 18px 38px -22px rgba(15,27,51,.28)}
+    .fd-v2 .fd-kpi__ico{position:absolute;right:14px;top:14px;width:36px;height:36px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:18px;color:#fff}
+    .fd-v2 .fd-kpi__big{font-size:26px;font-weight:800;letter-spacing:-.4px;line-height:1.1}
+    .fd-v2 .fd-kpi__lbl{margin-top:6px;font-size:12px;color:var(--c-mute);font-weight:700;letter-spacing:.2px;text-transform:uppercase}
+    .fd-v2 .fd-kpi--blue   .fd-kpi__ico{background:linear-gradient(135deg,#2563EB,#3B82F6)}
+    .fd-v2 .fd-kpi--blue   .fd-kpi__big{color:#1D4ED8}
+    .fd-v2 .fd-kpi--green  .fd-kpi__ico{background:linear-gradient(135deg,#16A34A,#22C55E)}
+    .fd-v2 .fd-kpi--green  .fd-kpi__big{color:#15803D}
+    .fd-v2 .fd-kpi--orange .fd-kpi__ico{background:linear-gradient(135deg,#F58220,#ffa05a)}
+    .fd-v2 .fd-kpi--orange .fd-kpi__big{color:#9A3412}
+    .fd-v2 .fd-kpi--purple .fd-kpi__ico{background:linear-gradient(135deg,#7C3AED,#A78BFA)}
+    .fd-v2 .fd-kpi--purple .fd-kpi__big{color:#5B21B6}
+    .fd-v2 .fd-kpi--teal   .fd-kpi__ico{background:linear-gradient(135deg,#0F766E,#14B8A6)}
+    .fd-v2 .fd-kpi--teal   .fd-kpi__big{color:#0F766E}
+    .fd-v2 .fd-kpi--red    .fd-kpi__ico{background:linear-gradient(135deg,#DC2626,#EF4444)}
+    .fd-v2 .fd-kpi--red    .fd-kpi__big{color:#B91C1C}
+    .fd-v2 .fd-kpi--amber  .fd-kpi__ico{background:linear-gradient(135deg,#D97706,#FBBF24)}
+    .fd-v2 .fd-kpi--amber  .fd-kpi__big{color:#92400E}
+    .fd-v2 .fd-kpi--navy   .fd-kpi__ico{background:linear-gradient(135deg,#0F1B33,#1E3A6B)}
+    .fd-v2 .fd-kpi--navy   .fd-kpi__big{color:#0F1B33}
+
+    /* Skeleton */
+    .fd-v2 .fd-skel-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:20px}
+    .fd-v2 .fd-skel--card{height:110px;border-radius:var(--c-radius);background:linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%);background-size:200% 100%;animation:fd-shimmer 1.4s linear infinite}
+    @@keyframes fd-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+
+    /* Two-column layout */
+    .fd-v2 .fd-grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px;align-items:start}
+    .fd-v2 .fd-card{background:#fff;border:1px solid var(--c-line);border-radius:var(--c-radius);padding:20px;box-shadow:0 10px 28px -22px rgba(15,27,51,.22)}
+    .fd-v2 .fd-card__head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px}
+    .fd-v2 .fd-card__head h2{margin:0;font-size:16px;font-weight:800;letter-spacing:-.1px}
+    .fd-v2 .fd-link{color:var(--c-accent);font-weight:700;font-size:12.5px;text-decoration:none}
+    .fd-v2 .fd-link:hover{text-decoration:underline}
+
+    /* Table */
+    .fd-v2 .fd-table{width:100%;border-collapse:collapse;font-size:13px}
+    .fd-v2 .fd-table th,.fd-v2 .fd-table td{padding:12px 10px;border-bottom:1px solid var(--c-line);vertical-align:top;text-align:left}
+    .fd-v2 .fd-table th{font-size:10.5px;font-weight:800;color:var(--c-mute);text-transform:uppercase;letter-spacing:.4px;background:#F8FAFC;border-bottom:1px solid var(--c-line)}
+    .fd-v2 .fd-table td.r,.fd-v2 .fd-table th.r{text-align:right}
+    .fd-v2 .fd-fr__name{font-weight:700;color:var(--c-ink);font-size:13.5px}
+    .fd-v2 .fd-fr__meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:3px;font-size:11.5px;color:var(--c-mute)}
+    .fd-v2 .fd-neg{color:#B91C1C}
+    .fd-v2 .fd-mute{color:var(--c-mute)}
+
+    /* Chips */
+    .fd-v2 .fd-chip{display:inline-flex;align-items:center;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;background:#F1F5F9;color:#475569;border:1px solid var(--c-line);letter-spacing:.3px}
+    .fd-v2 .fd-chip--blue{background:#DBEAFE;color:#1D4ED8;border-color:#BFDBFE}
+    .fd-v2 .fd-chip--ok,.fd-v2 .fd-chip--confirmed,.fd-v2 .fd-chip--activated,.fd-v2 .fd-chip--delivered{background:#DCFCE7;color:#15803D;border-color:#BBF7D0}
+    .fd-v2 .fd-chip--warn,.fd-v2 .fd-chip--pending,.fd-v2 .fd-chip--draft,.fd-v2 .fd-chip--processing{background:#FFF7ED;color:#9A3412;border-color:#FED7AA}
+    .fd-v2 .fd-chip--cancelled{background:#FEF2F2;color:#B91C1C;border-color:#FECACA}
+    .fd-v2 .fd-chip--mute{background:#F1F5F9;color:var(--c-mute);border-color:var(--c-line)}
+
+    /* Recent activity feed */
+    .fd-v2 .fd-feed{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+    .fd-v2 .fd-feed__row{display:grid;grid-template-columns:14px minmax(0,1fr);gap:12px;align-items:flex-start}
+    .fd-v2 .fd-feed__dot{width:10px;height:10px;border-radius:50%;background:#94A3B8;margin-top:6px}
+    .fd-v2 .fd-feed__dot--confirmed,.fd-v2 .fd-feed__dot--activated,.fd-v2 .fd-feed__dot--delivered{background:#22C55E}
+    .fd-v2 .fd-feed__dot--pending,.fd-v2 .fd-feed__dot--draft,.fd-v2 .fd-feed__dot--processing{background:#F59E0B}
+    .fd-v2 .fd-feed__dot--cancelled{background:#EF4444}
+    .fd-v2 .fd-feed__top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+    .fd-v2 .fd-feed__num{color:var(--c-primary);font-weight:800;text-decoration:none;font-size:13px}
+    .fd-v2 .fd-feed__num:hover{color:var(--c-accent)}
+    .fd-v2 .fd-feed__top strong{font-size:14px;color:var(--c-ink);font-weight:800;letter-spacing:-.2px}
+    .fd-v2 .fd-feed__meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;font-size:12px;color:var(--c-mute)}
+    .fd-v2 .fd-feed__sub{margin-top:3px;font-size:11.5px;color:var(--c-mute)}
+
+    /* Empty state */
+    .fd-v2 .fd-empty{text-align:center;padding:36px 24px;color:var(--c-mute)}
+    .fd-v2 .fd-empty div{font-size:36px;margin-bottom:6px}
+    .fd-v2 .fd-empty strong{display:block;font-size:14px;color:var(--c-ink);margin-bottom:3px}
+    .fd-v2 .fd-empty p{margin:0;font-size:12.5px}
+
+    @@media(max-width:1180px){
+        .fd-v2 .fd-kpis,.fd-v2 .fd-skel-grid{grid-template-columns:repeat(4,1fr)}
+    }
+    @@media(max-width:960px){
+        .fd-v2 .fd-kpis,.fd-v2 .fd-skel-grid{grid-template-columns:repeat(2,1fr)}
+        .fd-v2 .fd-grid{grid-template-columns:1fr}
+    }
+</style>
+
+@code {
+    private bool loading = true;
+    private FranchiseStats? stats;
+    private int totalFranchises;
+    private decimal totalWallet;
+    private decimal totalPendingPayments;
+    private int todayOrders;
+    private List<FranchiseCard> topFranchises = new();
+    private List<FranchiseOrderRow> recentOrders = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            stats = await Franchises.StatsAsync();
+            var all = await Franchises.FranchisesAsync();
+            totalFranchises = all.Count;
+            // "Pending payments" → franchisees running on credit (negative wallet) treated as receivables
+            totalPendingPayments = all.Where(f => f.Wallet < 0).Sum(f => -f.Wallet);
+            // Collections → sum of all positive wallet balances
+            totalWallet = all.Where(f => f.Wallet > 0).Sum(f => f.Wallet);
+            topFranchises = all.OrderByDescending(f => f.Revenue).ThenByDescending(f => f.OrdersMtd).Take(6).ToList();
+
+            // Most-recent franchise orders across all franchisees
+            var page = await Franchises.OrdersAsync(null, null, 1, 8);
+            recentOrders = page.Items.ToList();
+
+            // Today's orders — derived from the recent page; if it's > 8 we approximate by re-querying a wider page.
+            // Cheap heuristic: count today's rows in the first page; if the page is full and they're all today, broaden.
+            var local = DateTime.Now.Date;
+            todayOrders = recentOrders.Count(r => r.CreatedAt.ToLocalTime().Date == local);
+            if (todayOrders == recentOrders.Count && recentOrders.Count > 0)
+            {
+                // Likely truncated — pull a wider window for an accurate count.
+                var wider = await Franchises.OrdersAsync(null, null, 1, 200);
+                todayOrders = wider.Items.Count(r => r.CreatedAt.ToLocalTime().Date == local);
+            }
+        }
+        catch { /* leave defaults; user just sees zeros */ }
+        finally { loading = false; }
+    }
+
+    // Short-form for big numbers — keeps the KPI tiles tidy
+    private static string FormatK(decimal v)
+    {
+        if (Math.Abs(v) >= 10_00_000) return (v / 100_000m).ToString("0.#") + " L";
+        if (Math.Abs(v) >= 100_000)   return (v / 100_000m).ToString("0.##") + " L";
+        if (Math.Abs(v) >= 1000)      return (v / 1000m).ToString("0.#") + " K";
+        return v.ToString("N0");
+    }
+
+    private static string StatusClass(OrderStatus s) => s switch
+    {
+        OrderStatus.Confirmed  => "confirmed",
+        OrderStatus.Activated  => "activated",
+        OrderStatus.Delivered  => "delivered",
+        OrderStatus.Pending    => "pending",
+        OrderStatus.Draft      => "draft",
+        OrderStatus.Processing => "processing",
+        OrderStatus.Cancelled  => "cancelled",
+        _ => "mute"
+    };
+}

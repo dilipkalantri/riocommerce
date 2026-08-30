@@ -1,0 +1,74 @@
+@page "/blog"
+@inject HttpClient Http
+
+<SeoHead Seo="@(new SeoMetadata { Title = "Blog — RioCommerce", Description = "CA exam strategy, study tips and updates from RioCommerce." })" />
+
+<div class="container blog-page">
+    <div class="blog-hero">
+        <h1>RioCommerce Blog</h1>
+        <p>Exam strategy, study tips & updates for CA aspirants.</p>
+    </div>
+
+    @if (loading)
+    {
+        <p class="blog-page__note">Loading…</p>
+    }
+    else if (posts.Count == 0)
+    {
+        <p class="blog-page__note">No posts published yet — check back soon!</p>
+    }
+    else
+    {
+        <div class="pb-grid">
+            @foreach (var p in posts)
+            {
+                <BlogCard Post="p" />
+            }
+        </div>
+
+        @if (TotalPages > 1)
+        {
+            <div class="pagination">
+                <button class="pg-btn" disabled="@(page <= 1)" @onclick="() => GoTo(page - 1)">← Prev</button>
+                @for (var i = 1; i <= TotalPages; i++)
+                {
+                    var n = i;
+                    <button class="pg-btn @(n == page ? "active" : "")" @onclick="() => GoTo(n)">@n</button>
+                }
+                <button class="pg-btn" disabled="@(page >= TotalPages)" @onclick="() => GoTo(page + 1)">Next →</button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<BlogListItem> posts = new();
+    private int page = 1;
+    private const int PageSize = 9;
+    private int totalCount;
+    private bool loading = true;
+
+    private int TotalPages => (int)Math.Ceiling(totalCount / (double)PageSize);
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true; StateHasChanged();
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ApiResponse<PagedResult<BlogListItem>>>($"/api/content/blog?page={page}&pageSize={PageSize}");
+            posts = r?.Data?.Items ?? new();
+            totalCount = r?.Data?.TotalCount ?? 0;
+        }
+        catch { posts = new(); totalCount = 0; }
+        loading = false;
+    }
+
+    private async Task GoTo(int p)
+    {
+        if (p < 1 || p > TotalPages || p == page) return;
+        page = p;
+        await Load();
+    }
+}

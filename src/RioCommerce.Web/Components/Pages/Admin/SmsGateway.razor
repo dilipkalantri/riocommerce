@@ -1,0 +1,60 @@
+@page "/admin/settings/sms"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IIntegrationSettingsService Svc
+<PageTitle>SMS Gateway — RioCommerce Admin</PageTitle>
+
+<div class="page__header"><h1>SMS Gateway</h1></div>
+
+@if (model == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+}
+else
+{
+    @if (msg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:14px">@msg</div> }
+    <div class="account-grid">
+        <div class="form-card">
+            <div class="form-card__title">Provider</div>
+            <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="model.Enabled" /> Enable SMS sending</label></div>
+            <div class="form-group">
+                <label class="form-label">Provider</label>
+                <select class="form-input" @bind="model.Provider">
+                    <option value="">Select…</option>
+                    <option value="MSG91">MSG91</option>
+                    <option value="Twilio">Twilio</option>
+                    <option value="TextLocal">TextLocal</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="form-group"><label class="form-label">Sender ID / Header</label><input class="form-input" @bind="model.SenderId" placeholder="RIOCOM" /></div>
+            <div class="form-group"><label class="form-label">API Base URL</label><input class="form-input" @bind="model.BaseUrl" placeholder="https://api.msg91.com/api/v5/flow/" /></div>
+        </div>
+        <div class="form-card">
+            <div class="form-card__title">Credentials</div>
+            <div class="form-group"><label class="form-label">API Key / Auth Key</label><input type="password" class="form-input" @bind="model.ApiKey" autocomplete="new-password" /></div>
+            <div class="form-group"><label class="form-label">API Secret / Token</label><input type="password" class="form-input" @bind="model.ApiSecret" autocomplete="new-password" /></div>
+            <div class="form-hint" style="margin-top:6px">Live SMS sending uses these credentials once provider dispatch is wired. Until then, SMS messages are logged.</div>
+        </div>
+    </div>
+    <div class="form-actions" style="margin-top:4px">
+        <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save SMS Settings")</button>
+    </div>
+}
+
+@code {
+    private SmsSettings? model;
+    private bool saving;
+    private string? msg;
+
+    protected override async Task OnInitializedAsync() => model = await Svc.GetSmsAsync();
+
+    private async Task Save()
+    {
+        if (model == null) return;
+        saving = true; msg = null;
+        await Svc.SaveSmsAsync(model);
+        saving = false;
+        msg = "SMS gateway settings saved.";
+    }
+}

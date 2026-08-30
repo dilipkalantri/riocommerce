@@ -1,0 +1,91 @@
+@page "/admin/banners/settings"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IBannerService Svc
+@inject NavigationManager Nav
+<PageTitle>Slider Settings — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Banner Slider Settings</h1>
+    <a href="/admin/banners" class="btn btn-ghost btn-sm">← Back to banners</a>
+</div>
+
+@if (msg != null) { <div class="inline-alert inline-alert--ok" style="margin:12px 0">@msg</div> }
+
+@if (m == null) { <p style="color:var(--gray-400)">Loading…</p> }
+else
+{
+    <div class="data-card" style="padding:22px;max-width:640px">
+        <h3 style="margin:0 0 12px">Carousel behaviour</h3>
+        <div style="display:flex;flex-direction:column;gap:14px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" @bind="m.Autoplay" /> <span>Auto-advance slides</span>
+            </label>
+            <div class="form-group" style="margin:0">
+                <label class="form-label">Slide interval (seconds)</label>
+                <input type="number" class="form-input" style="max-width:160px" min="1.5" max="30" step="0.5"
+                       value="@(m.AutoplayIntervalMs / 1000.0)"
+                       @onchange="OnIntervalChanged" />
+                <small style="color:var(--gray-400)">Between 1.5 and 30 seconds.</small>
+            </div>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" @bind="m.PauseOnHover" /> <span>Pause on hover</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" @bind="m.ShowArrows" /> <span>Show navigation arrows</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" @bind="m.ShowDots" /> <span>Show pagination dots</span>
+            </label>
+        </div>
+
+        <h3 style="margin:22px 0 12px">Recommended upload sizes</h3>
+        <p style="color:var(--gray-500);font-size:13px;margin:0 0 12px">Shown on the upload form and used to flag off-ratio images.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div class="form-group" style="margin:0">
+                <label class="form-label">Desktop width (px)</label>
+                <input type="number" class="form-input" @bind="m.RecommendedDesktopW" min="1" />
+            </div>
+            <div class="form-group" style="margin:0">
+                <label class="form-label">Desktop height (px)</label>
+                <input type="number" class="form-input" @bind="m.RecommendedDesktopH" min="1" />
+            </div>
+            <div class="form-group" style="margin:0">
+                <label class="form-label">Mobile width (px)</label>
+                <input type="number" class="form-input" @bind="m.RecommendedMobileW" min="1" />
+            </div>
+            <div class="form-group" style="margin:0">
+                <label class="form-label">Mobile height (px)</label>
+                <input type="number" class="form-input" @bind="m.RecommendedMobileH" min="1" />
+            </div>
+        </div>
+
+        <div style="margin-top:20px;display:flex;gap:10px">
+            <button class="btn btn-primary" @onclick="Save" disabled="@saving">@(saving ? "Saving…" : "Save settings")</button>
+            <a href="/admin/banners" class="btn btn-ghost">Cancel</a>
+        </div>
+    </div>
+}
+
+@code {
+    private BannerSliderSettingsModel? m;
+    private bool saving;
+    private string? msg;
+
+    protected override async Task OnInitializedAsync() => m = await Svc.GetSettingsAsync();
+
+    private void OnIntervalChanged(ChangeEventArgs e)
+    {
+        if (m == null) return;
+        if (double.TryParse(e.Value?.ToString(), out var secs))
+            m.AutoplayIntervalMs = (int)Math.Round(Math.Clamp(secs, 1.5, 30) * 1000);
+    }
+
+    private async Task Save()
+    {
+        if (m == null) return;
+        saving = true;
+        try { await Svc.SaveSettingsAsync(m); msg = "Slider settings saved."; m = await Svc.GetSettingsAsync(); }
+        finally { saving = false; }
+    }
+}

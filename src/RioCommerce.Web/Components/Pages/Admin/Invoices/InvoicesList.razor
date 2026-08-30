@@ -1,0 +1,126 @@
+@page "/admin/invoices"
+@using RioCommerce.Core.DTOs.Invoices
+@using RioCommerce.Core.Enums
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,support,backend_user,accounts")]
+@inject IInvoiceService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+<PageTitle>Invoices — RioCommerce Admin</PageTitle>
+
+<style>
+    .iv-toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:14px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; margin-bottom:14px }
+    .iv-toolbar .form-input, .iv-toolbar .form-select { font-size:13px; padding:7px 10px; min-width:140px }
+    .iv-toolbar .form-input[type="search"] { min-width:240px }
+    .iv-tbl { width:100%; border-collapse:collapse; font-size:13px; background:#fff; border:1px solid var(--gray-200); border-radius:12px; overflow:hidden }
+    .iv-tbl th, .iv-tbl td { padding:10px 12px; border-bottom:1px solid var(--gray-100); text-align:left; vertical-align:middle }
+    .iv-tbl th { background:var(--gray-50); font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--gray-500); font-weight:700 }
+    .iv-tbl tbody tr:hover td { background:var(--gray-50) }
+    .iv-num { font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12.5px; color:var(--navy); font-weight:600 }
+    .iv-status { display:inline-block; padding:2px 9px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px }
+    .iv-status--active    { background:#D1FAE5; color:#065F46 }
+    .iv-status--cancelled { background:var(--gray-200); color:var(--gray-500); text-decoration:line-through }
+    .iv-empty { padding:60px 16px; text-align:center; color:var(--gray-400) }
+    .iv-amt { font-weight:600; color:var(--navy); white-space:nowrap }
+</style>
+
+<div class="page__header">
+    <h1>Invoices</h1>
+    <p style="color:var(--gray-500); font-size:13.5px; margin:4px 0 0">
+        Auto-generated for every paid order. Format <code>RIO-INV-YYYYMM-NNNN</code>, sequence resets monthly.
+    </p>
+</div>
+
+<div class="iv-toolbar">
+    <select class="form-select" @bind="statusFilter" @bind:after="Reload">
+        <option value="">All statuses</option>
+        @foreach (var s in Enum.GetValues<InvoiceStatus>())
+        {
+            <option value="@s">@s</option>
+        }
+    </select>
+    <input type="search" class="form-input" placeholder="Invoice # / Order # / Customer…" @bind="search" @bind:after="Reload" />
+    <input type="date" class="form-input" @bind="fromDate" @bind:after="Reload" title="From date" />
+    <input type="date" class="form-input" @bind="toDate" @bind:after="Reload" title="To date" />
+    <div style="margin-left:auto; font-size:12.5px; color:var(--gray-500)">
+        @(items?.Count ?? 0) invoice@(items?.Count == 1 ? "" : "s")
+    </div>
+</div>
+
+@if (items == null)
+{
+    <p style="color:var(--gray-400); padding:30px 0; text-align:center">Loading…</p>
+}
+else if (items.Count == 0)
+{
+    <div class="iv-empty">
+        <div style="font-size:32px">🧾</div>
+        <div style="margin-top:8px; font-size:14px">No invoices match those filters.</div>
+        <div style="margin-top:4px; font-size:12.5px">
+            Invoices are generated automatically when an order's payment status becomes Success.
+        </div>
+    </div>
+}
+else
+{
+    <table class="iv-tbl">
+        <thead>
+            <tr>
+                <th>Invoice #</th>
+                <th>Date</th>
+                <th>Order</th>
+                <th>Customer</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Payment</th>
+                <th style="text-align:right">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var i in items)
+            {
+                <tr>
+                    <td><span class="iv-num">@i.InvoiceNumber</span></td>
+                    <td style="font-size:12.5px; color:var(--gray-600)">@i.InvoiceDate.ToLocalTime().ToString("dd MMM yyyy")</td>
+                    <td><a href="/admin/orders/@i.OrderId" style="color:var(--orange); text-decoration:none; font-weight:600">@i.OrderNumber</a></td>
+                    <td>@i.CustomerName</td>
+                    <td><span class="iv-amt">@FormatMoney(i.TotalAmount, i.Currency)</span></td>
+                    <td><span class="iv-status iv-status--@i.Status.ToString().ToLowerInvariant()">@i.Status</span></td>
+                    <td style="font-size:12px; color:var(--gray-600)">@(i.PaymentMode?.ToString() ?? "—")</td>
+                    <td>
+                        <div style="display:flex; gap:6px; justify-content:flex-end">
+                            <a class="btn btn-ghost btn-xs" href="/admin/invoices/@i.Id">View</a>
+                            <a class="btn btn-primary btn-xs" href="/api/admin/invoices/@i.Id/pdf?download=1" target="_blank">PDF</a>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<InvoiceListItem>? items;
+    private string statusFilter = "";
+    private string search = "";
+    private DateTime? fromDate;
+    private DateTime? toDate;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        var filter = new InvoiceListFilter
+        {
+            Status = !string.IsNullOrEmpty(statusFilter) && Enum.TryParse<InvoiceStatus>(statusFilter, out var s) ? s : null,
+            Query = string.IsNullOrWhiteSpace(search) ? null : search.Trim(),
+            FromUtc = fromDate?.ToUniversalTime(),
+            ToUtc = toDate.HasValue ? toDate.Value.AddDays(1).AddSeconds(-1).ToUniversalTime() : null,
+            Page = 1, PageSize = 200,
+        };
+        items = await Svc.ListAsync(filter);
+    }
+
+    private static string FormatMoney(decimal v, string currency)
+        => (currency == "INR" ? "₹" : (currency == "USD" ? "$" : currency + " ")) + v.ToString("N2");
+}

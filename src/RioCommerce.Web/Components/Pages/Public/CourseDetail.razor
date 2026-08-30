@@ -1,0 +1,1749 @@
+@* Rendered by the central PublicSlug resolver at /{slug} (not routed directly). *@
+@inject HttpClient Http
+@inject ICartService Cart
+@inject IReviewService ReviewSvc
+@inject IProductRecommendationService RecoSvc
+@inject IBookPreviewService BookPreviewSvc
+@inject AuthenticationStateProvider AuthProvider
+@inject IFranchisePortalService FranchisePortal
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<style>
+    .attr-options{display:flex;flex-direction:column;gap:6px}
+    .attr-option{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+    .specs{margin-top:24px}
+    .specs h4{margin-bottom:8px}
+    .specs-table{width:100%;border-collapse:collapse;font-size:14px}
+    .specs-table td{padding:8px 10px;border-bottom:1px solid var(--gray-200)}
+    .specs-table__name{color:var(--gray-500);width:45%}
+    /* two-column product layout: LEFT media + tabs, RIGHT sticky buy box */
+    .pd--2col{max-width:1180px;display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,32vw,400px);gap:34px;align-items:start}
+    .pd-buybox{position:sticky;top:96px;display:flex;flex-direction:column;gap:14px;background:#fff;border:1px solid var(--gray-200);border-radius:18px;padding:22px;box-shadow:0 18px 50px -26px rgba(15,23,42,.5)}
+    .pd-buybox__rating{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--gray-500)}
+    .pd-buybox__cta-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+    .pd-buybox .btn{padding:13px 14px;font-weight:800;font-size:14.5px;border-radius:12px;justify-content:center;display:inline-flex;align-items:center;gap:8px}
+    .pd-buybox .btn svg{width:17px;height:17px;flex:none}
+    .pd-buybox .btn:disabled{opacity:.55;cursor:not-allowed;filter:grayscale(.2)}
+    /* batch badge inherits the canonical .bs-badge palette from home-premium.css — DO NOT redefine colours here. */
+    .pd-batch-wrap{align-self:flex-start}
+    .pd-oos-msg{font-size:13px;color:#DC2626;background:#FEF2F2;padding:10px 14px;border-radius:12px;border:1px solid rgba(220,38,38,.22);margin:6px 0 0;line-height:1.5}
+    /* OOS replacement block — replaces Add To Cart / Buy Now per spec. */
+    .pd-oos-box{display:flex;flex-direction:column;gap:10px;background:#FEF2F2;border:1px solid rgba(220,38,38,.22);border-radius:14px;padding:14px}
+    .pd-oos-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:800;font-size:14px;letter-spacing:.4px;color:#DC2626;text-transform:uppercase}
+    .pd-oos-badge__dot{width:9px;height:9px;border-radius:50%;background:#DC2626;animation:pd-pulse 2s ease-in-out infinite}
+    @@keyframes pd-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.35)}}
+    /* Franchise account — replaces Add To Cart / Buy Now; franchisees order via the portal. */
+    .pd-franchise-box{display:flex;flex-direction:column;gap:10px;background:#EFF6FF;border:1px solid rgba(31,78,121,.22);border-radius:14px;padding:16px}
+    .pd-franchise-box__title{font-weight:800;font-size:15px;color:#1F4E79}
+    .pd-franchise-box__text{font-size:13px;color:#334155;line-height:1.5;margin:0}
+    .pd-franchise-box .btn{justify-content:center}
+    .pd-notify-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 14px;background:#fff;color:#DC2626;border:1px solid #DC2626;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;transition:all .18s}
+    .pd-notify-btn:hover{background:#DC2626;color:#fff;transform:translateY(-1px);box-shadow:0 8px 22px -10px rgba(220,38,38,.55)}
+    .pd-buybox .btn-primary{background:linear-gradient(180deg,#0AC7E5,#0AA9C4);box-shadow:0 10px 22px -8px rgba(10,199,229,.6)}
+    .pd-buybox .btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 26px -10px rgba(10,199,229,.75);filter:brightness(1.04)}
+    .pd-buybox .btn-secondary{background:linear-gradient(180deg,#0A5BCF,var(--navy));color:#fff;box-shadow:0 10px 22px -10px rgba(15,23,42,.6)}
+    .pd-buybox .btn-secondary:hover{transform:translateY(-2px);box-shadow:0 14px 26px -10px rgba(15,23,42,.8);filter:brightness(1.08)}
+    .pd-media-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+    /* media gallery */
+    .mg{background:#fff;border:1px solid var(--gray-200);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
+    .mg__track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+    .mg__track::-webkit-scrollbar{display:none}
+    .mg__slide{position:relative;flex:0 0 100%;scroll-snap-align:start;aspect-ratio:16/9;background:linear-gradient(135deg,var(--navy),var(--navy-light));display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .mg__slide>img{width:100%;height:100%;object-fit:cover}
+    .mg__emoji{font-size:72px;color:rgba(255,255,255,.25)}
+    .mg__thumb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .mg__frame{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:2}
+    .mg__play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1;pointer-events:none}
+    .mg__play::before{content:"▶";width:58px;height:58px;border-radius:50%;background:rgba(10,199,229,.95);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;padding-left:4px;box-shadow:0 4px 16px rgba(0,0,0,.35)}
+    .mg__viewport{position:relative}
+    .mg__slide--video{cursor:pointer}
+    .mg__nav{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:0;background:rgba(255,255,255,.92);color:var(--navy);font-size:22px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.25);z-index:4}
+    .mg__nav:hover{background:#fff}
+    .mg__nav--prev{left:8px}.mg__nav--next{right:8px}
+    .mg__badge{position:absolute;top:12px;left:12px;background:var(--orange);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;text-transform:uppercase;z-index:3}
+    .mg__dots{display:flex;gap:6px;justify-content:center;padding:10px 0 2px}
+    .mg__dot{width:8px;height:8px;border-radius:50%;background:var(--gray-300);border:0;cursor:pointer;padding:0;transition:all .2s}
+    .mg__dot.active{background:var(--orange);width:22px;border-radius:4px}
+    .mg__hint{text-align:center;color:var(--orange);font-weight:700;font-size:13.5px;padding:2px 0 12px}
+    .pd-includes{background:#fff;border:1px solid var(--gray-200);border-radius:var(--radius-lg);padding:18px 20px;box-shadow:var(--shadow-sm)}
+    .pd-includes h4{font-size:16px;font-weight:800;color:var(--navy);margin-bottom:12px}
+    /* ── premium polish ── */
+    .pd--2col .breadcrumb{font-size:12.5px;color:var(--gray-400);margin-bottom:10px}
+    .pd--2col .breadcrumb a{color:var(--gray-500)} .pd--2col .breadcrumb a:hover{color:var(--orange)}
+    .pd-title{font-size:clamp(22px,2.6vw,30px);font-weight:800;letter-spacing:-.4px;line-height:1.18;margin-bottom:8px}
+    .pd-subtitle{font-size:15px;color:var(--gray-500);line-height:1.6;margin-bottom:18px}
+    /* ── Tab strip — always horizontal, scrolls on overflow, scrollbar hidden.
+          The .tabs-wrap parent is positioned so the edge-fade gradients can
+          anchor to it on mobile. ── */
+    .pd-main .tabs-wrap{position:relative}
+    .pd-main .tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;white-space:nowrap;gap:0;border-bottom:1px solid var(--gray-200);scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+    .pd-main .tabs::-webkit-scrollbar{display:none;width:0;height:0}
+    .pd-main .tab-btn{flex:0 0 auto;font-size:14.5px;padding:10px 2px;margin-right:20px}
+    .pd-main .tab-btn.active::after{height:3px;border-radius:3px}
+    .pd-main .attributes label{font-size:13px;font-weight:700;color:var(--gray-600)}
+    .pd-main .attributes .form-input{border-radius:12px;padding:13px 14px;font-weight:600;border:1.5px solid var(--gray-200);box-shadow:var(--shadow-sm)}
+    .pd-main .attributes .form-input:focus{border-color:var(--orange)}
+    .product-detail__pricing{align-items:baseline;flex-wrap:wrap;gap:10px;margin-top:18px}
+    .product-detail__price{font-size:clamp(30px,4vw,40px);font-weight:900;letter-spacing:-.5px;color:var(--navy);line-height:1}
+    .product-detail__mrp{font-size:18px}
+    .pd-save{display:inline-flex;align-items:center;background:#E6F9FD;color:#0B45AB;font-weight:800;font-size:12px;padding:5px 10px;border-radius:999px;letter-spacing:.3px}
+    .product-detail__tax{font-size:12.5px;width:100%;color:var(--gray-400);margin-top:2px}
+    .pd-main .btn-primary.btn-lg{margin-top:16px;padding:15px;font-size:16px;font-weight:800;border-radius:14px;background:linear-gradient(180deg,#0AC7E5,#0AA9C4);box-shadow:0 8px 22px -8px rgba(10,199,229,.7);transition:transform .15s,box-shadow .15s,filter .15s}
+    .pd-main .btn-primary.btn-lg:hover{transform:translateY(-2px);box-shadow:0 12px 26px -8px rgba(10,199,229,.8);filter:brightness(1.03)}
+    .detail-tiles{gap:12px}
+    .detail-tile{background:#fff;border:1px solid var(--gray-200);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow-sm);transition:border-color .15s,box-shadow .15s}
+    .detail-tile:hover{border-color:var(--gray-300);box-shadow:var(--shadow-md)}
+    .detail-tile strong{display:block;font-size:11px;letter-spacing:.5px;color:var(--gray-400);font-weight:700;margin-bottom:4px}
+    .detail-tile span{font-size:15px;font-weight:700;color:var(--navy)}
+    .detail-tile--full{background:linear-gradient(135deg,var(--navy-dark),var(--navy-light));border:0;border-radius:16px;padding:20px 22px;box-shadow:0 12px 30px -14px rgba(15,23,42,.6)}
+    .detail-tile--full h4{font-size:15px;margin-bottom:8px} .detail-tile--full p{font-size:13.5px}
+    .pd-includes{border-radius:16px;padding:20px 22px;box-shadow:0 10px 30px -18px rgba(15,23,42,.45)}
+    .pd-includes h4{font-size:16px}
+    .pd-includes__list{display:flex;flex-direction:column}
+    .pd-inc{display:flex;align-items:center;gap:13px;padding:9px 0}
+    .pd-inc + .pd-inc{border-top:1px solid var(--gray-100)}
+    .pd-inc__ico{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px;line-height:1}
+    .pd-inc__ico svg{width:20px;height:20px}
+    .pd-inc__txt{font-size:14.5px;font-weight:600;color:var(--gray-700)}
+    .pd-inc__ico--orange{background:#E6F9FD;color:#0AC7E5}
+    .pd-inc__ico--blue{background:#E6F9FD;color:#0AC7E5}
+    .pd-inc__ico--green{background:#E6F9FD;color:#0AC7E5}
+    .pd-inc__ico--purple{background:#E6F9FD;color:#0AC7E5}
+    .pd-inc__ico--teal{background:#E6F9FD;color:#0AC7E5}
+    .pd-inc__ico--navy{background:#E6F9FD;color:#0AC7E5}
+    .mg{border-radius:16px;box-shadow:0 14px 36px -18px rgba(15,23,42,.5)}
+    .mg__badge{box-shadow:0 4px 10px rgba(0,0,0,.2);letter-spacing:.5px}
+    .faculty-tab{border-radius:16px} .added-msg{border-radius:12px;font-size:14px;padding:12px}
+
+    /* ── Book Preview card (inside the “Book Preview” tab) ── */
+    .bp-card{display:grid;grid-template-columns:160px 1fr;gap:22px;align-items:center;padding:22px;background:linear-gradient(135deg,#FFF7ED 0%,#FFF 60%);border:1px solid var(--gray-200);border-radius:18px;box-shadow:0 14px 32px -22px rgba(15,27,51,.22)}
+    .bp-card__cover{position:relative;width:160px;height:200px;border-radius:12px;background:linear-gradient(135deg,#0AA9C4,#5AD9EF);display:flex;align-items:center;justify-content:center;color:#fff;font-size:60px;box-shadow:0 18px 32px -18px rgba(10,169,196,.55);overflow:hidden}
+    .bp-card__cover img{width:100%;height:100%;object-fit:cover;display:block}
+    .bp-card__cover-fallback{font-size:64px;line-height:1}
+    .bp-card__eyebrow{font-size:11px;font-weight:800;color:var(--orange);letter-spacing:1.5px;text-transform:uppercase}
+    .bp-card__title{font-size:22px;font-weight:800;color:var(--navy);margin:4px 0 8px;line-height:1.2}
+    .bp-card__desc{font-size:14px;color:var(--gray-600);line-height:1.55;margin:0 0 14px;max-width:62ch}
+    .bp-card__cta{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#0AC7E5,#0AA9C4);color:#fff;border:0;font-size:14.5px;font-weight:800;padding:11px 18px;border-radius:12px;cursor:pointer;box-shadow:0 12px 26px -10px rgba(10,169,196,.55);transition:transform .2s ease,filter .2s ease}
+    .bp-card__cta:hover{transform:translateY(-1px);filter:brightness(1.05)}
+    .bp-card__cta svg{width:18px;height:18px}
+    .bp-card__perks{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--gray-500)}
+    @@media(max-width:640px){
+        .bp-card{grid-template-columns:1fr;padding:18px;text-align:center}
+        .bp-card__cover{margin:0 auto}
+        .bp-card__perks{justify-content:center}
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       Book Reader modal — image-based viewer (Kindle / Flipbook style).
+       Brand: #0F2D5C navy + #0AA9C4 orange. All chrome animates in via cubic-bezier.
+       ════════════════════════════════════════════════════════════════════════ */
+    .br-modal{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center}
+    .br-modal__overlay{position:absolute;inset:0;background:rgba(15,23,42,.85);backdrop-filter:blur(5px)}
+    .br-modal__panel{position:relative;width:95vw;height:92vh;background:#0F2D5C;color:#fff;border-radius:24px;box-shadow:0 50px 110px -20px rgba(0,0,0,.75);display:flex;flex-direction:column;overflow:hidden;animation:brModalIn .35s cubic-bezier(.16,1,.3,1);user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+    @@keyframes brModalIn{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
+    /* Header — navy bar with orange brand tile + close. */
+    .br-head{display:flex;align-items:center;gap:14px;padding:14px 20px;background:linear-gradient(135deg,#0F2D5C,#163E7A);border-bottom:1px solid rgba(10,169,196,.25)}
+    .br-head__brand{flex:1;display:flex;align-items:center;gap:12px;min-width:0}
+    .br-head__ico{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#0AA9C4,#5AD9EF);display:inline-flex;align-items:center;justify-content:center;font-size:18px;flex:0 0 auto;box-shadow:0 10px 20px -8px rgba(10,169,196,.6)}
+    .br-head__title{font-size:17px;font-weight:800;letter-spacing:.2px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
+    .br-head__progress{font-size:11.5px;font-weight:600;color:rgba(255,255,255,.6);letter-spacing:.4px;margin-top:2px}
+    .br-head__close{flex:0 0 auto;width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.1);color:#fff;font-size:22px;font-weight:800;cursor:pointer;line-height:1;transition:background .15s,transform .15s}
+    .br-head__close:hover{background:rgba(255,255,255,.22);transform:scale(1.05)}
+
+    /* Progress bar — thin orange line under header that fills as the user advances. */
+    .br-progress{height:3px;background:rgba(255,255,255,.06)}
+    .br-progress__fill{height:100%;width:0;background:linear-gradient(90deg,#0AA9C4,#5AD9EF);box-shadow:0 0 12px rgba(10,169,196,.55);transition:width .3s cubic-bezier(.16,1,.3,1)}
+
+    /* ── Stage ────────────────────────────────────────────────────────────
+       The stage itself never scrolls — its INNER pad is the scrollable region.
+       That keeps the edge nav buttons anchored to the stage while a tall
+       page can still scroll vertically. ── */
+    .br-stage{position:relative;flex:1;background:#0a1936;overflow:hidden;min-height:0}
+
+    /* The pad fills the stage at fit-page; grows past it (and starts scrolling)
+       in fit-width or when zoom > 1. */
+    .br-page-pad{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;box-sizing:border-box;overflow:hidden;animation:brPageIn .3s cubic-bezier(.16,1,.3,1)}
+    .br-stage--scroll .br-page-pad{overflow:auto;align-items:flex-start}
+    @@keyframes brPageIn{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+
+    .br-page-img{display:block;background:#fff;border-radius:8px;box-shadow:0 22px 50px -18px rgba(0,0,0,.65);user-select:none;-webkit-user-drag:none;transition:max-width .25s ease,max-height .25s ease,width .25s ease,height .25s ease;cursor:zoom-in;margin:auto}
+
+    /* ── Fit Page (default desktop) — image fits ENTIRELY inside the stage. ── */
+    .br-stage--fit-page .br-page-img{
+        max-width:calc(100% * var(--br-zoom,1));
+        max-height:calc(100% * var(--br-zoom,1));
+        width:auto;
+        height:auto;
+        object-fit:contain;
+    }
+
+    /* ── Fit Width — width matches stage; height scrolls when needed. ── */
+    .br-stage--fit-width .br-page-img{
+        width:calc(100% * var(--br-zoom,1));
+        max-width:none;
+        height:auto;
+        max-height:none;
+        object-fit:contain;
+    }
+
+    /* Edge tap zones — anchored to the STAGE (not the scrolling pad). */
+    .br-edge{position:absolute;top:0;bottom:0;width:60px;background:transparent;border:0;color:rgba(255,255,255,0);font-size:38px;font-weight:800;cursor:pointer;transition:background .2s ease,color .2s ease;z-index:3;display:flex;align-items:center;justify-content:center}
+    .br-edge--left{left:0}
+    .br-edge--right{right:0}
+    .br-edge:hover{background:linear-gradient(90deg,rgba(10,169,196,.18),transparent);color:rgba(255,255,255,.7)}
+    .br-edge--right:hover{background:linear-gradient(-90deg,rgba(10,169,196,.18),transparent)}
+    .br-edge:disabled{opacity:0;pointer-events:none}
+
+    /* Toolbar. */
+    .br-toolbar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#0a1936;color:#fff;border-top:1px solid rgba(255,255,255,.06)}
+    .br-tb-group{display:flex;align-items:center;gap:6px}
+    .br-tb-spacer{flex:1}
+    .br-tb-btn{width:38px;height:38px;border-radius:11px;border:0;background:rgba(255,255,255,.08);color:#fff;font-size:18px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .15s ease,transform .15s ease,box-shadow .15s ease}
+    .br-tb-btn:hover{background:linear-gradient(135deg,#0AA9C4,#5AD9EF);transform:translateY(-1px);box-shadow:0 10px 22px -10px rgba(10,169,196,.65)}
+    .br-tb-btn:disabled{opacity:.32;cursor:not-allowed;background:rgba(255,255,255,.05);transform:none;box-shadow:none}
+    .br-tb-btn--fs svg{width:18px;height:18px}
+    .br-tb-pages{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#fff;background:rgba(255,255,255,.08);padding:8px 14px;border-radius:11px;min-width:68px;justify-content:center}
+    .br-tb-pages-sep{opacity:.45}
+    .br-tb-zoom{font-size:12.5px;font-weight:700;color:#fff;background:rgba(255,255,255,.08);padding:8px 14px;border-radius:11px;min-width:58px;text-align:center}
+
+    /* Pill buttons (Fit Page / Fit Width). Active state lights up orange. */
+    .br-tb-pill{height:38px;padding:0 14px;border-radius:11px;border:0;background:rgba(255,255,255,.08);color:#fff;font-size:12.5px;font-weight:700;letter-spacing:.2px;cursor:pointer;transition:background .15s ease,transform .15s ease,box-shadow .15s ease}
+    .br-tb-pill:hover{background:rgba(255,255,255,.16);transform:translateY(-1px)}
+    .br-tb-pill.is-active{background:linear-gradient(135deg,#0AA9C4,#5AD9EF);box-shadow:0 10px 22px -10px rgba(10,169,196,.65)}
+
+    @@media(max-width:768px){
+        .br-modal__panel{width:100vw;height:100vh;border-radius:0}
+        .br-head__title{font-size:15px;max-width:46vw}
+        .br-toolbar{padding:8px 10px;gap:6px;flex-wrap:wrap}
+        .br-tb-pages,.br-tb-zoom{padding:7px 10px;min-width:auto}
+        .br-tb-btn{width:34px;height:34px;border-radius:9px}
+        .br-tb-pill{height:34px;padding:0 10px;font-size:11.5px;border-radius:9px}
+        .br-edge{width:46px}
+    }
+
+    /* Clickable faculty card. Everything inside is wrapped in an anchor so the entire surface
+       is the click target — keyboard users land on it natively via Tab. */
+    a.faculty-tab--card{display:flex;gap:18px;align-items:flex-start;padding:18px;background:#fff;border:1px solid var(--gray-200);border-radius:16px;color:inherit;text-decoration:none;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;cursor:pointer}
+    a.faculty-tab--card:hover{transform:translateY(-2px);box-shadow:0 18px 40px -22px rgba(11,31,58,.35);border-color:rgba(10,169,196,.5);text-decoration:none;color:inherit}
+    a.faculty-tab--card:focus-visible{outline:3px solid rgba(10,169,196,.45);outline-offset:3px}
+    a.faculty-tab--card.faculty-tab--no-link{pointer-events:none;cursor:default}
+
+    .faculty-tab__avatar{flex:0 0 auto;width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--orange),#5AD9EF);color:#fff;font-weight:800;font-size:24px;display:inline-flex;align-items:center;justify-content:center;overflow:hidden}
+    .faculty-tab__avatar img{width:100%;height:100%;object-fit:cover;display:block}
+
+    a.faculty-tab--card .faculty-tab__more{display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:var(--orange);font-weight:700;font-size:13.5px;letter-spacing:.2px}
+    a.faculty-tab--card:hover .faculty-tab__more{text-decoration:underline}
+    /* buy box content */
+    .pd-buybox__title{font-size:clamp(18px,1.6vw,22px);font-weight:800;line-height:1.25;color:var(--navy);letter-spacing:-.3px;margin:0}
+    .pd-buybox__sub{font-size:13.5px;color:var(--gray-500);line-height:1.55;margin:0}
+    .pd-buybox__rating{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--gray-500)}
+    .pd-buybox__rating a{color:var(--orange);text-decoration:none;font-weight:600}
+    .pd-buybox .attributes label.form-label{font-size:12px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+    .pd-buybox .attributes .form-input{border-radius:11px;padding:11px 12px;font-weight:600;border:1.5px solid var(--gray-200)}
+    .pd-buybox .attributes .form-input:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(10,199,229,.18)}
+    .pd-buybox .product-detail__pricing{align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:4px}
+    .pd-buybox .product-detail__price{font-size:clamp(26px,3vw,32px);font-weight:900;letter-spacing:-.5px;color:var(--navy);line-height:1}
+    /* tab content: embeds (YouTube + Google Drive PDF preview) */
+    .pd-embed{position:relative;width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000;box-shadow:0 14px 36px -18px rgba(15,23,42,.5);margin-top:16px}
+    .pd-embed iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+    .pd-embed--pdf{aspect-ratio:auto;height:min(78vh,820px)}
+    .pd-embed__caption{font-size:13px;color:var(--gray-500);margin:10px 2px 0}
+    /* video testimonials grid */
+    .pd-vid-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:16px}
+    .pd-vid-tile{position:relative;display:block;border-radius:12px;overflow:hidden;aspect-ratio:16/9;background:#000;box-shadow:0 8px 22px -12px rgba(15,23,42,.45);transition:transform .2s var(--p-ease,ease),box-shadow .2s}
+    .pd-vid-tile img{width:100%;height:100%;object-fit:cover;transition:transform .35s ease}
+    .pd-vid-tile:hover{transform:translateY(-3px);box-shadow:0 14px 28px -10px rgba(15,23,42,.55)}
+    .pd-vid-tile:hover img{transform:scale(1.05)}
+    .pd-vid-tile__play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px}
+    .pd-vid-tile__play::before{content:"";position:absolute;width:52px;height:52px;border-radius:50%;background:rgba(10,199,229,.9);box-shadow:0 6px 16px rgba(0,0,0,.4)}
+    .pd-vid-tile__play{position:absolute;color:#fff;font-size:18px}
+    /* FAQ accordion */
+    .pd-faqs{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+    .pd-faq{background:#fff;border:1px solid var(--gray-200);border-radius:12px;padding:0;overflow:hidden;transition:box-shadow .2s,border-color .2s}
+    .pd-faq[open]{box-shadow:0 8px 22px -14px rgba(15,23,42,.4);border-color:var(--orange-light,#fdf0e8)}
+    .pd-faq>summary{list-style:none;cursor:pointer;padding:14px 18px;font-weight:700;color:var(--navy);font-size:14.5px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .pd-faq>summary::-webkit-details-marker{display:none}
+    .pd-faq>summary::after{content:"＋";color:var(--orange);font-weight:700;font-size:18px;transition:transform .2s}
+    .pd-faq[open]>summary::after{content:"−"}
+    .pd-faq__a{padding:0 18px 16px;font-size:14px;line-height:1.65;color:var(--gray-700);white-space:pre-wrap}
+    /* Students Also Enrolled For */
+    .pd-related{margin-top:34px;padding-top:26px;border-top:1px solid var(--gray-200)}
+    .pd-related h3{font-size:20px;font-weight:800;color:var(--navy);letter-spacing:-.3px;margin-bottom:14px}
+    .pd-related .course-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+    /* Offer / Combo Recommendations (admin-curated) */
+    .reco-section{margin-top:34px;padding-top:26px;border-top:1px solid var(--gray-200)}
+    .reco-section__title{font-size:21px;font-weight:800;color:var(--navy);letter-spacing:-.3px;margin-bottom:16px}
+    .reco-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+    @@media(max-width:1023px){.reco-grid{grid-template-columns:repeat(2,1fr)}}
+    @@media(max-width:560px){.reco-grid{grid-template-columns:1fr}}
+    .reco-card{position:relative;display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:22px;background:rgba(255,255,255,.92);backdrop-filter:saturate(180%) blur(10px);border:1px solid var(--gray-200);box-shadow:0 8px 22px -16px rgba(15,23,42,.3);isolation:isolate;overflow:hidden;transition:transform .3s cubic-bezier(.2,.8,.2,1),box-shadow .3s,border-color .3s}
+    .reco-card::before{content:"";position:absolute;inset:0;border-radius:22px;padding:1.5px;pointer-events:none;opacity:0;transition:opacity .3s;background:linear-gradient(135deg,#0AC7E5,#5AD9EF 35%,#2563eb 100%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;z-index:3}
+    .reco-card:hover{transform:translateY(-3px) scale(1.01);box-shadow:0 22px 40px -22px rgba(15,23,42,.45);border-color:transparent}
+    .reco-card:hover::before{opacity:.75}
+    .reco-card__badge{position:absolute;top:10px;right:10px;z-index:4;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:#fff;background:linear-gradient(135deg,#0AC7E5,#5AD9EF);padding:4px 10px;border-radius:999px;box-shadow:0 6px 14px -6px rgba(10,199,229,.6);animation:reco-pulse 2.6s ease-in-out infinite}
+    @@keyframes reco-pulse{0%,100%{box-shadow:0 6px 14px -6px rgba(10,199,229,.55)}50%{box-shadow:0 8px 20px -6px rgba(10,199,229,.85)}}
+    .reco-card__img-wrap{position:relative;aspect-ratio:16/10;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#082B73,#0A5BCF);display:flex;align-items:center;justify-content:center;text-decoration:none}
+    .reco-card__img-wrap img{width:100%;height:100%;object-fit:cover;transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+    .reco-card:hover .reco-card__img-wrap img{transform:scale(1.06)}
+    .reco-card__img-blank{font-size:34px;color:#fff;opacity:.55}
+    .reco-card__cat{font-size:10.5px;font-weight:800;color:var(--orange);text-transform:uppercase;letter-spacing:1.1px;line-height:1}
+    .reco-card__title{font-size:14.5px;font-weight:800;color:var(--navy);line-height:1.3;letter-spacing:-.2px;text-decoration:none;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;transition:color .2s}
+    .reco-card__title:hover{color:#2563eb}
+    .reco-card__faculty{font-size:12px;color:var(--gray-500);font-weight:500}
+    .reco-card__pricing{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:auto}
+    .reco-card__price{font-size:18px;font-weight:900;letter-spacing:-.3px;background:linear-gradient(120deg,var(--navy),#2563eb);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+    .reco-card__mrp{font-size:12.5px;color:var(--gray-400);text-decoration:line-through;font-weight:600}
+    .reco-card__disc{font-size:10.5px;font-weight:800;color:#0B45AB;background:#E6F9FD;padding:2px 8px;border-radius:999px;border:1px solid rgba(11,69,171,.28);text-transform:uppercase;letter-spacing:.4px}
+    .reco-card__actions{display:flex;gap:6px;margin-top:4px}
+    .reco-card__details{flex:1;padding:9px 12px;text-align:center;font-size:12px;font-weight:700;color:var(--navy);background:#fff;border:1px solid var(--gray-200);border-radius:10px;text-decoration:none;transition:background .2s,transform .2s}
+    .reco-card__details:hover{background:var(--gray-50);transform:translateY(-1px)}
+    .reco-card__add{flex:1;padding:9px 12px;font-size:12px;font-weight:800;letter-spacing:.3px;color:#fff;background:linear-gradient(135deg,#0AC7E5,#5AD9EF);border:0;border-radius:10px;cursor:pointer;box-shadow:0 6px 14px -6px rgba(10,199,229,.55);transition:transform .2s,box-shadow .2s,filter .2s}
+    .reco-card__add:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 22px -8px rgba(10,199,229,.7);filter:brightness(1.05)}
+    .reco-card__add:disabled{opacity:.7;cursor:wait}
+
+    /* Mobile: single column. Buybox un-sticks but does NOT take order:-1 anymore —
+       the natural DOM order is media → buybox, so the media gallery (course banner / demo)
+       now appears ABOVE the product name + buy buttons on mobile, matching the spec. */
+    @@media(max-width:900px){.pd--2col{grid-template-columns:1fr;gap:18px}.pd-buybox{position:static}.pd-embed--pdf{height:min(70vh,640px)}}
+
+    /* ═══════════════════════════════════════════════════════════════════════════════
+       📱 MOBILE-ONLY FIXES (≤768px)
+       Strict scope: nothing here affects tablet (769–1024px) or desktop (≥1025px).
+       Each block maps 1:1 to the mobile-fix spec.
+       ═══════════════════════════════════════════════════════════════════════════════ */
+    @@media(max-width:768px){
+
+      /* 0 ─ DOM-ORDER REWIRE ─ Promote .pd-media-col children to siblings of .pd-buybox so we can
+            interleave the buybox between the gallery and the tabs without touching the markup.
+            display:contents removes the wrapper from the box tree while keeping its children.
+            Then a flex column on .pd--2col + per-child `order` produces:
+              breadcrumb → 🖼 gallery → 🛒 buybox → 📑 tabs → tiles → recommendations
+            Pure-CSS, only active here at ≤768px — tablet/desktop see the original 2-col grid. */
+      .pd--2col{display:flex;flex-direction:column;gap:18px;padding:0 14px}
+      .pd-media-col{display:contents}
+      .pd-media-col>*{order:4}                       /* default: everything sits AFTER the buybox */
+      .pd-media-col>.breadcrumb{order:1}             /* breadcrumb first */
+      .pd-media-col>.mg{order:2;margin-bottom:0}     /* gallery second */
+      .pd-buybox{order:3}                            /* product information third (immediately after image) */
+      /* 1 ─ HERO IMAGE ─ 16:9, rounded, proportional play/nav controls */
+      .mg{border-radius:18px;overflow:hidden}
+      .mg__slide{aspect-ratio:16/9}
+      .mg__slide>img,.mg__thumb{width:100%;height:100%;object-fit:cover}
+      .mg__nav{width:32px;height:32px;font-size:18px}
+      .mg__play::before{width:48px;height:48px;font-size:16px}
+      .mg__dots{padding:8px 0 4px}
+      .mg__dot{width:6px;height:6px}
+      .mg__dot.active{width:18px}
+      .mg__badge{font-size:10px;padding:3px 9px;top:10px;left:10px}
+      .mg__hint{font-size:12.5px;padding:2px 12px 10px}
+
+      /* 2 ─ PRODUCT DETAILS ─ tighter spacing, responsive typography */
+      .pd--2col .breadcrumb{font-size:11.5px;margin-bottom:8px}
+      .pd-buybox{padding:16px 16px 14px;gap:11px;border-radius:16px}
+      .pd-buybox__title{font-size:19px;line-height:1.28;letter-spacing:-.2px}
+      .pd-buybox__sub{font-size:13px;line-height:1.5}
+      .pd-batch-wrap .bs-badge{font-size:11px;padding:5px 12px;gap:6px}
+      .pd-buybox__rating{font-size:12px}
+      .attributes .form-input{font-size:14px;padding:12px}
+      .attributes label{font-size:12.5px}
+
+      /* PRICE row — wraps cleanly, MRP + SAVE pill aligned with the price baseline */
+      .product-detail__pricing{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 10px;margin-top:4px}
+      .product-detail__price{font-size:24px;font-weight:800}
+      .product-detail__mrp{font-size:14px}
+      .pd-save{font-size:11px;padding:3px 9px;border-radius:999px}
+      .product-detail__tax{font-size:11.5px;width:100%}
+
+      /* 3 ─ ADD TO CART / BUY NOW ─ sticky bottom 56px equal-width buttons */
+      .pd-buybox__cta-row{position:fixed;left:0;right:0;bottom:0;z-index:50;
+        margin:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+        background:rgba(255,255,255,.97);backdrop-filter:saturate(180%) blur(10px);
+        border-top:1px solid var(--gray-200);
+        box-shadow:0 -10px 28px -10px rgba(15,23,42,.18);
+        grid-template-columns:1fr 1fr;gap:10px}
+      .pd-buybox .pd-buybox__cta-row .btn{height:56px;padding:0;font-size:15px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+      .pd-buybox__cta-row .btn svg{width:18px;height:18px}
+      /* OOS box (replaces CTA when batch is unavailable) — same sticky treatment */
+      .pd-oos-box{position:fixed;left:0;right:0;bottom:0;z-index:50;border-radius:0;
+        padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+        background:rgba(254,242,242,.97);backdrop-filter:saturate(180%) blur(10px);
+        border-top:1px solid rgba(220,38,38,.25);border-left:0;border-right:0}
+      /* Page needs bottom padding so the last content isn't hidden by the fixed bar */
+      .pd-buybox+.pd-oos-msg,.pd-buybox{margin-bottom:0}
+      body{padding-bottom:88px}
+      .added-msg{font-size:13px;padding:10px 12px;border-radius:12px}
+
+      /* 4 ─ COURSE INCLUDES ─ full-width tappable rows */
+      .pd-includes{padding:14px 14px 16px;border-radius:14px}
+      .pd-includes h4{font-size:15px;margin-bottom:10px}
+      .pd-includes__list{display:flex;flex-direction:column;gap:8px}
+      .pd-inc{padding:10px 12px;font-size:13.5px;min-height:44px}
+      .pd-inc__ico{width:30px;height:30px;font-size:16px;flex:none}
+      .pd-inc__txt{font-size:13.5px;line-height:1.4}
+
+      /* 5 ─ TABS ─ sticky strip, orange underline, edge-fade gradients hint at horizontal scroll
+            so users discover hidden tabs (e.g. Testimonials) instead of assuming there are only 3. */
+      .pd-main .tabs-wrap{position:sticky;top:0;z-index:6;background:#fff;margin:0 -14px;padding:6px 14px 0;border-bottom:1px solid var(--gray-200)}
+      .pd-main .tabs{position:static;background:transparent;margin:0;padding:0;border:0;overflow-x:auto;overflow-y:hidden;white-space:nowrap;display:flex;flex-wrap:nowrap;gap:0;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+      .pd-main .tabs::-webkit-scrollbar{display:none;width:0;height:0}
+      /* Right-edge fade — always visible; signals "more tabs to the right". */
+      .pd-main .tabs-wrap::after{content:"";position:absolute;top:6px;right:0;bottom:0;width:36px;pointer-events:none;background:linear-gradient(to right,rgba(255,255,255,0),#fff 70%);z-index:2}
+      /* Left-edge fade — symmetrical hint for when the user has scrolled. */
+      .pd-main .tabs-wrap::before{content:"";position:absolute;top:6px;left:0;bottom:0;width:24px;pointer-events:none;background:linear-gradient(to left,rgba(255,255,255,0),#fff 80%);z-index:2}
+      .pd-main .tab-btn{font-size:14px;padding:11px 2px;margin-right:22px;flex:0 0 auto}
+      .pd-main .tab-btn.active{color:var(--orange)}
+      .pd-main .tab-btn.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;border-radius:3px;background:var(--orange)}
+      .pd-main .tab-btn{position:relative}
+      /* Make sure the last tab can fully scroll into the centred view despite the right-fade. */
+      .pd-main .tab-btn:last-child{margin-right:38px}
+      .pd-prose{font-size:14px;line-height:1.65;margin-top:14px}
+
+      /* 6 ─ COURSE INFO CARDS ─ 2×2 grid on mobile.
+            Applicable Attempt · Total Lectures
+            Total Hours        · Books
+            The "Additional Details" tile (.detail-tile--full) spans both columns so it
+            stays one wide card. Equal heights via grid auto-rows + height:100% per cell.
+            min-width:0 + overflow-wrap:anywhere keep long values from blowing out the cell. */
+      .detail-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px;align-items:stretch}
+      .detail-tile{padding:14px 16px;border-radius:14px;min-width:0;height:100%;display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere}
+      .detail-tile strong{font-size:11.5px}
+      .detail-tile span{font-size:14px;line-height:1.35}
+      .detail-tile--full{grid-column:1 / -1}     /* Additional Details spans both columns */
+      .detail-tile--full h4{font-size:15px}
+      .detail-tile--full p{font-size:13.5px;line-height:1.55}
+      .contact-line{font-size:12.5px;margin-top:8px}
+      /* Estimated Delivery card stacks its 2 columns */
+      .ed-card{padding:16px;border-radius:14px;margin-top:16px}
+      .ed-card__grid{grid-template-columns:1fr;gap:10px}
+      .ed-row{padding:12px 14px;border-radius:12px;gap:10px}
+      .ed-row__ico{width:34px;height:34px;font-size:16px}
+      .ed-row__label{font-size:11px}
+      .ed-row__value{font-size:13.5px}
+
+      /* 7 ─ STUDENTS ALSO ADDED ─ horizontal swipe carousel with peek of next card */
+      .reco-section{margin-top:18px;padding:0 14px}
+      .reco-section__title{font-size:16px;margin-bottom:10px;padding:0}
+      .reco-grid{display:grid;grid-template-columns:none;grid-auto-flow:column;
+        grid-auto-columns:calc(85% - 6px);
+        gap:12px;
+        overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;
+        padding:4px 14% 12px 0;margin:0 -14px;padding-left:14px;
+        scrollbar-width:none}
+      .reco-grid::-webkit-scrollbar{display:none}
+      .reco-card{scroll-snap-align:start;padding:12px;border-radius:18px}
+      .reco-card__img-wrap{aspect-ratio:16/9;border-radius:12px;overflow:hidden}
+      .reco-card__title{font-size:13.5px;line-height:1.35}
+      .reco-card__pricing{flex-wrap:wrap;gap:6px}
+      .reco-card__price{font-size:15px}
+      .reco-card__mrp{font-size:12px}
+      .reco-card__disc{font-size:10.5px;padding:2px 7px}
+      .reco-card__actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+      .reco-card__details,.reco-card__quick-add{padding:9px 0;font-size:12.5px;border-radius:10px;justify-content:center;text-align:center;font-weight:700}
+
+      /* 8 ─ FLOATING BUTTONS ─ smaller, raised above sticky CTA */
+      .floating-btns{bottom:calc(96px + env(safe-area-inset-bottom));right:10px;gap:8px;padding:0}
+      .float-btn{width:42px;height:42px;font-size:17px}
+      .float-btn svg{width:18px;height:18px}
+
+      /* 9 ─ HEADER (page-level safety; layout-level rules are already responsive) */
+      .pd--2col{padding:0 14px}
+
+      /* 10 ─ GLOBAL MOBILE SAFETY */
+      .pd-vid-grid{grid-template-columns:1fr 1fr;gap:10px}
+      .pd-faqs summary{font-size:14px;padding:12px 14px}
+      .pd-faqs p{font-size:13.5px;padding:0 14px 12px}
+      /* Embed iframes (lectures preview / book preview) keep their aspect */
+      .pd-embed{border-radius:14px}
+      .pd-embed--pdf{height:min(60vh,520px)}
+    }
+
+    /* ─── Tiny-phone fallback (≤360 px) ─── Two 50%-cards next to each other still
+       work down to ~370 px, but on 360-class devices the cards start looking cramped.
+       Drop back to one card per row so labels don't wrap into two lines awkwardly.
+       The "Additional Details" full-tile is already 100% so no rule needed for it. */
+    @@media(max-width:360px){
+      .detail-tiles{grid-template-columns:1fr;gap:10px}
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       Testimonials tab — reel cards + YouTube popup.
+       Navy #0F2D5C + orange #0AA9C4. Lazy-loaded thumbnails.
+       ════════════════════════════════════════════════════════════════════════ */
+    .ts-section{margin:8px 0 20px}
+    .ts-section__head{margin:0 0 18px}
+    .ts-section__title{font-size:24px;font-weight:800;color:var(--navy,#0F2D5C);letter-spacing:-.2px;margin:0}
+    .ts-section__sub{font-size:14px;color:var(--gray-500);margin:6px 0 0;line-height:1.55}
+
+    .ts-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    @@media(max-width:980px){ .ts-grid{grid-template-columns:repeat(2,1fr)} }
+    @@media(max-width:640px){ .ts-grid{grid-template-columns:1fr} }
+
+    .ts-card{display:flex;flex-direction:column;background:#fff;border:1px solid var(--gray-200);border-radius:20px;overflow:hidden;cursor:pointer;text-align:left;padding:0;box-shadow:0 14px 32px -22px rgba(15,27,51,.22);transition:transform .25s cubic-bezier(.16,1,.3,1),box-shadow .25s ease,border-color .2s ease}
+    .ts-card:hover{transform:translateY(-4px);box-shadow:0 26px 50px -22px rgba(15,27,51,.35);border-color:rgba(10,169,196,.4)}
+    .ts-card:focus-visible{outline:3px solid rgba(10,169,196,.45);outline-offset:3px}
+
+    .ts-card__thumb{position:relative;aspect-ratio:16/9;overflow:hidden;background:#0F2D5C}
+    .ts-card--reel .ts-card__thumb{aspect-ratio:9/16}
+    .ts-card__thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .35s ease}
+    .ts-card:hover .ts-card__thumb img{transform:scale(1.04)}
+
+    .ts-card__play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,#0AA9C4,#5AD9EF);color:#fff;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 18px 36px -10px rgba(10,169,196,.7);transition:transform .25s ease}
+    .ts-card__play svg{width:30px;height:30px;margin-left:3px}
+    .ts-card:hover .ts-card__play{transform:translate(-50%,-50%) scale(1.08)}
+
+    .ts-card__badge{position:absolute;top:10px;left:10px;font-size:10.5px;font-weight:800;letter-spacing:.6px;padding:5px 10px;border-radius:999px;text-transform:uppercase;background:rgba(0,0,0,.55);color:#fff;backdrop-filter:blur(4px)}
+    .ts-card__badge--feat{background:linear-gradient(135deg,#0AA9C4,#5AD9EF);color:#fff}
+    .ts-card__badge--shorts{top:auto;left:auto;top:10px;right:10px;background:#FF0050;color:#fff}
+
+    .ts-card__body{padding:14px 16px 16px}
+    .ts-card__name{font-size:15px;font-weight:800;color:var(--navy,#0F2D5C);line-height:1.3}
+    .ts-card__course{font-size:12.5px;font-weight:600;color:var(--orange,#0AA9C4);margin-top:4px;letter-spacing:.2px}
+
+    /* ── Player modal ────────────────────────────────────────────────────── */
+    .ts-modal{position:fixed;inset:0;z-index:210;display:flex;align-items:center;justify-content:center}
+    .ts-modal__overlay{position:absolute;inset:0;background:rgba(15,23,42,.85);backdrop-filter:blur(5px)}
+    .ts-modal__panel{position:relative;width:90vw;height:90vh;max-width:1280px;background:#0F2D5C;color:#fff;border-radius:22px;box-shadow:0 50px 110px -20px rgba(0,0,0,.75);display:flex;flex-direction:column;overflow:hidden;animation:tsIn .3s cubic-bezier(.16,1,.3,1)}
+    .ts-modal__panel--reel{max-width:480px}
+    @@keyframes tsIn{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+
+    .ts-modal__head{display:flex;align-items:center;gap:12px;padding:14px 20px;background:linear-gradient(135deg,#0F2D5C,#163E7A);border-bottom:1px solid rgba(10,169,196,.25)}
+    .ts-modal__meta{flex:1;min-width:0}
+    .ts-modal__name{font-size:17px;font-weight:800;letter-spacing:.2px}
+    .ts-modal__course{font-size:12.5px;color:rgba(255,255,255,.6);margin-top:2px}
+    .ts-modal__counter{font-size:12px;font-weight:700;color:rgba(255,255,255,.7);background:rgba(255,255,255,.08);padding:6px 12px;border-radius:999px}
+    .ts-modal__close{flex:0 0 auto;width:38px;height:38px;border-radius:50%;border:0;background:rgba(255,255,255,.1);color:#fff;font-size:22px;font-weight:800;cursor:pointer;line-height:1;transition:background .15s,transform .15s}
+    .ts-modal__close:hover{background:rgba(255,255,255,.22);transform:scale(1.05)}
+
+    .ts-modal__stage{flex:1;position:relative;background:#000;display:flex;align-items:center;justify-content:center;min-height:0}
+
+    .ts-modal__player{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+    .ts-modal__player iframe{width:100%;height:100%;border:0;display:block}
+    .ts-modal__player--reel{aspect-ratio:9/16;height:100%;width:auto;max-width:100%}
+    .ts-modal__player--reel iframe{width:100%;height:100%}
+
+    .ts-modal__nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;border:0;background:rgba(255,255,255,.12);color:#fff;font-size:24px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);transition:background .15s,transform .15s;z-index:5}
+    .ts-modal__nav:hover{background:linear-gradient(135deg,#0AA9C4,#5AD9EF);transform:translateY(-50%) scale(1.05)}
+    .ts-modal__nav:disabled{opacity:.25;cursor:not-allowed}
+    .ts-modal__nav--prev{left:18px}
+    .ts-modal__nav--next{right:18px}
+
+    @@media(max-width:768px){
+        .ts-modal__panel{width:100vw;height:100vh;border-radius:0}
+        .ts-modal__nav{width:42px;height:42px;font-size:22px}
+        .ts-modal__nav--prev{left:8px}
+        .ts-modal__nav--next{right:8px}
+    }
+</style>
+
+@* Delegated tab-scroll helper. Self-installs once; on every click inside the
+   tabs strip it scrolls the just-clicked button into the centre. Also runs once
+   on load to center the currently-active tab so a "Testimonials" deep link
+   (or any tab beyond the visible viewport) is visible from the start. *@
+<script suppress-error="BL9992">
+    (function () {
+        if (window.__hjcTabsInstalled) return;
+        window.__hjcTabsInstalled = true;
+        function center(el) { try { el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } catch (_) { } }
+        document.addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest ? e.target.closest('.tabs .tab-btn') : null;
+            if (btn) center(btn);
+        }, true);
+        function centerActiveOnce() {
+            var active = document.querySelector('.tabs .tab-btn.active');
+            if (active) center(active);
+        }
+        // Run shortly after first paint to catch the initial Blazor render.
+        setTimeout(centerActiveOnce, 200);
+        document.addEventListener('DOMContentLoaded', centerActiveOnce);
+    })();
+</script>
+
+@if (loading)
+{
+    <div style="text-align:center;padding:80px">Loading…</div>
+}
+else if (product == null)
+{
+    <div style="text-align:center;padding:80px 20px">
+        <h1>Course Not Found</h1>
+        <a href="/courses/ca-foundation" class="btn btn-primary" style="margin-top:16px">Browse Courses</a>
+    </div>
+}
+else
+{
+    <SeoHead Seo="@seo" />
+    <div class="pd pd--2col">
+        <div class="pd-media-col">
+            <div class="breadcrumb">
+                <a href="/">Home</a><span>›</span>
+                <a href="/courses/@LevelSlug">@LevelLabel</a><span>›</span>
+                <span class="current">@(product.Title.Length > 36 ? product.Title[..36] + "…" : product.Title)</span>
+            </div>
+
+            @* ── media gallery (compact, ~480px max) ── *@
+            @{ var slideCount = 1 + product.Videos.Count(v => YtId(v.YoutubeUrl) != null); }
+            <div class="mg" @ref="galleryEl">
+                <div class="mg__viewport">
+                    <div class="mg__track">
+                        <div class="mg__slide">
+                            @{ var primary = product.Images.FirstOrDefault(i => i.IsPrimary) ?? product.Images.FirstOrDefault(); }
+                            @if (primary != null) { <img src="@primary.ImageUrl" alt="@(string.IsNullOrEmpty(primary.AltText) ? product.Title : primary.AltText)" /> }
+                            else { <span class="mg__emoji">@LevelEmoji</span> }
+                            @if (!string.IsNullOrEmpty(product.Badge)) { <span class="mg__badge">@product.Badge</span> }
+                        </div>
+                        @foreach (var v in product.Videos)
+                        {
+                            var vid = YtId(v.YoutubeUrl);
+                            @if (vid != null)
+                            {
+                                <div class="mg__slide mg__slide--video" data-embed="@YtEmbed(vid)" title="@(v.Title ?? "Play demo lecture")">
+                                    <img class="mg__thumb" src="@YtThumb(vid)" alt="@(v.Title ?? "Demo lecture")" />
+                                    <span class="mg__play"></span>
+                                </div>
+                            }
+                        }
+                    </div>
+                    @if (slideCount > 1)
+                    {
+                        <button class="mg__nav mg__nav--prev" type="button" aria-label="Previous">‹</button>
+                        <button class="mg__nav mg__nav--next" type="button" aria-label="Next">›</button>
+                    }
+                </div>
+                @if (slideCount > 1)
+                {
+                    <div class="mg__dots">
+                        @for (var i = 0; i < slideCount; i++) { <button class="mg__dot @(i == 0 ? "active" : "")" type="button"></button> }
+                    </div>
+                    <div class="mg__hint">Use arrows / swipe for Demo Lectures →</div>
+                }
+            </div>
+
+            @* ── Tabs — horizontally scrollable with edge-fade indicators on mobile.
+                  A delegated click listener (see <script> below) centres the active
+                  tab; Blazor's @onclick updates state. ── *@
+            <div class="tabs-wrap" id="hjcTabsWrap">
+                <div class="tabs" id="hjcTabs">
+                    <button class="tab-btn @(tab == "overview" ? "active" : "")" @onclick='() => tab = "overview"'>Overview</button>
+                    <button class="tab-btn @(tab == "faculty" ? "active" : "")"  @onclick='() => tab = "faculty"'>About The Faculty</button>
+                    @if (HasBookPreview)   { <button class="tab-btn @(tab == "book" ? "active" : "")"         @onclick='() => tab = "book"'>Book Preview</button> }
+                    @if (HasTestimonials)  { <button class="tab-btn @(tab == "testimonials" ? "active" : "")" @onclick='() => tab = "testimonials"'>Testimonials</button> }
+                    @if (HasLectures)      { <button class="tab-btn @(tab == "lectures" ? "active" : "")"     @onclick='() => tab = "lectures"'>About The Lectures</button> }
+                    @if (HasFaqs)          { <button class="tab-btn @(tab == "faqs" ? "active" : "")"         @onclick='() => tab = "faqs"'>FAQs</button> }
+                </div>
+            </div>
+
+            @if (tab == "overview")
+            {
+                @if (!string.IsNullOrEmpty(product.FullDesc))
+                {
+                    <div class="pd-prose" style="font-size:14.5px;line-height:1.7;color:var(--gray-700);margin-top:16px">@((MarkupString)product.FullDesc)</div>
+                }
+                @if (product.Specifications.Any())
+                {
+                    <div class="specs">
+                        <h4>Specifications</h4>
+                        <table class="specs-table">
+                            @foreach (var s in product.Specifications)
+                            {
+                                <tr><td class="specs-table__name">@(string.IsNullOrWhiteSpace(s.GroupName) ? s.AttributeName : $"{s.GroupName} · {s.AttributeName}")</td><td>@s.OptionName</td></tr>
+                            }
+                        </table>
+                    </div>
+                }
+                <div class="detail-tiles" style="margin-top:20px">
+                    @if (product.ApplicableAttempts?.Any() == true) { <div class="detail-tile"><strong>Applicable Attempt</strong><span>@string.Join(" · ", product.ApplicableAttempts)</span></div> }
+                    @if (!string.IsNullOrEmpty(product.TotalLectures)) { <div class="detail-tile"><strong>Total Lectures</strong><span>@product.TotalLectures</span></div> }
+                    @if (!string.IsNullOrEmpty(product.TotalHours)) { <div class="detail-tile"><strong>Total Hours</strong><span>@product.TotalHours</span></div> }
+                    @if (!string.IsNullOrEmpty(product.BooksInfo)) { <div class="detail-tile"><strong>Books</strong><span>@product.BooksInfo</span></div> }
+                    @if (!string.IsNullOrEmpty(product.Views)) { <div class="detail-tile"><strong>Views</strong><span>@product.Views</span></div> }
+                    @if (!string.IsNullOrEmpty(product.Validity)) { <div class="detail-tile"><strong>Validity</strong><span>@product.Validity</span></div> }
+                    @if (!string.IsNullOrEmpty(product.Language)) { <div class="detail-tile"><strong>Language</strong><span>@product.Language</span></div> }
+                    @if (!string.IsNullOrEmpty(product.CourseSchedule)) { <div class="detail-tile"><strong>Course Schedule</strong><span>@product.CourseSchedule</span></div> }
+                </div>
+
+                @* ── 📦 Estimated Delivery Information — sits BEFORE Additional Details. DB-driven copy
+                     from Product.LectureAccessTiming / NotesDispatchTimeline / EstimatedDeliveryMessage.
+                     Single source of truth — no hardcoded strings. ── *@
+                <section class="ed-card" aria-label="Estimated Delivery">
+                    <header class="ed-card__head">
+                        <span class="ed-card__rocket">🚀</span>
+                        <div>
+                            <h3 class="ed-card__title">Estimated Delivery</h3>
+                            <p class="ed-card__sub">Activation and dispatch timelines for this product</p>
+                        </div>
+                    </header>
+                    <div class="ed-card__grid">
+                        <div class="ed-row ed-row--orange">
+                            <span class="ed-row__ico">⚡</span>
+                            <div class="ed-row__body">
+                                <span class="ed-row__label">Lecture Access</span>
+                                <strong class="ed-row__value">@product.LectureAccessTiming</strong>
+                            </div>
+                        </div>
+                        <div class="ed-row ed-row--blue">
+                            <span class="ed-row__ico">📦</span>
+                            <div class="ed-row__body">
+                                <span class="ed-row__label">Notes Dispatch</span>
+                                <strong class="ed-row__value">@product.NotesDispatchTimeline</strong>
+                            </div>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(product.EstimatedDeliveryMessage))
+                    {
+                        <div class="ed-card__note">
+                            <span class="ed-card__note-ico">ℹ</span>
+                            <div>
+                                <span class="ed-card__note-title">Additional Information</span>
+                                <p class="ed-card__note-body">@((MarkupString)product.EstimatedDeliveryMessage.Replace("\n", "<br />"))</p>
+                            </div>
+                        </div>
+                    }
+                </section>
+
+                @if (!string.IsNullOrEmpty(product.AdditionalDetails))
+                {
+                    <div class="detail-tiles" style="margin-top:18px">
+                        <div class="detail-tile detail-tile--full">
+                            <h4>Additional Details</h4>
+                            <p>@product.AdditionalDetails</p>
+                            <div class="contact-line">Any doubt or query? Call us!<br />📞 9975242929 / 9766582929 / 9766182929</div>
+                        </div>
+                    </div>
+                }
+            }
+            else if (tab == "lectures" && HasLectures)
+            {
+                <div class="pd-embed">
+                    <iframe src="@YtEmbed(YtId(product.LecturesVideoUrl!)!)" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+                </div>
+                <p class="pd-embed__caption">Faculty walkthrough explaining the complete batch — modes, validity, books and what to expect.</p>
+            }
+            else if (tab == "book" && HasBookPreview)
+            {
+                @* ── Book Preview card — invites the visitor to open the modal viewer. The actual PDF
+                      is never linked here; the modal requests a fresh signed token on every open. ── *@
+                <div class="bp-card">
+                    <div class="bp-card__cover">
+                        @if (!string.IsNullOrWhiteSpace(bookPreview?.CoverImageUrl))
+                        {
+                            <img src="@bookPreview.CoverImageUrl" alt="@bookPreview.Title" />
+                        }
+                        else
+                        {
+                            <span class="bp-card__cover-fallback" aria-hidden="true">📚</span>
+                        }
+                    </div>
+                    <div class="bp-card__body">
+                        <div class="bp-card__eyebrow">Book Preview</div>
+                        <h3 class="bp-card__title">@(bookPreview?.Title ?? "Sample Chapter")</h3>
+                        <p class="bp-card__desc">
+                            @(string.IsNullOrWhiteSpace(bookPreview?.Description)
+                                ? "See the actual RioCommerce study material before you enrol — explore a sample chapter directly in the browser."
+                                : bookPreview!.Description)
+                        </p>
+                        <button class="bp-card__cta" type="button" @onclick="OpenBookPreviewAsync">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 7h6a4 4 0 0 1 4 4v10a3 3 0 0 0-3-3H2Z"/><path d="M22 7h-6a4 4 0 0 0-4 4v10a3 3 0 0 1 3-3h7Z"/></svg>
+                            Read Sample Chapter
+                            <span aria-hidden="true">→</span>
+                        </button>
+                        <div class="bp-card__perks">
+                            <span>🔒 Secure Preview</span>
+                            <span>👁 Preview Only</span>
+                            <span>⚡ Instant Open</span>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (tab == "testimonials" && HasTestimonials)
+            {
+                @* ── Minimal testimonials reel grid: just the thumbnail + a play icon.
+                      `onerror` swaps to hqdefault.jpg when maxresdefault isn't available. ── *@
+                <section class="ts-section">
+                    <header class="ts-section__head">
+                        <h2 class="ts-section__title">🎥 Student Success Stories</h2>
+                        <p class="ts-section__sub">Watch real experiences from our students.</p>
+                    </header>
+                    <div class="ts-grid">
+                        @for (var i = 0; i < product.Testimonials.Count; i++)
+                        {
+                            var idx = i;
+                            var t = product.Testimonials[idx];
+                            <button type="button" class="ts-card @(t.IsShorts ? "ts-card--reel" : "")" @onclick="() => OpenTestimonial(idx)" title="Watch testimonial">
+                                <div class="ts-card__thumb">
+                                    <img src="@t.ThumbnailUrl"
+                                         data-fallback="@t.FallbackThumbnailUrl"
+                                         onerror="if(!this.dataset.fbApplied){this.dataset.fbApplied='1';this.src=this.dataset.fallback;}"
+                                         alt="Student testimonial"
+                                         loading="lazy" />
+                                    <span class="ts-card__play" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="9 7 9 17 18 12"/></svg>
+                                    </span>
+                                </div>
+                            </button>
+                        }
+                    </div>
+                </section>
+            }
+            else if (tab == "faqs" && HasFaqs)
+            {
+                <div class="pd-faqs">
+                    @foreach (var f in product.Faqs)
+                    {
+                        <details class="pd-faq">
+                            <summary>@f.Question</summary>
+                            <div class="pd-faq__a">@f.Answer</div>
+                        </details>
+                    }
+                </div>
+            }
+            else if (tab == "faculty")
+            {
+                @* ── Entire faculty card is clickable → /faculty/{Code}. ShortDescription drives the
+                      one-liner; when blank, falls back to the first 250 chars of the full Bio so the
+                      card never looks empty for legacy data. Stats use real faculty KPIs when set. ── *@
+                var facultyHref = string.IsNullOrWhiteSpace(product.FacultyCode) ? null : $"/faculty/{product.FacultyCode}";
+                var facultyShortLine = RioCommerce.Core.DTOs.Faculty.FacultyShortDescription.Resolve(product.FacultyShortDescription, product.FacultyBio)
+                                       ?? "Experienced CA faculty at RioCommerce, known for a conceptual, student-friendly teaching style.";
+                <a class="faculty-tab faculty-tab--card @(facultyHref == null ? "faculty-tab--no-link" : "")"
+                   href="@facultyHref"
+                   title="@(facultyHref == null ? null : $"View full profile of {product.FacultyName}")">
+                    <div class="faculty-tab__avatar">
+                        @if (!string.IsNullOrWhiteSpace(product.FacultyPhotoUrl))
+                        {
+                            <img src="@product.FacultyPhotoUrl" alt="@product.FacultyName" loading="lazy" />
+                        }
+                        else
+                        {
+                            @FacultyInitials
+                        }
+                    </div>
+                    <div>
+                        <div class="faculty-tab__name">@product.FacultyName</div>
+                        <div class="faculty-tab__role">@(string.IsNullOrWhiteSpace(product.FacultyDesignation) ? "RioCommerce Faculty" : product.FacultyDesignation)</div>
+                        <p class="faculty-tab__bio">@facultyShortLine</p>
+                        <div class="faculty-tab__stats">
+                            @if (!string.IsNullOrWhiteSpace(product.FacultyStudentsTaught))
+                            {
+                                <span><strong>@product.FacultyStudentsTaught</strong> Students</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(product.FacultyYearsOfExperience))
+                            {
+                                <span><strong>@product.FacultyYearsOfExperience</strong> Experience</span>
+                            }
+                            @if (product.RatingCount > 0)
+                            {
+                                <span><strong>@product.AvgRating.ToString("0.0")</strong> Rating</span>
+                            }
+                        </div>
+                        @if (facultyHref != null)
+                        {
+                            <span class="faculty-tab__more">Read Full Faculty Profile <span aria-hidden="true">→</span></span>
+                        }
+                    </div>
+                </a>
+            }
+            @* ── Offer / Combo Recommendations (admin-curated) ── *@
+            @if (recommendations is { Count: > 0 })
+            {
+                <section class="reco-section">
+                    <h3 class="reco-section__title">
+                        🔥 @(recommendations[0].CustomTitle ?? RecoSectionLabel(recommendations[0].Type))
+                    </h3>
+                    <div class="reco-grid">
+                        @foreach (var rc in recommendations)
+                        {
+                            <article class="reco-card">
+                                <div class="bs-badge bs-badge--overlay bs-badge--@PdBatchClass(rc.BatchStatus)"><span class="bs-badge__dot"></span>@rc.BatchStatusText</div>
+                                @if (!string.IsNullOrEmpty(rc.BadgeText))
+                                {
+                                    <span class="reco-card__badge" style="@(string.IsNullOrEmpty(rc.BadgeColor) ? "" : $"background:{rc.BadgeColor}")">@rc.BadgeText</span>
+                                }
+                                <a href="/@rc.Slug" class="reco-card__img-wrap">
+                                    @if (!string.IsNullOrEmpty(rc.ImageUrl)) { <img src="@rc.ImageUrl" alt="@rc.Title" loading="lazy" /> }
+                                    else { <div class="reco-card__img-blank">🎓</div> }
+                                </a>
+                                @if (!string.IsNullOrEmpty(rc.CategoryName)) { <span class="reco-card__cat">@rc.CategoryName</span> }
+                                <a href="/@rc.Slug" class="reco-card__title">@rc.Title</a>
+                                @if (!string.IsNullOrEmpty(rc.FacultyName)) { <div class="reco-card__faculty">by @rc.FacultyName</div> }
+                                <div class="reco-card__pricing">
+                                    <span class="reco-card__price">₹@rc.Price.ToString("N0")</span>
+                                    @if (rc.Mrp.HasValue && rc.Mrp.Value > rc.Price)
+                                    { <span class="reco-card__mrp">₹@rc.Mrp.Value.ToString("N0")</span> }
+                                    @if (rc.DiscountPercent > 0)
+                                    { <span class="reco-card__disc">@rc.DiscountPercent% OFF</span> }
+                                </div>
+                                <div class="reco-card__actions">
+                                    <a href="/@rc.Slug" class="reco-card__details">View details</a>
+                                    <button type="button" class="reco-card__add"
+                                            disabled="@(recoAddingIds.Contains(rc.Id))"
+                                            @onclick="() => AddToCartReco(rc.Id)">
+                                        @(recoAddingIds.Contains(rc.Id) ? "Adding…" : "🛒 Quick Add")
+                                    </button>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                </section>
+            }
+
+            @* ── Students Also Enrolled For ── *@
+            @if (product.RelatedProducts.Any())
+            {
+                <section class="pd-related">
+                    <h3>Students Also Enrolled For</h3>
+                    <div class="course-grid">
+                        @foreach (var rp in product.RelatedProducts) { <CourseCard Product="rp" /> }
+                    </div>
+                </section>
+            }
+        </div>@* /pd-media-col *@
+
+        <aside class="pd-buybox">
+            <h1 class="pd-buybox__title">@product.Title</h1>
+            @* Batch Status — single source of truth: reads Product.BatchStatus + Product.BatchStatusText.
+               No hardcoded labels here. Uses the shared .bs-badge palette from home-premium.css. *@
+            <div class="pd-batch-wrap">
+                <div class="bs-badge bs-badge--@PdBatchClass(product.BatchStatus)">
+                    <span class="bs-badge__dot"></span>@product.BatchStatusText
+                </div>
+            </div>
+            @if (!string.IsNullOrEmpty(product.ShortDesc)) { <p class="pd-buybox__sub">@product.ShortDesc</p> }
+            @if (reviews is { Summary.RatingCount: > 0 })
+            {
+                <div class="pd-buybox__rating">
+                    <span class="stars stars--sm">@Stars(reviews.Summary.AvgRating)</span>
+                    <strong>@reviews.Summary.AvgRating.ToString("0.0")</strong>
+                    <span style="color:var(--gray-500);font-size:13px">(@reviews.Summary.RatingCount review@(reviews.Summary.RatingCount == 1 ? "" : "s"))</span>
+                </div>
+            }
+
+            @if (product.Modes.Any())
+            {
+                <div class="attributes">
+                    <label class="form-label">Mode Of Lectures</label>
+                    <select class="form-input" @bind="selectedModeId">
+                        @foreach (var m in product.Modes)
+                        {
+                            // Show the effective price = base + this mode's add-on. Matches what
+                            // Checkout charges. When special is active, the base is SpecialPrice.
+                            var _base = product.IsSpecialPriceActive ? product.SpecialPrice!.Value : product.SellingPrice;
+                            var _effective = _base + m.Price;
+                            <option value="@m.Id">@m.ModeName — ₹@_effective.ToString("N0")</option>
+                        }
+                    </select>
+                </div>
+            }
+
+            @foreach (var g in product.OptionGroups.Where(g => g.Options.Count > 0))
+            {
+                <div class="attributes">
+                    <label class="form-label">@g.Name</label>
+                    <select class="form-input" value="@GetSelectedOption(g.Id)"
+                            @onchange="e => SetSelectedOption(g.Id, e.Value?.ToString())">
+                        <option value="">— Select —</option>
+                        @foreach (var o in g.Options)
+                        {
+                            <option value="@o.Id">@o.Name@(o.PriceAddOn > 0 ? $" (+₹{o.PriceAddOn:N0})" : "")</option>
+                        }
+                    </select>
+                </div>
+            }
+
+            @foreach (var a in product.Attributes)
+            {
+                <div class="attributes">
+                    <label class="form-label">@(string.IsNullOrWhiteSpace(a.TextPrompt) ? a.AttributeName : a.TextPrompt) @if (a.IsRequired) { <span style="color:var(--error)">*</span> }</label>
+                    @switch (a.ControlType)
+                    {
+                        case "DropdownList":
+                            <select class="form-input" value="@attrSingle.GetValueOrDefault(a.MappingId)" @onchange="e => SetSingle(a.MappingId, e)">
+                                @foreach (var v in a.Values) { <option value="@v.Id" selected="@(attrSingle.GetValueOrDefault(a.MappingId) == v.Id)">@v.Name@PriceTag(v)</option> }
+                            </select>
+                            break;
+                        case "RadioList":
+                            <div class="attr-options">
+                                @foreach (var v in a.Values)
+                                {
+                                    <label class="attr-option"><input type="radio" name="attr-@a.MappingId" checked="@(attrSingle.GetValueOrDefault(a.MappingId) == v.Id)" @onchange="() => attrSingle[a.MappingId] = v.Id" /> @v.Name@PriceTag(v)</label>
+                                }
+                            </div>
+                            break;
+                        case "Checkboxes":
+                            <div class="attr-options">
+                                @foreach (var v in a.Values)
+                                {
+                                    <label class="attr-option"><input type="checkbox" checked="@(attrMulti.GetValueOrDefault(a.MappingId)?.Contains(v.Id) == true)" @onchange="e => ToggleMulti(a.MappingId, v.Id, e)" /> @v.Name@PriceTag(v)</label>
+                                }
+                            </div>
+                            break;
+                        case "MultilineTextBox":
+                            <textarea class="form-input" rows="2" value="@attrText.GetValueOrDefault(a.MappingId)" @onchange="e => attrText[a.MappingId] = e.Value?.ToString()"></textarea>
+                            break;
+                        case "Datepicker":
+                            <input type="date" class="form-input" value="@attrText.GetValueOrDefault(a.MappingId)" @onchange="e => attrText[a.MappingId] = e.Value?.ToString()" />
+                            break;
+                        default:
+                            <input class="form-input" value="@attrText.GetValueOrDefault(a.MappingId)" @onchange="e => attrText[a.MappingId] = e.Value?.ToString()" />
+                            break;
+                    }
+                </div>
+            }
+
+            <div class="product-detail__pricing">
+                <span class="product-detail__price">₹@EffectivePrice.ToString("N0")</span>
+                @if (DetailStrikethrough > EffectivePrice)
+                {
+                    <span class="product-detail__mrp">₹@DetailStrikethrough.ToString("N0")</span>
+                    @if (SavePct > 0) { <span class="pd-save">SAVE @SavePct%</span> }
+                }
+                <span class="product-detail__tax">Incl. @product.GstRate.ToString("0")% GST</span>
+            </div>
+
+            @if (attrError != null) { <div class="inline-alert inline-alert--err" style="margin-top:6px">@attrError</div> }
+            @{
+                // Spec #10: when BatchStatus == OutOfStock, hide Add To Cart + Buy Now entirely
+                // and replace with a red "Out Of Stock" badge + Notify Me button.
+                var oos = product.BatchStatus == BatchStatus.OutOfStock;
+            }
+            @if (isFranchiseUser)
+            {
+                <div class="pd-franchise-box">
+                    <div class="pd-franchise-box__title">🏢 Franchise account</div>
+                    <p class="pd-franchise-box__text">
+                        Franchise orders are placed through the Franchise Portal at your franchise pricing —
+                        not the regular customer cart. This course (with the mode and options selected above)
+                        will be added to your order automatically.
+                    </p>
+                    <a class="btn btn-primary" href="@CurrentFranchiseOrderUrl">Go To Franchise Portal → Place Order</a>
+                </div>
+            }
+            else if (oos)
+            {
+                <div class="pd-oos-box">
+                    <div class="pd-oos-badge"><span class="pd-oos-badge__dot"></span>🔴 @product.BatchStatusText</div>
+                    <button class="pd-notify-btn" @onclick="NotifyMe" disabled="@notifying">
+                        @if (notifyAcked) { <span>✔ We'll notify you when this batch reopens</span> }
+                        else { <span>🔔 Notify Me when available</span> }
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="pd-buybox__cta-row">
+                    @* Inline SVGs rather than emoji: emoji render as a different
+                       glyph on every OS (and in colour), which looked pasted-on
+                       next to the site's stroked icon set. The cart path is the
+                       same one the header uses, so the two now match exactly. *@
+                    <button class="btn btn-primary" disabled="@adding" @onclick="AddToCart">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>
+                        Add To Cart
+                    </button>
+                    <button class="btn btn-secondary" disabled="@adding" @onclick="BuyNow">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
+                        Buy Now
+                    </button>
+                </div>
+            }
+            @if (added)
+            {
+                <div class="added-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Added To Cart! <a href="/cart">View Cart →</a></div>
+            }
+
+            @if (product.Inclusions.Any())
+            {
+                <div class="pd-includes" style="margin-top:6px">
+                    <h4>This Course Includes</h4>
+                    <div class="pd-includes__list">
+                        @foreach (var i in product.Inclusions)
+                        {
+                            var m = IncMeta(i.Title, i.Icon);
+                            <div class="pd-inc">
+                                <span class="pd-inc__ico pd-inc__ico--@m.tone">@m.icon</span>
+                                <span class="pd-inc__txt">@i.Title</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </aside>
+    </div>
+
+    @* ══════════════════════════════════════════════════════════════════════════
+       Book Preview reader — image-based, server-driven.
+       Server pre-rendered every PDF page to a WebP at upload time. The URLs
+       for every page are built server-side when the modal opens, and Blazor
+       handles navigation natively via @onclick — no external JS file, no
+       cache invalidation, no state machine.
+       ══════════════════════════════════════════════════════════════════════════ *@
+    @if (previewModalOpen && previewUrls.Count > 0)
+    {
+        var currentSrc = previewUrls[Math.Clamp(previewPage, 1, previewUrls.Count) - 1];
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var zoomCss = previewZoom.ToString("0.###", inv);
+        var fitClass = "br-stage--fit-" + previewFitMode;
+        var scrollClass = previewZoom > 1.001 || previewFitMode == "width" ? "br-stage--scroll" : "";
+        var progressPct = ((double)previewPage / previewUrls.Count * 100).ToString("0.##", inv);
+
+        <div class="br-modal" role="dialog" aria-modal="true" aria-label="Book preview" @key="@BookPreviewModalKey">
+            <div class="br-modal__overlay" @onclick="CloseBookPreviewAsync"></div>
+            <div class="br-modal__panel">
+
+                @* ── Sticky header ── *@
+                <div class="br-head">
+                    <div class="br-head__brand">
+                        <span class="br-head__ico" aria-hidden="true">📚</span>
+                        <div>
+                            <div class="br-head__title">@(bookPreview?.Title ?? "Book Preview")</div>
+                            <div class="br-head__progress">Page @previewPage of @previewUrls.Count</div>
+                        </div>
+                    </div>
+                    <button type="button" class="br-head__close" @onclick="CloseBookPreviewAsync" aria-label="Close preview">×</button>
+                </div>
+
+                <div class="br-progress">
+                    <div class="br-progress__fill" style="width:@(progressPct)%"></div>
+                </div>
+
+                @* ── Scrollable stage — only this area scrolls ── *@
+                <div class="br-stage @fitClass @scrollClass" style="--br-zoom:@zoomCss">
+                    <div class="br-page-pad">
+                        <img class="br-page-img"
+                             src="@currentSrc"
+                             alt="Page @previewPage"
+                             @ondblclick="PreviewToggleFit"
+                             title="Double-click to toggle Fit Page / Fit Width" />
+                    </div>
+
+                    @* Sticky edge nav — stays in place while the page scrolls ── *@
+                    <button type="button" class="br-edge br-edge--left"  @onclick="PreviewPrev" disabled="@(previewPage <= 1)"                    aria-label="Previous page">‹</button>
+                    <button type="button" class="br-edge br-edge--right" @onclick="PreviewNext" disabled="@(previewPage >= previewUrls.Count)" aria-label="Next page">›</button>
+                </div>
+
+                @* ── Sticky toolbar ── *@
+                <div class="br-toolbar">
+                    <div class="br-tb-group">
+                        <button type="button" class="br-tb-btn" @onclick="PreviewPrev" disabled="@(previewPage <= 1)" aria-label="Previous page" title="Previous page">‹</button>
+                        <span class="br-tb-pages"><span>@previewPage</span><span class="br-tb-pages-sep">/</span><span>@previewUrls.Count</span></span>
+                        <button type="button" class="br-tb-btn" @onclick="PreviewNext" disabled="@(previewPage >= previewUrls.Count)" aria-label="Next page" title="Next page">›</button>
+                    </div>
+                    <div class="br-tb-spacer"></div>
+                    <div class="br-tb-group">
+                        <button type="button" class="br-tb-btn" @onclick="PreviewZoomOut" aria-label="Zoom out" title="Zoom out">−</button>
+                        <span class="br-tb-zoom">@PreviewZoomLabel</span>
+                        <button type="button" class="br-tb-btn" @onclick="PreviewZoomIn"  aria-label="Zoom in"  title="Zoom in">+</button>
+                        <button type="button" class="br-tb-pill @(previewFitMode == "page"  ? "is-active" : "")" @onclick='() => PreviewFit("page")'  title="Fit Page">Fit Page</button>
+                        <button type="button" class="br-tb-pill @(previewFitMode == "width" ? "is-active" : "")" @onclick='() => PreviewFit("width")' title="Fit Width">Fit Width</button>
+                        <button type="button" class="br-tb-btn br-tb-btn--fs" @onclick="PreviewFullscreenAsync" aria-label="Fullscreen" title="Fullscreen">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ══════════════════════════════════════════════════════════════════════════
+       Testimonials player modal.
+       Iframe lazy-loads only when the modal opens (autoplay starts on mount).
+       Shorts URLs render in a 9:16 portrait frame; standard videos use 16:9.
+       Prev/Next + Esc nav. Close clears src so the iframe truly stops playing.
+       ══════════════════════════════════════════════════════════════════════════ *@
+    @if (testimonialModalOpen && product != null && testimonialIndex >= 0 && testimonialIndex < product.Testimonials.Count)
+    {
+        var t = product.Testimonials[testimonialIndex];
+        // Mute=0, autoplay=1, rel=0 (no related videos), modestbranding=1, controls=1.
+        var embedUrl = $"https://www.youtube.com/embed/{t.YoutubeVideoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1";
+        <div class="ts-modal" role="dialog" aria-modal="true" aria-label="Testimonial" @key="@TestimonialModalKey">
+            <div class="ts-modal__overlay" @onclick="CloseTestimonial"></div>
+            <div class="ts-modal__panel @(t.IsShorts ? "ts-modal__panel--reel" : "")">
+                <div class="ts-modal__head">
+                    <div class="ts-modal__meta">
+                        <div class="ts-modal__name">🎥 Testimonial</div>
+                    </div>
+                    <div class="ts-modal__counter">@(testimonialIndex + 1) / @product.Testimonials.Count</div>
+                    <button type="button" class="ts-modal__close" @onclick="CloseTestimonial" aria-label="Close">×</button>
+                </div>
+                <div class="ts-modal__stage">
+                    <button type="button" class="ts-modal__nav ts-modal__nav--prev" @onclick="TestimonialPrev" disabled="@(testimonialIndex <= 0)" aria-label="Previous testimonial">‹</button>
+                    <div class="ts-modal__player @(t.IsShorts ? "ts-modal__player--reel" : "")">
+                        <iframe src="@embedUrl"
+                                title="@($"Testimonial by {t.StudentName}")"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                allowfullscreen></iframe>
+                    </div>
+                    <button type="button" class="ts-modal__nav ts-modal__nav--next" @onclick="TestimonialNext" disabled="@(testimonialIndex >= product.Testimonials.Count - 1)" aria-label="Next testimonial">›</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    private ProductDetailResponse? product;
+    private bool loading = true, added, adding;
+    // True when the signed-in user is a franchise account — such users order via the Franchise
+    // Portal, so the customer Add To Cart / Buy Now controls are replaced with a notice.
+    private bool isFranchiseUser;
+    private Guid? selectedModeId;
+    private string tab = "overview";
+    private SeoMetadata seo = new();
+    private ElementReference galleryEl;
+    private bool galleryInit;
+
+    private ProductReviews? reviews;
+    private int newRating;
+    private string newReviewTitle = "", newReviewComment = "";
+    private bool reviewOk;
+    private string? reviewMsg;
+
+    // Offer / Combo Recommendations (admin-curated cross-sells)
+    private List<RecommendationCard>? recommendations;
+    private HashSet<Guid> recoAddingIds = new();
+
+    // Attribute selection state, keyed by mapping id.
+    private readonly Dictionary<Guid, Guid?> attrSingle = new();           // dropdown / radio
+    private readonly Dictionary<Guid, HashSet<Guid>> attrMulti = new();    // checkboxes
+    private readonly Dictionary<Guid, string?> attrText = new();           // text / multiline / date
+    private string? attrError;
+
+    // Purchase-option selection state, keyed by group id → chosen option id.
+    private readonly Dictionary<Guid, Guid?> optionSingle = new();
+    private string? GetSelectedOption(Guid groupId)
+        => optionSingle.TryGetValue(groupId, out var v) && v.HasValue ? v.Value.ToString() : "";
+    private void SetSelectedOption(Guid groupId, string? optionIdStr)
+        => optionSingle[groupId] = Guid.TryParse(optionIdStr, out var g) ? g : (Guid?)null;
+
+    // Sum of add-ons for the currently selected option in each group (server re-validates on checkout).
+    private decimal OptionsAddOn
+    {
+        get
+        {
+            if (product == null) return 0m;
+            decimal sum = 0m;
+            foreach (var g in product.OptionGroups)
+                if (optionSingle.TryGetValue(g.Id, out var oid) && oid.HasValue)
+                    sum += g.Options.FirstOrDefault(o => o.Id == oid.Value)?.PriceAddOn ?? 0m;
+            return sum;
+        }
+    }
+
+    // The option ids selected across all groups — sent to the cart so checkout can price them.
+    private List<Guid> SelectedOptionIds()
+        => optionSingle.Values.Where(v => v.HasValue).Select(v => v!.Value).ToList();
+
+    // ── Franchise hand-off ────────────────────────────────────────────────────
+    // A franchise account can browse the public site but can't use the customer cart, so every
+    // franchise path leaves this page for /franchise/order. Carry the course the franchisee was
+    // looking at — plus the lecture mode and purchase options picked here — in the query string
+    // so the portal opens with that line already added instead of an empty order form.
+    private static string FranchiseOrderUrl(Guid productId, Guid? modeId = null, IEnumerable<Guid>? optionIds = null)
+    {
+        var qs = new List<string> { "product=" + productId.ToString() };
+        if (modeId.HasValue) qs.Add("mode=" + modeId.Value.ToString());
+        foreach (var o in optionIds ?? Enumerable.Empty<Guid>()) qs.Add("opt=" + o.ToString());
+        return "/franchise/order?" + string.Join("&", qs);
+    }
+
+    private string CurrentFranchiseOrderUrl
+        => product == null ? "/franchise/order" : FranchiseOrderUrl(product.Id, selectedModeId, SelectedOptionIds());
+
+    // Mode price is ADDITIVE — add-on to the regular (or special) base. Matches CheckoutService /
+    // CartService / OrderAdminService pricing so what's shown on the product page equals what's charged.
+    private decimal CurrentPrice
+    {
+        get
+        {
+            if (product == null) return 0m;
+            var basePrice = product.IsSpecialPriceActive ? product.SpecialPrice!.Value : product.SellingPrice;
+            var modeAddOn = product.Modes.FirstOrDefault(m => m.Id == selectedModeId)?.Price ?? 0m;
+            return basePrice + modeAddOn + OptionsAddOn;
+        }
+    }
+
+    private decimal AttributesAdjustment
+    {
+        get
+        {
+            if (product == null) return 0m;
+            var basePrice = CurrentPrice;
+            decimal sum = 0m;
+            foreach (var a in product.Attributes)
+            {
+                IEnumerable<ProductAttributeValueDto> chosen = a.ControlType switch
+                {
+                    "DropdownList" or "RadioList" => a.Values.Where(v => attrSingle.GetValueOrDefault(a.MappingId) == v.Id),
+                    "Checkboxes" => a.Values.Where(v => attrMulti.GetValueOrDefault(a.MappingId)?.Contains(v.Id) == true),
+                    _ => Enumerable.Empty<ProductAttributeValueDto>()
+                };
+                foreach (var v in chosen)
+                    sum += v.PriceAdjustmentUsePercentage ? Math.Round(basePrice * v.PriceAdjustment / 100m, 2) : v.PriceAdjustment;
+            }
+            return sum;
+        }
+    }
+
+    private decimal EffectivePrice => CurrentPrice + AttributesAdjustment;
+
+    private MarkupString PriceTag(ProductAttributeValueDto v)
+    {
+        if (v.PriceAdjustment == 0) return (MarkupString)"";
+        var amount = v.PriceAdjustmentUsePercentage ? $"{v.PriceAdjustment:0.##}%" : $"₹{Math.Abs(v.PriceAdjustment):N0}";
+        return (MarkupString)$" ({(v.PriceAdjustment > 0 ? "+" : "−")}{amount})";
+    }
+
+    private void SetSingle(Guid mappingId, ChangeEventArgs e)
+        => attrSingle[mappingId] = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null;
+
+    private void ToggleMulti(Guid mappingId, Guid valueId, ChangeEventArgs e)
+    {
+        var set = attrMulti.TryGetValue(mappingId, out var s) ? s : (attrMulti[mappingId] = new HashSet<Guid>());
+        if (e.Value is true) set.Add(valueId); else set.Remove(valueId);
+    }
+
+    private void InitAttributeState()
+    {
+        attrSingle.Clear(); attrMulti.Clear(); attrText.Clear(); attrError = null;
+        if (product == null) return;
+        foreach (var a in product.Attributes)
+        {
+            switch (a.ControlType)
+            {
+                case "DropdownList":
+                case "RadioList":
+                    var pre = a.Values.FirstOrDefault(v => v.IsPreSelected) ?? (a.ControlType == "DropdownList" ? a.Values.FirstOrDefault() : null);
+                    attrSingle[a.MappingId] = pre?.Id;
+                    break;
+                case "Checkboxes":
+                    attrMulti[a.MappingId] = a.Values.Where(v => v.IsPreSelected).Select(v => v.Id).ToHashSet();
+                    break;
+                default:
+                    attrText[a.MappingId] = null;
+                    break;
+            }
+        }
+    }
+
+    private List<AttributeSelection> BuildSelections()
+    {
+        var list = new List<AttributeSelection>();
+        if (product == null) return list;
+        foreach (var a in product.Attributes)
+        {
+            switch (a.ControlType)
+            {
+                case "DropdownList":
+                case "RadioList":
+                    if (attrSingle.GetValueOrDefault(a.MappingId) is Guid g) list.Add(new AttributeSelection(a.MappingId, g));
+                    break;
+                case "Checkboxes":
+                    if (attrMulti.TryGetValue(a.MappingId, out var set))
+                        foreach (var vid in set) list.Add(new AttributeSelection(a.MappingId, vid));
+                    break;
+                default:
+                    if (attrText.GetValueOrDefault(a.MappingId) is { } t && !string.IsNullOrWhiteSpace(t))
+                        list.Add(new AttributeSelection(a.MappingId, null, t));
+                    break;
+            }
+        }
+        return list;
+    }
+
+    private bool ValidateRequired()
+    {
+        if (product == null) return true;
+        foreach (var a in product.Attributes.Where(x => x.IsRequired))
+        {
+            var has = a.ControlType switch
+            {
+                "DropdownList" or "RadioList" => attrSingle.GetValueOrDefault(a.MappingId).HasValue,
+                "Checkboxes" => attrMulti.GetValueOrDefault(a.MappingId)?.Count > 0,
+                _ => !string.IsNullOrWhiteSpace(attrText.GetValueOrDefault(a.MappingId))
+            };
+            if (!has) { attrError = $"Please choose {a.AttributeName}."; return false; }
+        }
+        attrError = null;
+        return true;
+    }
+    private string LevelLabel => product?.Level switch
+    {
+        CourseLevel.CaFoundation => "CA Foundation",
+        CourseLevel.CaIntermediate => "CA Intermediate",
+        CourseLevel.CaFinal => "CA Final",
+        CourseLevel.Books => "Books",
+        _ => "Courses"
+    };
+    private string LevelSlug => product?.Level switch
+    {
+        CourseLevel.CaIntermediate => "ca-intermediate",
+        CourseLevel.CaFinal => "ca-final",
+        CourseLevel.Books => "books",
+        _ => "ca-foundation"
+    };
+    private string LevelEmoji => product?.Level switch
+    {
+        CourseLevel.CaIntermediate => "📈",
+        CourseLevel.CaFinal => "🏆",
+        CourseLevel.Books => "📚",
+        _ => "🎓"
+    };
+    private string FacultyInitials
+    {
+        get
+        {
+            var n = product?.FacultyName;
+            if (string.IsNullOrWhiteSpace(n)) return "RC";
+            var parts = n.Replace("CA", "").Replace("CS", "").Replace("Prof.", "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : n[..Math.Min(2, n.Length)].ToUpper();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        added = false;
+        galleryInit = false;
+        tab = "overview";
+        reviews = null;
+        reviewMsg = null;
+        newRating = 0;
+        newReviewTitle = newReviewComment = "";
+        try
+        {
+            var uid = await CurrentUserIdAsync();
+            isFranchiseUser = uid != null && (await FranchisePortal.ResolveFranchiseIdAsync(uid.Value)) != null;
+        }
+        catch { isFranchiseUser = false; }
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ApiResponse<ProductDetailResponse>>($"/api/products/{Slug}");
+            product = r?.Data;
+            if (product != null)
+            {
+                selectedModeId = product.Modes.FirstOrDefault()?.Id;
+                InitAttributeState();
+                seo = new() { Title = product.SeoTitle ?? $"{product.Title} — RioCommerce", Description = product.SeoDescription ?? product.ShortDesc ?? "", JsonLd = BuildJsonLd(product) };
+                await LoadReviewsAsync();
+                try { recommendations = await RecoSvc.GetForProductAsync(product.Id, 8); } catch { recommendations = new(); }
+                // Fetch the active Book Preview metadata (cover/title/desc). The PDF itself is
+                // never linked — opening the modal requests a fresh signed token each time.
+                try { bookPreview = await BookPreviewSvc.GetActiveAsync(product.Id); } catch { bookPreview = null; }
+            }
+        }
+        catch { product = null; }
+        loading = false;
+    }
+
+    private async Task<Guid?> CurrentUserIdAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        return Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+    }
+
+    private async Task AddToCartReco(Guid productId)
+    {
+        if (isFranchiseUser) { Nav.NavigateTo(FranchiseOrderUrl(productId)); return; }
+        var uid = await CurrentUserIdAsync();
+        if (uid == null) { Nav.NavigateTo("/login?returnUrl=" + Uri.EscapeDataString($"/{Slug}")); return; }
+        if (recoAddingIds.Contains(productId)) return;
+        recoAddingIds.Add(productId);
+        try
+        {
+            var (ok, _) = await Cart.AddAsync(uid.Value, productId, null);
+            // silently ignore duplicates for reco cards
+        }
+        catch { }
+        finally { recoAddingIds.Remove(productId); }
+    }
+
+    // Enum -> CSS variant only. Display text reads from product.BatchStatusText / rc.BatchStatusText
+    // (single source of truth on the DTO — never hardcode the labels here).
+    private static string PdBatchClass(BatchStatus s) => s switch
+    {
+        BatchStatus.Upcoming => "upcoming",
+        BatchStatus.Ongoing => "ongoing",
+        BatchStatus.PreRecorded => "prerec",
+        BatchStatus.OutOfStock => "oos",
+        BatchStatus.ComingSoon => "soon",
+        _ => "upcoming"
+    };
+
+    // Notify Me — local UI state. Shown when BatchStatus == OutOfStock. The button flips to a
+    // confirmation label after click so the student gets instant feedback. A server-side
+    // subscription record can be wired in later as an additive change.
+    private bool notifying, notifyAcked;
+    private async Task NotifyMe()
+    {
+        if (notifyAcked || notifying) return;
+        notifying = true;
+        try { await Task.Delay(150); notifyAcked = true; }
+        finally { notifying = false; }
+    }
+
+    private static string RecoSectionLabel(RecommendationType t) => t switch
+    {
+        RecommendationType.StudentsAlsoAdded => "Students Also Added",
+        RecommendationType.FrequentlyBoughtTogether => "Frequently Bought Together",
+        RecommendationType.CompleteYourPreparation => "Complete Your Preparation",
+        RecommendationType.CompleteYourCaKit => "Complete Your CA Kit",
+        RecommendationType.RecommendedForYou => "Recommended For You",
+        RecommendationType.Custom => "Recommended",
+        _ => "Recommended"
+    };
+
+    private async Task LoadReviewsAsync()
+    {
+        if (product == null) return;
+        var uid = await CurrentUserIdAsync();
+        reviews = await ReviewSvc.GetForProductAsync(product.Id, uid);
+        if (reviews.Mine != null)
+        {
+            newRating = reviews.Mine.Rating;
+            newReviewTitle = reviews.Mine.Title ?? "";
+            newReviewComment = reviews.Mine.Comment;
+        }
+    }
+
+    private async Task SubmitReview()
+    {
+        if (product == null) return;
+        var uid = await CurrentUserIdAsync();
+        if (uid == null) { Nav.NavigateTo($"/login?returnUrl=/{Slug}", forceLoad: true); return; }
+
+        reviewMsg = null;
+        var (ok, error) = await ReviewSvc.SubmitAsync(uid.Value, new SubmitReviewRequest
+        {
+            ProductId = product.Id,
+            Rating = newRating,
+            Title = string.IsNullOrWhiteSpace(newReviewTitle) ? null : newReviewTitle.Trim(),
+            Comment = newReviewComment
+        });
+        reviewOk = ok;
+        reviewMsg = ok ? "Thanks! Your review was submitted and will appear here once approved." : error;
+        if (ok) await LoadReviewsAsync();
+    }
+
+    private static string Stars(decimal rating)
+    {
+        var filled = Math.Clamp((int)Math.Round(rating, MidpointRounding.AwayFromZero), 0, 5);
+        return new string('★', filled) + new string('☆', 5 - filled);
+    }
+
+    private static string BuildJsonLd(ProductDetailResponse p)
+    {
+        var title = p.Title.Replace("\"", "'");
+        var desc = (p.ShortDesc ?? p.Title).Replace("\"", "'");
+        return "{\"@context\":\"https://schema.org\",\"@type\":\"Course\",\"name\":\"" + title +
+               "\",\"description\":\"" + desc +
+               "\",\"provider\":{\"@type\":\"Organization\",\"name\":\"RioCommerce\"},\"offers\":{\"@type\":\"Offer\",\"price\":\"" +
+               p.SellingPrice.ToString("0") + "\",\"priceCurrency\":\"INR\"}}";
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "U";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+
+    private async Task AddToCart()
+    {
+        if (product == null) return;
+        if (isFranchiseUser) { Nav.NavigateTo(CurrentFranchiseOrderUrl); return; }
+        if (!ValidateRequired()) return;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var id = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(id, out var userId))
+        {
+            Nav.NavigateTo($"/login?returnUrl=/{Slug}", forceLoad: true);
+            return;
+        }
+        adding = true;
+        var (ok, err) = await Cart.AddAsync(userId, product.Id, selectedModeId, BuildSelections(), SelectedOptionIds());
+        adding = false;
+        if (ok) { added = true; }
+        else { attrError = err; }
+    }
+
+    private async Task BuyNow()
+    {
+        if (product == null) return;
+        if (isFranchiseUser) { Nav.NavigateTo(CurrentFranchiseOrderUrl); return; }
+        if (!ValidateRequired()) return;
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var id = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(id, out var userId))
+        {
+            Nav.NavigateTo($"/login?returnUrl=/{Slug}", forceLoad: true);
+            return;
+        }
+        adding = true;
+        var (ok, err) = await Cart.AddAsync(userId, product.Id, selectedModeId, BuildSelections(), SelectedOptionIds());
+        adding = false;
+        if (ok) { Nav.NavigateTo("/checkout"); }
+        else { attrError = err; }
+    }
+
+    // ── Book Preview ─────────────────────────────────────────────────────────
+    // bookPreview is the public DTO of the active preview row (cover / title /
+    // description / max-pages). When set, it takes precedence over the legacy
+    // BookPreviewPdfUrl. previewToken is a fresh signed URL fragment issued each
+    // time the modal opens — never reused, expires in 15 minutes.
+    private RioCommerce.Core.DTOs.Products.ProductBookPreviewPublic? bookPreview;
+    private bool previewModalOpen;
+
+    // ── Testimonials modal state ──
+    private bool testimonialModalOpen;
+    private int  testimonialIndex = -1;
+    private const string TestimonialModalKey = "hjc-testimonial-modal";
+
+    private void OpenTestimonial(int idx)
+    {
+        if (product == null || idx < 0 || idx >= product.Testimonials.Count) return;
+        testimonialIndex = idx;
+        testimonialModalOpen = true;
+    }
+    private void CloseTestimonial()
+    {
+        testimonialModalOpen = false;
+        testimonialIndex = -1;
+    }
+    private void TestimonialPrev() { if (testimonialIndex > 0) testimonialIndex--; }
+    private void TestimonialNext()
+    {
+        if (product != null && testimonialIndex < product.Testimonials.Count - 1) testimonialIndex++;
+    }
+    // All page URLs for the active preview, generated server-side when the modal opens.
+    private List<string> previewUrls = new();
+    private int previewPage = 1;
+    /// <summary>"page" → fit by height (no crop); "width" → fit by width (vertical scroll when tall).</summary>
+    private string previewFitMode = "page";
+    /// <summary>1.0 = fit; user-adjustable in 15% steps via toolbar.</summary>
+    private double previewZoom = 1.0;
+
+    // Tab-visibility helpers — only render tabs that have content.
+    private bool HasLectures => product != null && YtId(product.LecturesVideoUrl) != null;
+    // New entity takes precedence; falls back to the legacy Product.BookPreviewPdfUrl column so
+    // courses that haven't migrated yet still render something.
+    private bool HasBookPreview => bookPreview != null || !string.IsNullOrWhiteSpace(product?.BookPreviewPdfUrl);
+
+    // Stable key for the modal container — Blazor uses it to reuse the SAME DOM
+    // across re-renders while the popup is open, so swipe state / current image
+    // never gets torn down by an unrelated parent re-render.
+    private const string BookPreviewModalKey = "hjc-book-reader-modal";
+
+    private async Task OpenBookPreviewAsync()
+    {
+        if (product == null || previewModalOpen || bookPreview == null) return;
+
+        // Issue a single signed token, then expand it to one URL per page right here on
+        // the server. Blazor renders the markup with those URLs in <img src=...> attributes
+        // and navigation is pure @onclick → re-render. No external JS, no interop, nothing
+        // to cache stale.
+        var token = await BookPreviewSvc.IssueImageTokenAsync(product.Id);
+        if (string.IsNullOrEmpty(token))
+        {
+            Console.Error.WriteLine("[hjc.br] no token issued — preview not configured");
+            return;
+        }
+
+        var urls = new List<string>(bookPreview.TotalPages);
+        for (var i = 1; i <= bookPreview.TotalPages; i++)
+            urls.Add($"/api/bookpreview/image/{token}/{i}");
+
+        previewUrls = urls;
+        previewPage = 1;
+        previewModalOpen = true;
+    }
+
+    private Task CloseBookPreviewAsync()
+    {
+        previewModalOpen = false;
+        previewUrls = new();
+        previewPage = 1;
+        previewFitMode = "page";
+        previewZoom = 1.0;
+        return Task.CompletedTask;
+    }
+
+    private void PreviewPrev() { if (previewPage > 1) previewPage--; }
+    private void PreviewNext() { if (previewPage < previewUrls.Count) previewPage++; }
+
+    private void PreviewFit(string mode)
+    {
+        previewFitMode = mode == "width" ? "width" : "page";
+        previewZoom = 1.0;
+    }
+    private void PreviewToggleFit() => PreviewFit(previewFitMode == "page" ? "width" : "page");
+    private void PreviewZoomIn()  { previewZoom = Math.Min(3.0, previewZoom + 0.15); }
+    private void PreviewZoomOut() { previewZoom = Math.Max(0.4, previewZoom - 0.15); }
+    private string PreviewZoomLabel => $"{Math.Round(previewZoom * 100)}%";
+    private async Task PreviewFullscreenAsync()
+    {
+        try { await JS.InvokeVoidAsync("eval", "(function(){var el=document.querySelector('.br-modal__panel');if(!el)return;if(!document.fullscreenElement){el.requestFullscreen&&el.requestFullscreen();}else{document.exitFullscreen&&document.exitFullscreen();}})()"); }
+        catch { }
+    }
+    private bool HasTestimonials => product != null && product.Testimonials.Count > 0;
+    private bool HasFaqs => product != null && product.Faqs.Count > 0;
+
+    // Wire the media-gallery autoplay/dots once the product (with videos) has rendered.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (product != null && !galleryInit && product.Videos.Count > 0)
+        {
+            galleryInit = true;
+            try { await JS.InvokeVoidAsync("hjc.mediaGallery.init", galleryEl); } catch { }
+        }
+    }
+
+    // ── YouTube helpers (extract id → thumbnail + autoplay embed) ──
+    private static string? YtId(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var m = System.Text.RegularExpressions.Regex.Match(url,
+            @"(?:youtu\.be/|youtube\.com/(?:watch\?(?:.*&)?v=|embed/|shorts/|live/))([A-Za-z0-9_-]{11})");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+    private static string YtThumb(string id) => $"https://img.youtube.com/vi/{id}/hqdefault.jpg";
+    private static string YtEmbed(string id) => $"https://www.youtube.com/embed/{id}?autoplay=1&rel=0&playsinline=1";
+
+    // When special price is active, compare against the higher of MRP or regular SellingPrice.
+    private decimal DetailStrikethrough => product?.IsSpecialPriceActive == true
+        ? Math.Max(product.Mrp, product.SellingPrice)
+        : product?.Mrp ?? 0;
+
+    private int SavePct => DetailStrikethrough > 0 && DetailStrikethrough > EffectivePrice
+        ? (int)Math.Round((DetailStrikethrough - EffectivePrice) / DetailStrikethrough * 100) : 0;
+
+    // Maps an inclusion title to a crisp line-icon + colour tone, falling back to the stored emoji/icon.
+    private static (MarkupString icon, string tone) IncMeta(string? title, string? fallback)
+    {
+        var t = (title ?? "").ToLowerInvariant();
+        (string svg, string tone)? pick =
+            t.Contains("video") || t.Contains("lecture") || t.Contains("recorded") || t.Contains("practical") || t.Contains("demo") ? (SvgVideo, "orange") :
+            t.Contains("download") || t.Contains("resource") || t.Contains("note") || t.Contains("pdf") || t.Contains("material") ? (SvgDownload, "blue") :
+            t.Contains("test") || t.Contains("quiz") || t.Contains("mock") || t.Contains("mcq") || t.Contains("assignment") ? (SvgTest, "green") :
+            t.Contains("zoom") || t.Contains("live") || t.Contains("session") || t.Contains("class") ? (SvgLive, "purple") :
+            t.Contains("telegram") || t.Contains("community") || t.Contains("whatsapp") || t.Contains("group") || t.Contains("doubt") || t.Contains("support") || t.Contains("mentor") ? (SvgPeople, "teal") :
+            t.Contains("book") || t.Contains("hardcopy") ? (SvgBook, "navy") :
+            t.Contains("certificate") || t.Contains("award") ? (SvgAward, "green") :
+            ((string, string)?)null;
+
+        if (pick is { } p) return ((MarkupString)p.svg, p.tone);
+        return string.IsNullOrWhiteSpace(fallback)
+            ? ((MarkupString)SvgCheck, "navy")
+            : ((MarkupString)fallback, "navy");   // keep the admin-entered emoji/icon
+    }
+
+    private const string SvgVideo = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='5' width='14' height='14' rx='3'/><path d='M16 9.5l6-3v11l-6-3'/></svg>";
+    private const string SvgDownload = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 3v12'/><path d='M7 11l5 5 5-5'/><path d='M5 21h14'/></svg>";
+    private const string SvgTest = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 11.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7'/><path d='M7 8h8M7 12h5'/><path d='M15 18l2 2 4-4'/></svg>";
+    private const string SvgLive = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='4' width='20' height='14' rx='2'/><path d='M8 21h8M12 18v3'/></svg>";
+    private const string SvgPeople = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='9' cy='8' r='3'/><path d='M3 20a6 6 0 0 1 12 0'/><path d='M16 5.5a3 3 0 0 1 0 6'/><path d='M21 20a6 6 0 0 0-4.5-5.8'/></svg>";
+    private const string SvgBook = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M5 4a2 2 0 0 1 2-2h12v18H7a2 2 0 0 0-2 2z'/><path d='M5 20a2 2 0 0 1 2-2h12'/></svg>";
+    private const string SvgAward = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='9' r='6'/><path d='M9 14l-1.5 7L12 18l4.5 3L15 14'/></svg>";
+    private const string SvgCheck = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg>";
+}

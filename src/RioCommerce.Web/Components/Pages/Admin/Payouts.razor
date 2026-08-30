@@ -1,0 +1,112 @@
+@page "/admin/payouts"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@implements IDisposable
+@inject ISettlementService Settlements
+@inject IRealtimeBus Bus
+@inject NavigationManager Nav
+<PageTitle>Payouts — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <h1 style="display:flex;align-items:center;gap:10px">Payouts <span class="live-dot">● Live</span></h1>
+    <a href="/admin/settlements" class="btn btn-primary btn-sm">📦 Settlement Batches</a>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-card__label">Pending Payouts</div><div class="kpi-card__value" style="color:var(--warning)">@(dash?.PendingPayoutsCount ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Outstanding</div><div class="kpi-card__value" style="color:var(--error)">₹@Fmt(dash?.OutstandingLiabilities ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Paid Liabilities</div><div class="kpi-card__value" style="color:var(--green)">₹@Fmt(dash?.PaidLiabilities ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Settlement Success</div><div class="kpi-card__value">@(dash?.SettlementSuccessRate ?? 100)%</div></div>
+</div>
+
+<div style="margin-top:20px">
+    <AdminGrid TItem="PayoutListItem" GridId="payouts" Items="items" Columns="cols" RowId="@(p => p.Id)"
+               Page="page" PageSize="pageSize" Total="total" OnPageChange="Go" OnPageSizeChange="SetPageSize"
+               EmptyText="No payouts yet. Generate a settlement batch to create payouts.">
+        <Filters>
+            <div class="fg"><label>Beneficiary type</label>
+                <select class="form-input" @onchange="OnType">
+                    <option value="">All types</option>
+                    @foreach (var t in Enum.GetValues<PayoutType>()) { <option value="@((int)t)" selected="@(typeFilter == t)">@t</option> }
+                </select>
+            </div>
+            <div class="fg"><label>Status</label>
+                <select class="form-input" @onchange="OnStatus">
+                    <option value="">All status</option>
+                    @foreach (var s in Enum.GetValues<PayoutStatus>()) { <option value="@((int)s)" selected="@(statusFilter == s)">@s</option> }
+                </select>
+            </div>
+        </Filters>
+        <RowActions Context="p">
+            @if (p.SettlementBatchId.HasValue) { <a href="/admin/settlements" class="btn btn-ghost btn-sm">📦 @p.BatchNumber</a> } else { <span style="color:var(--gray-400)">—</span> }
+        </RowActions>
+    </AdminGrid>
+</div>
+
+@code {
+    private IReadOnlyList<PayoutListItem>? items;
+    private PayoutDashboardDto? dash;
+    private PayoutType? typeFilter;
+    private PayoutStatus? statusFilter;
+    private int page = 1, total, pageSize = 20, reloadToken;
+    private List<AdminGridColumn<PayoutListItem>> cols = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        BuildColumns();
+        await Load();
+        Bus.DataChanged += OnData;
+    }
+
+    private void BuildColumns() => cols = new()
+    {
+        new("Beneficiary") { Cell = p => @<div><strong>@p.BeneficiaryName</strong></div> },
+        new("Type") { Cell = p => @<text>@p.BeneficiaryType</text> },
+        new("Gross") { Align = "right", Priority = GridPriority.Medium, Cell = p => @<text>₹@p.GrossAmount.ToString("N0")</text> },
+        new("Adjustments") { Align = "right", Priority = GridPriority.Low, Cell = p => @<text>@(p.Adjustments == 0 ? "—" : $"₹{p.Adjustments:N0}")</text> },
+        new("Refund clawback") { Align = "right", Priority = GridPriority.Low, Cell = p => @<text>@(p.RefundAdjustments == 0 ? "—" : $"-₹{p.RefundAdjustments:N0}")</text> },
+        new("Tax") { Align = "right", Priority = GridPriority.Low, Cell = p => @<text>@(p.TaxDeduction == 0 ? "—" : $"-₹{p.TaxDeduction:N0}")</text> },
+        new("Net") { Align = "right", Cell = p => @<span class="ag-amount">₹@p.NetAmount.ToString("N0")</span> },
+        new("Status") { Align = "center", Cell = p => @<StatusBadge Label="@p.Status.ToString()" Variant="@Variant(p.Status)" /> },
+        new("Batch") { Priority = GridPriority.Medium, Cell = p => @<text>@(p.BatchNumber ?? "—")</text> },
+        new("Period") { Priority = GridPriority.Low, Cell = p => @<text>@p.PeriodStartUtc.ToLocalTime().ToString("dd MMM")–@p.PeriodEndUtc.ToLocalTime().ToString("dd MMM")</text> },
+    };
+
+    private async Task Load()
+    {
+        dash = await Settlements.GetDashboardAsync();
+        var (rows, t) = await Settlements.ListPayoutsAsync(typeFilter, statusFilter, page, pageSize);
+        items = rows; total = t;
+    }
+
+    private void OnData(RealtimeEvent e) { if (e.Scope is "payouts") _ = Debounced(); }
+    private async Task Debounced()
+    {
+        var token = ++reloadToken;
+        await Task.Delay(400);
+        if (token != reloadToken) return;
+        await InvokeAsync(async () => { await Load(); StateHasChanged(); });
+    }
+
+    private async Task OnType(ChangeEventArgs e) { typeFilter = ParseEnum<PayoutType>(e.Value); page = 1; await Load(); }
+    private async Task OnStatus(ChangeEventArgs e) { statusFilter = ParseEnum<PayoutStatus>(e.Value); page = 1; await Load(); }
+    private async Task Go(int p) { page = p; await Load(); }
+    private async Task SetPageSize(int n) { pageSize = n; page = 1; await Load(); }
+
+    public void Dispose() => Bus.DataChanged -= OnData;
+
+    private static T? ParseEnum<T>(object? v) where T : struct, Enum
+        => int.TryParse(v?.ToString(), out var n) && Enum.IsDefined(typeof(T), n) ? (T)(object)n : null;
+
+    private static string Variant(PayoutStatus s) => s switch
+    {
+        PayoutStatus.Paid => "confirmed",
+        PayoutStatus.Approved or PayoutStatus.Processing => "processing",
+        PayoutStatus.PendingApproval => "pending",
+        PayoutStatus.Failed => "danger",
+        PayoutStatus.Cancelled => "neutral",
+        _ => "neutral"
+    };
+
+    private static string Fmt(decimal v) => v >= 100000 ? $"{v / 100000m:0.##}L" : v.ToString("N0");
+}

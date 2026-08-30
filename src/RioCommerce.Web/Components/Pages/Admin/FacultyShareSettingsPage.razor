@@ -1,0 +1,189 @@
+@page "/admin/faculty-share-settings"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin")]
+@using RioCommerce.Core.Entities
+@inject IFacultySharingService Svc
+@inject AuthenticationStateProvider AuthProvider
+@inject ToastService Toast
+<PageTitle>Faculty Share Settings — RioCommerce Admin</PageTitle>
+
+@*
+    The faculty counterpart of Franchise Settings. Every toggle here changes how much money leaves the
+    institute, so each one carries the reason it exists rather than just a label.
+*@
+
+<style>
+    .fss-card { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:20px 22px; margin-bottom:16px; max-width:840px }
+    .fss-card h3 { font-size:14px; font-weight:700; color:var(--navy); margin:0 0 4px }
+    .fss-card > p { font-size:13px; color:var(--gray-600); margin:0 0 16px; line-height:1.55 }
+    .fss-row { display:grid; grid-template-columns:minmax(0,1fr) 210px; gap:6px 18px; padding:13px 0; border-top:1px solid var(--gray-100); align-items:center }
+    .fss-row:first-of-type { border-top:0 }
+    .fss-row__label { font-size:13.5px; font-weight:600; color:var(--navy) }
+    .fss-row__hint { grid-column:1/-1; font-size:12px; color:var(--gray-500); line-height:1.5; margin-top:-2px }
+    .fss-row__ctl { justify-self:end; display:flex; align-items:center; gap:8px }
+    .fss-err { color:var(--error); font-size:12.5px; font-weight:600 }
+    .fss-suffix { display:flex; align-items:center; gap:6px }
+    .fss-suffix input { max-width:110px }
+</style>
+
+<div class="page__header">
+    <h1>Faculty Share Settings</h1>
+    <a class="btn btn-ghost btn-sm" href="/admin/faculty-sharing">‹ Faculty Revenue Sharing</a>
+</div>
+
+@if (s == null)
+{
+    <p style="color:var(--gray-400)">Loading…</p>
+}
+else
+{
+    <div class="fss-card">
+        <h3>Resolution</h3>
+        <p>How a faculty's rate is chosen for a product, and which price it applies to.</p>
+
+        <div class="fss-row">
+            <div class="fss-row__label">Allow per-faculty rates to override the product default</div>
+            <div class="fss-row__ctl"><input type="checkbox" @bind="s.AllowFacultyRuleOverride" /></div>
+            <div class="fss-row__hint">
+                On: an explicit rate on a product beats that product's default faculty share.
+                Off: the product default always wins and individual rates are ignored — useful to
+                temporarily standardise rates without deleting the agreements that record them.
+            </div>
+        </div>
+
+        <div class="fss-row">
+            <div class="fss-row__label">Apply the share on the special price while it's active</div>
+            <div class="fss-row__ctl"><input type="checkbox" @bind="s.ApplyShareOnSpecialPrice" /></div>
+            <div class="fss-row__hint">
+                On: a promotional price reduces the faculty's share along with the revenue.
+                Off: the share is always computed on the regular price, so a promotion is funded entirely
+                by the institute. Matches the equivalent franchise setting.
+            </div>
+        </div>
+    </div>
+
+    <div class="fss-card">
+        <h3>Multi-faculty limits</h3>
+        <p>
+            A product can carry several faculty on different rates, and they are not required to sum to
+            anything — three faculty individually on a reasonable 40% is 120% of the sale. These are the
+            guards against that.
+        </p>
+
+        <div class="fss-row">
+            <div class="fss-row__label">Maximum combined faculty share</div>
+            <div class="fss-row__ctl">
+                <div class="fss-suffix">
+                    <input type="number" step="0.01" min="0" max="100" class="form-input" @bind="s.MaxTotalSharePct" />
+                    <span>%</span>
+                </div>
+            </div>
+            <div class="fss-row__hint">
+                Ceiling on the sum of all active faculty shares for one product, as a percentage of the
+                <strong>pre-GST taxable base</strong>. Fixed ₹ rates are converted to their equivalent
+                percentage of that base so mixed configurations are compared fairly.
+                @if (Err("max") is { } e1) { <span class="fss-err"> @e1</span> }
+            </div>
+        </div>
+
+        <div class="fss-row">
+            <div class="fss-row__label">Block saves that exceed the maximum</div>
+            <div class="fss-row__ctl"><input type="checkbox" @bind="s.EnforceMaxTotalShare" /></div>
+            <div class="fss-row__hint">
+                On: an over-allocated product cannot be saved. Off: it saves with a warning.
+                Either way the combined share is still <strong>capped at the taxable base when it is
+                earned</strong> — that cap is unconditional, because the institute cannot pay out more
+                than the sale was worth. Turning enforcement off lets bad configuration through; it does
+                not let it overpay.
+            </div>
+        </div>
+    </div>
+
+    <div class="fss-card">
+        <h3>Convenience &amp; tax</h3>
+
+        <div class="fss-row">
+            <div class="fss-row__label">Create an explicit rate when a faculty is attached to a product</div>
+            <div class="fss-row__ctl"><input type="checkbox" @bind="s.AutoCreateRuleOnAssign" /></div>
+            <div class="fss-row__hint">
+                On: attaching a faculty to a product with a default share materialises an editable rate row
+                seeded from that default, so the agreement is visible rather than implicit.
+                Off: they inherit the default until someone sets a rate.
+            </div>
+        </div>
+
+        <div class="fss-row">
+            <div class="fss-row__label">Deduct TDS on the fee only, excluding GST</div>
+            <div class="fss-row__ctl"><input type="checkbox" @bind="s.TdsOnShareExcludingGst" /></div>
+            <div class="fss-row__hint">
+                On (recommended): TDS under s.194J is computed on the faculty's fee, not on the GST they
+                charge on top of it — the standard treatment when tax is shown separately on the invoice.
+                Off: TDS is deducted from the gross payout including GST. The TDS <em>rate</em> itself lives
+                in <a href="/admin/finance-config">Finance Configuration</a>.
+            </div>
+        </div>
+    </div>
+
+    <div class="form-actions" style="max-width:840px">
+        <button class="btn btn-primary" @onclick="Save" disabled="@saving">@(saving ? "Saving…" : "Save Settings")</button>
+        <button class="btn btn-ghost" @onclick="Load" disabled="@saving">Reset</button>
+    </div>
+}
+
+@code {
+    private FacultySettings? s;
+    private bool saving;
+    private readonly Dictionary<string, string> errors = new();
+
+    private string? Err(string key) => errors.TryGetValue(key, out var v) ? v : null;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        errors.Clear();
+        var loaded = await Svc.GetSettingsAsync();
+        // Copied into a detached instance so "Reset" genuinely discards edits — binding straight onto
+        // the tracked entity would leave the change tracker holding them.
+        s = new FacultySettings
+        {
+            Id = loaded.Id,
+            ApplyShareOnSpecialPrice = loaded.ApplyShareOnSpecialPrice,
+            AllowFacultyRuleOverride = loaded.AllowFacultyRuleOverride,
+            MaxTotalSharePct = loaded.MaxTotalSharePct,
+            EnforceMaxTotalShare = loaded.EnforceMaxTotalShare,
+            AutoCreateRuleOnAssign = loaded.AutoCreateRuleOnAssign,
+            TdsOnShareExcludingGst = loaded.TdsOnShareExcludingGst
+        };
+    }
+
+    private async Task Save()
+    {
+        if (s == null) return;
+        errors.Clear();
+        if (s.MaxTotalSharePct < 0 || s.MaxTotalSharePct > 100)
+            errors["max"] = "Maximum combined share must be between 0 and 100.";
+        if (errors.Count > 0) { Toast.Error("Fix the highlighted field."); return; }
+
+        saving = true;
+        try
+        {
+            var actor = await GetActorIdAsync() ?? Guid.Empty;
+            await Svc.SaveSettingsAsync(s, actor);
+            Toast.Success("Faculty share settings saved.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task<Guid?> GetActorIdAsync()
+    {
+        try
+        {
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            return Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        }
+        catch { return null; }
+    }
+}

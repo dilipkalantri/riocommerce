@@ -1,0 +1,358 @@
+@page "/admin/audit"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin")]
+@using RioCommerce.Core.DTOs.Admin
+@inject IAuditAdminService Svc
+@inject IJSRuntime JS
+@inject ToastService Toast
+<PageTitle>Audit Log — RioCommerce Admin</PageTitle>
+
+<style>
+    .au-shell{max-width:1280px;margin:18px auto 24px}
+    .au-h1{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800;color:var(--navy);letter-spacing:-.3px;margin:0 0 14px}
+
+    /* Summary tiles */
+    .au-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:14px}
+    @@media(max-width:1199px){.au-kpis{grid-template-columns:repeat(3,1fr)}}
+    @@media(max-width:639px){.au-kpis{grid-template-columns:repeat(2,1fr)}}
+    .au-kpi{background:#fff;border:1px solid var(--gray-200);border-radius:14px;padding:14px 16px;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .au-kpi__label{font-size:11px;font-weight:800;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px}
+    .au-kpi__value{font-size:22px;font-weight:800;color:var(--navy);margin-top:4px;letter-spacing:-.3px}
+    .au-kpi__bar{position:absolute;left:0;right:0;bottom:0;height:3px}
+    .au-kpi--total .au-kpi__bar{background:#0F172A}
+    .au-kpi--today .au-kpi__bar{background:#16A34A}     .au-kpi--today .au-kpi__value{color:#16A34A}
+    .au-kpi--staff .au-kpi__bar{background:#2563EB}     .au-kpi--staff .au-kpi__value{color:#2563EB}
+    .au-kpi--fail  .au-kpi__bar{background:#DC2626}     .au-kpi--fail  .au-kpi__value{color:#DC2626}
+    .au-kpi--crit  .au-kpi__bar{background:#7C3AED}     .au-kpi--crit  .au-kpi__value{color:#7C3AED}
+
+    .card{background:#fff;border:1px solid var(--gray-200);border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden;margin-bottom:14px}
+    .card__head{padding:14px 18px;font-weight:800;color:var(--navy);font-size:15px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,#FAFBFC);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .card__head .toolbar{display:flex;gap:6px;flex-wrap:wrap}
+    .card__head .toolbar .btn{padding:7px 12px;font-size:12.5px;font-weight:700;border-radius:10px}
+
+    /* Filters */
+    .au-filters{padding:14px 18px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr;gap:10px;background:#FAFBFC;border-bottom:1px solid var(--gray-100)}
+    @@media(max-width:1199px){.au-filters{grid-template-columns:1fr 1fr 1fr}}
+    @@media(max-width:639px){.au-filters{grid-template-columns:1fr 1fr}}
+    .au-filters input,.au-filters select{padding:9px 12px;border-radius:11px;border:1.5px solid var(--gray-200);font-size:13.5px;font-weight:600;color:var(--navy);background:#fff}
+    .au-filters input:focus,.au-filters select:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.16)}
+    .au-filters__search{position:relative}
+    .au-filters__search input{padding-left:34px;width:100%}
+    .au-filters__search-ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--gray-400);font-size:14px;pointer-events:none}
+
+    /* Table */
+    .au-table-wrap{overflow-x:auto}
+    .au-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;min-width:1100px}
+    .au-table thead th{position:sticky;top:0;background:#F8FAFC;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;font-size:10.5px;font-weight:800;padding:10px 12px;text-align:left;border-bottom:1px solid var(--gray-200);z-index:1;white-space:nowrap}
+    .au-table tbody td{padding:9px 12px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+    .au-table tbody tr:nth-child(even){background:#FCFDFE}
+    .au-table tbody tr:hover{background:#F1F5F9}
+    .au-table .date{white-space:nowrap;color:var(--gray-600);font-weight:700}
+    .au-table .date .t{display:block;font-size:11px;color:var(--gray-400);font-weight:600}
+    .au-table .actor{font-weight:800;color:var(--navy)}
+    .au-table .entity{color:var(--gray-700);font-weight:600;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .au-table .val{font-family:ui-monospace,'SF Mono','Cascadia Code',Consolas,monospace;font-size:11.5px;color:var(--gray-600);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .au-table .ip{font-family:ui-monospace,Consolas,monospace;color:var(--gray-500);font-size:11.5px;white-space:nowrap}
+    .au-table .browser{color:var(--gray-700);font-weight:600;font-size:11.5px}
+    .au-table .browser .t{display:block;font-size:11px;color:var(--gray-400);font-weight:600}
+
+    /* Action pills (colour by module/keyword per spec) */
+    .au-action{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.4px;padding:3px 9px;border-radius:999px;text-transform:uppercase;border:1px solid transparent;line-height:1.4}
+    .au-action--create  {background:#ECFDF5;color:#047857;border-color:rgba(4,120,87,.22)}
+    .au-action--update  {background:#EFF6FF;color:#1D4ED8;border-color:rgba(29,78,216,.2)}
+    .au-action--delete  {background:#FEF2F2;color:#B91C1C;border-color:rgba(185,28,28,.22)}
+    .au-action--login   {background:#F5F3FF;color:#6D28D9;border-color:rgba(109,40,217,.22)}
+    .au-action--payment {background:#FFF7ED;color:#9A3412;border-color:rgba(154,52,18,.22)}
+    .au-action--granted {background:#FFF7ED;color:#C2410C;border-color:rgba(194,65,12,.22)}
+    .au-action--revoked {background:#F1F5F9;color:#475569;border-color:rgba(71,85,105,.22)}
+    .au-action--perm    {background:#E0F2FE;color:#075985;border-color:rgba(7,89,133,.22)}
+    .au-action--other   {background:var(--gray-100);color:var(--gray-600);border-color:var(--gray-200)}
+
+    /* "N Changes" pill + value cells */
+    .au-multi{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.4px;padding:3px 9px;border-radius:999px;text-transform:uppercase;background:#FEF3C7;color:#92400E;border:1px solid rgba(146,64,14,.22)}
+    .au-field{font-weight:700;color:var(--navy);font-size:12.5px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block}
+    .au-val{font-family:ui-monospace,'SF Mono','Cascadia Code',Consolas,monospace;font-size:11.5px;color:var(--gray-600);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle}
+    .au-val--on  {background:#ECFDF5;color:#047857;padding:1px 8px;border-radius:999px;font-weight:800;font-family:inherit;font-size:11px;border:1px solid rgba(4,120,87,.2)}
+    .au-val--off {background:#FEF2F2;color:#B91C1C;padding:1px 8px;border-radius:999px;font-weight:800;font-family:inherit;font-size:11px;border:1px solid rgba(185,28,28,.2)}
+    .au-val--null{color:var(--gray-300)}
+    .au-arrow{color:var(--gray-300);margin:0 4px;font-weight:800}
+
+    /* Per-field change matrix inside the modal */
+    .au-changes{grid-column:1/-1;margin-top:6px}
+    .au-changes table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+    .au-changes th{background:#F8FAFC;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px;font-size:10.5px;font-weight:800;padding:8px 10px;text-align:left;border-bottom:1px solid var(--gray-200)}
+    .au-changes td{padding:8px 10px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+    .au-changes tr:last-child td{border-bottom:0}
+
+    .au-status{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:800;text-transform:uppercase}
+    .au-status--success{background:#ECFDF5;color:#047857;border:1px solid rgba(4,120,87,.22)}
+    .au-status--failed {background:#FEF2F2;color:#B91C1C;border:1px solid rgba(185,28,28,.22)}
+    .au-status--warning{background:#FEF3C7;color:#92400E;border:1px solid rgba(146,64,14,.22)}
+
+    .au-table .view-btn{padding:5px 10px;border-radius:8px;border:1.5px solid var(--gray-200);background:#fff;color:var(--navy);font-weight:700;font-size:11.5px;cursor:pointer}
+    .au-table .view-btn:hover{border-color:var(--orange);color:var(--orange)}
+
+    .au-pager{padding:12px 18px;display:flex;justify-content:space-between;align-items:center;gap:10px;background:#FAFBFC;border-top:1px solid var(--gray-100);font-size:12.5px;color:var(--gray-500);font-weight:700;flex-wrap:wrap}
+    .au-pager button{padding:5px 10px;border-radius:8px;border:1.5px solid var(--gray-200);background:#fff;font-weight:700;cursor:pointer}
+    .au-pager button:disabled{opacity:.4;cursor:not-allowed}
+
+    .au-empty{padding:40px;text-align:center;color:var(--gray-400);font-size:13.5px}
+
+    /* Detail modal */
+    .modal{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.55);backdrop-filter:blur(6px);animation:fade-in .18s ease-out both}
+    @@keyframes fade-in{from{opacity:0}to{opacity:1}}
+    .modal__card{width:min(620px,94vw);max-height:88vh;overflow-y:auto;background:#fff;border-radius:18px;box-shadow:0 30px 80px -20px rgba(15,23,42,.55)}
+    .modal__head{padding:18px 22px;border-bottom:1px solid var(--gray-100);font-weight:800;color:var(--navy);font-size:15px;display:flex;align-items:center;justify-content:space-between}
+    .modal__body{padding:18px 22px;display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;font-size:13.5px}
+    .modal__body dt{font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;font-size:10.5px;align-self:center}
+    .modal__body dd{margin:0;color:var(--navy);font-weight:700;word-break:break-word}
+    .modal__body dd.muted{color:var(--gray-500);font-weight:500}
+    .modal__body pre{margin:0;padding:10px 12px;background:#F8FAFC;border-radius:10px;font-size:11.5px;color:var(--gray-700);white-space:pre-wrap;word-break:break-word;font-family:inherit;border:1px solid var(--gray-100)}
+    .modal__foot{padding:12px 22px;border-top:1px solid var(--gray-100);display:flex;justify-content:flex-end;background:var(--gray-50)}
+</style>
+
+<div class="au-shell">
+    <h1 class="au-h1">📋 Audit Log</h1>
+
+    @* ── Summary tiles ── *@
+    <div class="au-kpis">
+        <div class="au-kpi au-kpi--total"><div class="au-kpi__label">Total Activities</div><div class="au-kpi__value">@FormatN(summary?.TotalActivities ?? 0)</div><div class="au-kpi__bar"></div></div>
+        <div class="au-kpi au-kpi--today"><div class="au-kpi__label">Today</div><div class="au-kpi__value">@FormatN(summary?.TodayActivities ?? 0)</div><div class="au-kpi__bar"></div></div>
+        <div class="au-kpi au-kpi--staff"><div class="au-kpi__label">Active Staff</div><div class="au-kpi__value">@FormatN(summary?.ActiveStaffToday ?? 0)</div><div class="au-kpi__bar"></div></div>
+        <div class="au-kpi au-kpi--fail"><div class="au-kpi__label">Failed Logins</div><div class="au-kpi__value">@FormatN(summary?.FailedLoginsToday ?? 0)</div><div class="au-kpi__bar"></div></div>
+        <div class="au-kpi au-kpi--crit"><div class="au-kpi__label">Critical Changes</div><div class="au-kpi__value">@FormatN(summary?.CriticalChangesToday ?? 0)</div><div class="au-kpi__bar"></div></div>
+    </div>
+
+    @* ── Filters + table ── *@
+    <div class="card">
+        <div class="card__head">
+            <span>Activities</span>
+            <div class="toolbar">
+                <button class="btn btn-success" @onclick="ExportCsv">⤓ CSV</button>
+                <button class="btn btn-outline" @onclick="ExportExcel">📊 Excel</button>
+                <button class="btn btn-outline" @onclick="Print">🖨 Print / PDF</button>
+            </div>
+        </div>
+        <div class="au-filters">
+            <div class="au-filters__search">
+                <span class="au-filters__search-ico">🔍</span>
+                <input placeholder="Search staff, action, entity, IP…" @bind="filter.Search" @bind:event="oninput" @bind:after="OnFilterChanged" />
+            </div>
+            <input type="date" @bind="dateFrom" @bind:after="OnFilterChanged" />
+            <input type="date" @bind="dateTo" @bind:after="OnFilterChanged" />
+            <select @bind="filter.Module" @bind:after="OnFilterChanged">
+                <option value="">All modules</option>
+                @if (distincts != null) { @foreach (var m in distincts.Modules) { <option value="@m">@m</option> } }
+            </select>
+            <select @bind="filter.Action" @bind:after="OnFilterChanged">
+                <option value="">All actions</option>
+                @if (distincts != null) { @foreach (var a in distincts.Actions) { <option value="@a">@a</option> } }
+            </select>
+            <select @bind="filter.Status" @bind:after="OnFilterChanged">
+                <option value="">All statuses</option>
+                <option value="Success">Success</option>
+                <option value="Failed">Failed</option>
+                <option value="Warning">Warning</option>
+            </select>
+        </div>
+        @if (rows == null) { <div class="au-empty">Loading…</div> }
+        else if (rows.Count == 0) { <div class="au-empty">No audit entries match the current filter.</div> }
+        else
+        {
+            <div class="au-table-wrap">
+                <table class="au-table">
+                    <thead>
+                        <tr>
+                            <th>Date &amp; Time</th>
+                            <th>Staff</th>
+                            <th>Module</th>
+                            <th>Action</th>
+                            <th>Entity</th>
+                            <th>Changed Field</th>
+                            <th>Old Value</th>
+                            <th>New Value</th>
+                            <th>IP</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in rows)
+                        {
+                            var multi = r.Changes is { Count: > 1 };
+                            <tr>
+                                <td class="date">@r.At.ToLocalTime().ToString("dd MMM yyyy")<span class="t">@r.At.ToLocalTime().ToString("hh:mm tt")</span></td>
+                                <td class="actor">@r.ActorName</td>
+                                <td>@(r.Module ?? "—")</td>
+                                <td><span class="au-action au-action--@ActionTone(r.Action)">@r.Action</span></td>
+                                <td class="entity" title="@(r.EntityName ?? r.EntityType)">@(r.EntityName ?? r.EntityType ?? "—")</td>
+                                <td>
+                                    @if (multi)            { <span class="au-multi">@r.Changes.Count Changes</span> }
+                                    else if (!string.IsNullOrEmpty(r.ChangedField)) { <span class="au-field" title="@r.ChangedField">@r.ChangedField</span> }
+                                    else                   { <span class="au-val--null">—</span> }
+                                </td>
+                                <td>@RenderVal(r.OldValue, multi)</td>
+                                <td>@RenderVal(r.NewValue, multi)</td>
+                                <td class="ip">@(r.IpAddress ?? "—")</td>
+                                <td><span class="au-status au-status--@(r.Status.ToLowerInvariant())">@r.Status</span></td>
+                                <td><button class="view-btn" @onclick="() => OpenDetails(r.Id)">View</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="au-pager">
+                <span>Showing @(((filter.Page - 1) * filter.PageSize) + 1)–@(Math.Min(filter.Page * filter.PageSize, total)) of @total</span>
+                <span style="display:flex;gap:6px;align-items:center">
+                    <button disabled="@(filter.Page <= 1)" @onclick="() => Go(filter.Page - 1)">‹</button>
+                    <span>@filter.Page / @TotalPages</span>
+                    <button disabled="@(filter.Page >= TotalPages)" @onclick="() => Go(filter.Page + 1)">›</button>
+                </span>
+            </div>
+        }
+    </div>
+</div>
+
+@if (detail != null)
+{
+    <div class="modal" @onclick="CloseDetails">
+        <div class="modal__card" @onclick:stopPropagation>
+            <div class="modal__head"><span>🔎 Activity Details</span><button class="btn btn-ghost btn-sm" @onclick="CloseDetails">✕</button></div>
+            <div class="modal__body">
+                <dt>Activity ID</dt>     <dd class="muted">@detail.Id</dd>
+                <dt>Date &amp; Time</dt>  <dd>@detail.At.ToLocalTime().ToString("dd MMM yyyy hh:mm:ss tt")</dd>
+                <dt>Performed By</dt>     <dd>@detail.ActorName</dd>
+                <dt>Module</dt>           <dd>@(detail.Module ?? "—")</dd>
+                <dt>Action</dt>           <dd><span class="au-action au-action--@ActionTone(detail.Action)">@detail.Action</span></dd>
+                <dt>Status</dt>           <dd><span class="au-status au-status--@(detail.Status.ToLowerInvariant())">@detail.Status</span></dd>
+                <dt>Entity</dt>           <dd>@(detail.EntityName ?? detail.EntityType ?? "—") <span class="muted">@(detail.EntityId ?? "")</span></dd>
+
+                @* ─── Changed Fields matrix — replaces the single Old/New pair when many fields changed ─── *@
+                @if (detail.Changes is { Count: > 0 })
+                {
+                    <dt>Changed Fields</dt>
+                    <dd class="au-changes">
+                        <table>
+                            <thead><tr><th>Field</th><th>Old</th><th></th><th>New</th></tr></thead>
+                            <tbody>
+                                @foreach (var c in detail.Changes)
+                                {
+                                    <tr>
+                                        <td><strong>@c.Field</strong></td>
+                                        <td>@RenderVal(c.OldValue, false)</td>
+                                        <td class="au-arrow">→</td>
+                                        <td>@RenderVal(c.NewValue, false)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </dd>
+                }
+                else
+                {
+                    <dt>Old Value</dt><dd class="@(string.IsNullOrEmpty(detail.OldValue) ? "muted" : "")">@(detail.OldValue ?? "—")</dd>
+                    <dt>New Value</dt><dd class="@(string.IsNullOrEmpty(detail.NewValue) ? "muted" : "")">@(detail.NewValue ?? "—")</dd>
+                }
+
+                <dt>IP Address</dt>       <dd class="muted">@(detail.IpAddress ?? "—")</dd>
+                <dt>Browser</dt>          <dd class="muted">@(detail.Browser ?? "—")</dd>
+                <dt>Operating System</dt> <dd class="muted">@(detail.Device ?? "—")</dd>
+                @if (!string.IsNullOrWhiteSpace(detail.UserAgent))
+                {
+                    <dt>User-Agent</dt><dd class="muted" style="font-size:11.5px">@detail.UserAgent</dd>
+                }
+                @if (!string.IsNullOrWhiteSpace(detail.Details) && detail.Changes.Count == 0)
+                {
+                    <dt>Details</dt><dd style="grid-column:1/-1"><pre>@detail.Details</pre></dd>
+                }
+            </div>
+            <div class="modal__foot"><button class="btn btn-primary" @onclick="CloseDetails">Close</button></div>
+        </div>
+    </div>
+}
+
+@code {
+    private AuditSummary? summary;
+    private AuditDistinct? distincts;
+    private List<AuditRow>? rows;
+    private int total;
+    private AuditFilter filter = new() { Page = 1, PageSize = 50 };
+    private DateTime? dateFrom, dateTo;
+    private AuditRow? detail;
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(total / (double)filter.PageSize));
+
+    protected override async Task OnInitializedAsync()
+    {
+        summary = await Svc.SummaryAsync();
+        distincts = await Svc.DistinctsAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        filter.FromUtc = dateFrom?.ToUniversalTime();
+        filter.ToUtc = dateTo?.ToUniversalTime().AddDays(1);   // inclusive of selected end date
+        var r = await Svc.ListAsync(filter);
+        rows = r.Items.ToList();
+        total = r.TotalCount;
+    }
+    private async Task OnFilterChanged() { filter.Page = 1; await Load(); summary = await Svc.SummaryAsync(); }
+    private async Task Go(int p) { if (p < 1 || p > TotalPages || p == filter.Page) return; filter.Page = p; await Load(); }
+
+    private async Task OpenDetails(Guid id) { detail = await Svc.GetAsync(id); }
+    private void CloseDetails() { detail = null; }
+
+    private async Task ExportCsv()
+    {
+        var csv = await Svc.ExportCsvAsync(filter);
+        await JS.InvokeVoidAsync("hjc.downloadCsv", $"audit-{DateTime.Now:yyyyMMdd}.csv", csv);
+    }
+    private async Task ExportExcel()
+    {
+        var csv = await Svc.ExportCsvAsync(filter);
+        await JS.InvokeVoidAsync("hjc.downloadCsv", $"audit-{DateTime.Now:yyyyMMdd}.xls", csv);
+    }
+    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+
+    private static string FormatN(int n) => n.ToString("N0");
+
+    // Action tone derives from the friendly action label (Created / Updated / Deleted / Login /
+    // Granted / Revoked / Reset). Matches the spec's colour palette.
+    private static string ActionTone(string action) => (action ?? "").ToLowerInvariant() switch
+    {
+        "created"           => "create",
+        "updated"           => "update",
+        "deleted"           => "delete",
+        "login"             => "login",
+        "login failed"      => "delete",
+        "logout"            => "login",
+        "granted"           => "create",
+        "revoked"           => "delete",
+        "permission granted"=> "granted",
+        "permission revoked"=> "revoked",
+        "permission updated"=> "perm",
+        "permission reset"  => "perm",
+        var s when s.Contains("payment") || s.Contains("refund") => "payment",
+        _                   => "other"
+    };
+
+    // Render a single value cell. ON/OFF/—  get pill chips so permission rows scan instantly.
+    private RenderFragment RenderVal(string? v, bool muted) => __builder =>
+    {
+        var s = v?.Trim();
+        if (string.IsNullOrEmpty(s) || s == "—")
+        {
+            __builder.OpenElement(0, "span"); __builder.AddAttribute(1, "class", "au-val--null"); __builder.AddContent(2, "—"); __builder.CloseElement();
+            return;
+        }
+        if (s.Equals("ON", StringComparison.OrdinalIgnoreCase))
+        { __builder.OpenElement(0, "span"); __builder.AddAttribute(1, "class", "au-val--on"); __builder.AddContent(2, "ON"); __builder.CloseElement(); return; }
+        if (s.Equals("OFF", StringComparison.OrdinalIgnoreCase))
+        { __builder.OpenElement(0, "span"); __builder.AddAttribute(1, "class", "au-val--off"); __builder.AddContent(2, "OFF"); __builder.CloseElement(); return; }
+        __builder.OpenElement(0, "span");
+        __builder.AddAttribute(1, "class", "au-val");
+        __builder.AddAttribute(2, "title", s);
+        __builder.AddContent(3, muted ? "—" : s);
+        __builder.CloseElement();
+    };
+}

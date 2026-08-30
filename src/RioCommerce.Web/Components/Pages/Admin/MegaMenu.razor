@@ -1,0 +1,489 @@
+@page "/admin/mega-menu"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IMenuAdminService Svc
+@inject ToastService Toast
+@inject IJSRuntime JS
+@implements IDisposable
+<PageTitle>Mega Menu — RioCommerce Admin</PageTitle>
+
+<style>
+    .mm-grid{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:18px;align-items:start;margin-top:8px}
+    .mm-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .mm-card__head{padding:12px 16px;font-weight:700;color:var(--navy);font-size:14px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,var(--gray-50));display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .mm-card__body{padding:16px}
+    .mm-sub{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-400);margin:14px 0 6px}
+    .mm-sub:first-child{margin-top:0}
+    .mm-hint{font-size:11.5px;color:var(--gray-400);margin:6px 0 14px}
+    .mm-acc{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+    .mm-acc__item{border:1px solid var(--gray-200);border-radius:10px;overflow:hidden}
+    .mm-acc__head{width:100%;display:flex;align-items:center;justify-content:space-between;padding:11px 13px;background:var(--gray-50);border:none;cursor:pointer;font-weight:600;font-size:13.5px;color:var(--navy)}
+    .mm-acc__head:hover{background:var(--gray-100)}
+    .mm-acc__head.open{background:#fff7ed;color:var(--orange)}
+    .mm-acc__chev{transition:transform .15s ease;font-size:11px;color:var(--gray-400)}
+    .mm-acc__head.open .mm-acc__chev{transform:rotate(180deg);color:var(--orange)}
+    .mm-acc__body{padding:13px;border-top:1px solid var(--gray-100);background:#fff}
+    .mm-add{width:100%;margin-top:10px;justify-content:center}
+    .mm-empty{font-size:12.5px;color:var(--gray-400);margin:0}
+    .mm-note{font-size:11.5px;color:var(--gray-400);margin-top:16px;line-height:1.6;border-top:1px dashed var(--gray-200);padding-top:12px}
+    .mm-ico{width:28px;height:28px;border:1px solid var(--gray-200);background:#fff;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;color:var(--gray-600)}
+    .mm-ico:hover{background:var(--gray-50);border-color:var(--gray-300)} .mm-ico:disabled{opacity:.35;cursor:default}
+    .mm-ico--del:hover{color:var(--error);border-color:#FECACA;background:#FEF2F2}
+    /* ── nested drag-and-drop tree ── */
+    .mt-wrap{min-height:24px}
+    .mt,.mt-children{list-style:none;margin:0;padding:0}
+    .mt-children{margin-left:20px;border-left:2px solid var(--gray-100);padding-left:8px;margin-top:6px}
+    .mt-li{margin-bottom:6px}
+    .mt-li.mt-dragging>.mt-row{opacity:.4}
+    .mt-row{position:relative;display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--gray-200);border-radius:9px;background:#fff}
+    .mt-row--off .mt-title{color:var(--gray-400);text-decoration:line-through}
+    .mt-handle{cursor:grab;color:var(--gray-400);font-size:16px;line-height:1;user-select:none;padding:2px 3px;flex-shrink:0}
+    .mt-handle:active{cursor:grabbing}
+    .mt-main{min-width:0;flex:1}
+    .mt-title{font-weight:600;color:var(--navy);font-size:13.5px}
+    .mt-url{font-size:11px;color:var(--gray-400);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mt-acts{display:flex;gap:3px;flex-shrink:0}
+    .mt-row.mt-drop-before::before,.mt-row.mt-drop-after::after{content:"";position:absolute;left:0;right:0;height:3px;background:var(--orange);border-radius:2px;z-index:2}
+    .mt-row.mt-drop-before::before{top:-5px}
+    .mt-row.mt-drop-after::after{bottom:-5px}
+    .mt-row.mt-drop-inside{outline:2px dashed var(--orange);outline-offset:1px;background:#fff7ed}
+    .mt-savebar{display:flex;align-items:center;gap:12px}
+    .mt-dirty{font-size:12px;font-weight:700;color:var(--orange)}
+    .mt-tiphelp{font-size:11.5px;color:var(--gray-400);margin:0 0 12px}
+    @@media(max-width:840px){.mm-grid{grid-template-columns:1fr}}
+</style>
+
+<div class="page__header"><h1>Mega Menu</h1></div>
+<p style="color:var(--gray-500);font-size:13.5px;margin-bottom:6px">Build the storefront navigation as a nested tree of unlimited depth. Drag rows by the ⠿ handle to reorder and re-nest; add items under any parent. Changes apply after you click <strong>Save Menu Order</strong>.</p>
+
+<div class="mm-grid">
+    @* ── add items ── *@
+    <div class="mm-card">
+        <div class="mm-card__head">➕ Add to menu</div>
+        <div class="mm-card__body">
+            <div class="mm-sub">Place under</div>
+            <select class="form-input" @bind="parentId">
+                <option value="">— Top level (a new section) —</option>
+                @foreach (var (n, depth) in FlattenForSelect())
+                {
+                    <option value="@n.Id">@(IndentPrefix(depth))@n.Title</option>
+                }
+            </select>
+            <p class="mm-hint">The new item is added as a child of the selected parent — pick any level. Top-level items become menu tabs; nested items render as dropdowns / flyouts.</p>
+
+            <div class="mm-acc">
+                <div class="mm-acc__item">
+                    <button class="mm-acc__head @(open == "std" ? "open" : "")" @onclick='() => Toggle("std")'>
+                        <span>📄 Standard pages</span><span class="mm-acc__chev">▾</span>
+                    </button>
+                    @if (open == "std")
+                    {
+                        <div class="mm-acc__body">
+                            <select class="form-input" @bind="stdUrl">
+                                <option value="">— choose a page —</option>
+                                @foreach (var s in StandardPages) { <option value="@s.Url">@s.Title</option> }
+                            </select>
+                            <button class="btn btn-primary btn-sm mm-add" disabled="@busy" @onclick="AddStandard">Add to menu →</button>
+                        </div>
+                    }
+                </div>
+                <div class="mm-acc__item">
+                    <button class="mm-acc__head @(open == "cms" ? "open" : "")" @onclick='() => Toggle("cms")'>
+                        <span>🗎 CMS pages</span><span class="mm-acc__chev">▾</span>
+                    </button>
+                    @if (open == "cms")
+                    {
+                        <div class="mm-acc__body">
+                            @if (pages is { Count: > 0 })
+                            {
+                                <select class="form-input" @bind="addPageId">
+                                    <option value="">— choose a CMS page —</option>
+                                    @foreach (var p in pages) { <option value="@p.Id">@p.Title</option> }
+                                </select>
+                                <button class="btn btn-primary btn-sm mm-add" disabled="@busy" @onclick="AddPage">Add to menu →</button>
+                            }
+                            else { <p class="mm-empty">No CMS pages yet — create one under Content management → CMS Pages.</p> }
+                        </div>
+                    }
+                </div>
+                <div class="mm-acc__item">
+                    <button class="mm-acc__head @(open == "cat" ? "open" : "")" @onclick='() => Toggle("cat")'>
+                        <span>🗂 Categories</span><span class="mm-acc__chev">▾</span>
+                    </button>
+                    @if (open == "cat")
+                    {
+                        <div class="mm-acc__body">
+                            @if (categories is { Count: > 0 })
+                            {
+                                <select class="form-input" @bind="addCatId">
+                                    <option value="">— choose a category —</option>
+                                    @foreach (var c in categories) { <option value="@c.Id">@c.Title</option> }
+                                </select>
+                                <button class="btn btn-primary btn-sm mm-add" disabled="@busy" @onclick="AddCategory">Add to menu →</button>
+                            }
+                            else { <p class="mm-empty">No active categories yet — create one under Catalog → Categories.</p> }
+                        </div>
+                    }
+                </div>
+                <div class="mm-acc__item">
+                    <button class="mm-acc__head @(open == "link" ? "open" : "")" @onclick='() => Toggle("link")'>
+                        <span>🔗 Custom link</span><span class="mm-acc__chev">▾</span>
+                    </button>
+                    @if (open == "link")
+                    {
+                        <div class="mm-acc__body">
+                            <input class="form-input" placeholder="Label (e.g. CA Foundation)" @bind="customTitle" style="margin-bottom:8px" />
+                            <input class="form-input" placeholder="URL (e.g. /courses/ca-foundation or https://…)" @bind="customUrl" />
+                            <button class="btn btn-primary btn-sm mm-add" disabled="@busy" @onclick="AddCustom">Add to menu →</button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <p class="mm-note">Not listed: <strong>Manufacturers</strong>, <strong>Vendors</strong> and <strong>Product tags</strong> — this platform has no such catalogue concepts. nopCommerce <strong>Topics</strong> are the same thing as <em>CMS pages</em> here.</p>
+        </div>
+    </div>
+
+    @* ── menu structure (drag-and-drop tree) ── *@
+    <div class="mm-card">
+        <div class="mm-card__head">
+            <span>🧭 Menu structure</span>
+            <span class="mt-savebar">
+                @if (dirty) { <span class="mt-dirty">● Unsaved changes</span> }
+                <button class="btn btn-primary btn-sm" disabled="@(!dirty || busy)" @onclick="SaveOrder">💾 Save Menu Order</button>
+            </span>
+        </div>
+        <div class="mm-card__body">
+            <p class="mt-tiphelp">Grab the ⠿ handle and drag: drop <em>onto the middle</em> of a row to nest inside it, or near the <em>top/bottom edge</em> to place it before/after. Use ↑ ↓ ⇥ ⇤ for keyboard/click reordering.</p>
+            <div class="mt-wrap" @ref="treeRoot">
+                @if (roots == null) { <div class="skel" style="height:40px"></div> }
+                else if (roots.Count == 0) { <AdminGridEmptyState Text="No menu items yet. Add a section or link to get started." Icon="🧭" /> }
+                else
+                {
+                    <ul class="mt mt-root">
+                        @foreach (var n in roots) { @TreeNode(n) }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── edit modal ── *@
+<Modal @bind-Visible="showEdit" Title="Edit menu item" Size="sm">
+    <ChildContent>
+        <div class="form-group form-group--full"><label class="form-label">Label</label><input class="form-input" @bind="editTitle" /></div>
+        <div class="form-group form-group--full"><label class="form-label">URL</label><input class="form-input" @bind="editUrl" /></div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap">
+            <label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" @bind="editEnabled" /> Enabled</label>
+            <label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" @bind="editNewTab" /> Open in new tab</label>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-ghost" @onclick="() => showEdit = false">Cancel</button>
+        <button class="btn btn-primary" disabled="@busy" @onclick="SaveEdit">Save</button>
+    </Footer>
+</Modal>
+
+@code {
+    // Mutable local tree — edited freely (drag / arrows) and persisted only via "Save Menu Order".
+    private sealed class MmNode
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Url { get; set; } = "";
+        public bool IsEnabled { get; set; }
+        public bool OpenInNewTab { get; set; }
+        public List<MmNode> Children { get; set; } = new();
+    }
+
+    private List<MmNode>? roots;
+    private List<MenuPagePick>? pages;
+    private List<MenuPagePick>? categories;
+    private bool busy, dirty;
+    private string open = "std";
+    private string addPageId = "", addCatId = "", stdUrl = "", customTitle = "", customUrl = "", parentId = "";
+
+    private ElementReference treeRoot;
+    private DotNetObjectReference<MegaMenu>? _ref;
+    private bool _jsInit;
+
+    // edit modal
+    private bool showEdit;
+    private Guid editId;
+    private string editTitle = "", editUrl = "";
+    private bool editEnabled, editNewTab;
+
+    private record StdPage(string Title, string Url);
+    private static readonly List<StdPage> StandardPages = new()
+    {
+        new("Home", "/"),
+        new("All Courses", "/courses"),
+        new("Books & Study Material", "/courses/books"),
+        new("Faculty", "/faculty"),
+        new("Blog", "/blog"),
+        new("Contact", "/contact"),
+        new("Search", "/search"),
+        new("My Account", "/account"),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        pages = await Svc.AvailablePagesAsync();
+        categories = await Svc.AvailableCategoriesAsync();
+        await Reload();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_jsInit && roots != null)
+        {
+            _jsInit = true;
+            _ref = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("hjc.menuTree.init", treeRoot, _ref); } catch { }
+        }
+    }
+
+    private async Task Reload()
+    {
+        roots = Convert(await Svc.GetTreeAsync());
+        dirty = false;
+    }
+
+    private static List<MmNode> Convert(List<MenuItemNode> nodes) =>
+        nodes.Select(n => new MmNode
+        {
+            Id = n.Id, Title = n.Title, Url = n.Url, IsEnabled = n.IsEnabled, OpenInNewTab = n.OpenInNewTab,
+            Children = Convert(n.Children)
+        }).ToList();
+
+    private void Toggle(string section) => open = open == section ? "" : section;
+    private Guid? ParentGuid => Guid.TryParse(parentId, out var g) ? g : null;
+
+    // ── tree helpers ──
+    private (MmNode node, List<MmNode> siblings)? Find(Guid id, List<MmNode>? list = null)
+    {
+        list ??= roots!;
+        foreach (var n in list)
+        {
+            if (n.Id == id) return (n, list);
+            var r = Find(id, n.Children);
+            if (r != null) return r;
+        }
+        return null;
+    }
+
+    private static bool Contains(MmNode node, Guid id)
+    {
+        if (node.Id == id) return true;
+        foreach (var c in node.Children) if (Contains(c, id)) return true;
+        return false;
+    }
+
+    private IEnumerable<(MmNode node, int depth)> FlattenForSelect()
+    {
+        IEnumerable<(MmNode, int)> Walk(List<MmNode> list, int depth)
+        {
+            foreach (var n in list)
+            {
+                yield return (n, depth);
+                foreach (var c in Walk(n.Children, depth + 1)) yield return c;
+            }
+        }
+        return roots == null ? Enumerable.Empty<(MmNode, int)>() : Walk(roots, 0);
+    }
+
+    private static string IndentPrefix(int depth) => depth == 0 ? "" : string.Concat(Enumerable.Repeat(" ", depth)) + "↳ ";
+
+    // ── drag-and-drop callback from JS ──
+    [JSInvokable]
+    public void OnMenuDrop(string draggedId, string targetId, string zone)
+    {
+        if (roots == null || !Guid.TryParse(draggedId, out var dId) || !Guid.TryParse(targetId, out var tId) || dId == tId) return;
+        var dr = Find(dId); var tr = Find(tId);
+        if (dr == null || tr == null) return;
+        var dragged = dr.Value.node;
+        if (Contains(dragged, tId)) return;   // never drop a node into its own subtree
+
+        dr.Value.siblings.Remove(dragged);    // detach
+
+        if (zone == "inside")
+        {
+            tr.Value.node.Children.Add(dragged);
+        }
+        else
+        {
+            var tsibs = tr.Value.siblings;
+            var idx = tsibs.IndexOf(tr.Value.node);
+            if (idx < 0) idx = tsibs.Count - 1;
+            tsibs.Insert(zone == "before" ? idx : idx + 1, dragged);
+        }
+        dirty = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    // ── keyboard/click fallback ops (all local) ──
+    private void MoveVert(Guid id, bool up)
+    {
+        var r = Find(id); if (r == null) return;
+        var sibs = r.Value.siblings; var i = sibs.IndexOf(r.Value.node);
+        var j = up ? i - 1 : i + 1;
+        if (j < 0 || j >= sibs.Count) return;
+        (sibs[i], sibs[j]) = (sibs[j], sibs[i]);
+        dirty = true;
+    }
+    private void Indent(Guid id)  // nest under previous sibling
+    {
+        var r = Find(id); if (r == null) return;
+        var sibs = r.Value.siblings; var i = sibs.IndexOf(r.Value.node);
+        if (i <= 0) return;
+        var prev = sibs[i - 1];
+        sibs.RemoveAt(i);
+        prev.Children.Add(r.Value.node);
+        dirty = true;
+    }
+    private void Outdent(Guid id)  // promote to grandparent level, after current parent
+    {
+        if (roots == null) return;
+        // locate parent of id
+        (MmNode parent, List<MmNode> grand)? FindParent(Guid target, List<MmNode> list, List<MmNode> grandList)
+        {
+            foreach (var n in list)
+            {
+                if (n.Children.Any(c => c.Id == target)) return (n, grandList);
+                var r = FindParent(target, n.Children, n.Children);
+                if (r != null) return r;
+            }
+            return null;
+        }
+        var pr = FindParent(id, roots, roots);
+        if (pr == null) return;                       // already top-level
+        var parent = pr.Value.parent; var grand = pr.Value.grand;
+        var node = parent.Children.First(c => c.Id == id);
+        parent.Children.Remove(node);
+        var pIdx = grand.IndexOf(parent);
+        grand.Insert(pIdx < 0 ? grand.Count : pIdx + 1, node);
+        dirty = true;
+    }
+
+    // ── persist ──
+    private async Task SaveOrder()
+    {
+        if (roots == null) return;
+        busy = true;
+        var acc = new List<MenuOrderItem>();
+        void Flatten(List<MmNode> list, Guid? pid)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                acc.Add(new MenuOrderItem(list[i].Id, pid, i + 1));
+                Flatten(list[i].Children, list[i].Id);
+            }
+        }
+        Flatten(roots, null);
+        var (ok, err) = await Svc.SaveTreeOrderAsync(acc);
+        busy = false;
+        if (ok) { dirty = false; Toast.Success("Menu order saved successfully."); }
+        else Toast.Error(err ?? "Could not save menu order.");
+    }
+
+    private async Task<bool> FlushIfDirtyAsync()
+    {
+        if (!dirty) return true;
+        var before = busy;
+        await SaveOrder();
+        return !dirty;   // dirty cleared ⇒ save succeeded
+    }
+
+    // ── add items (flush any pending reorder first so DB matches the tree) ──
+    private async Task AddStandard()
+    {
+        var sp = StandardPages.FirstOrDefault(s => s.Url == stdUrl);
+        if (sp == null) { Toast.Error("Choose a page first."); return; }
+        if (!await FlushIfDirtyAsync()) return;
+        busy = true; await Svc.AddCustomItemAsync(sp.Title, sp.Url, ParentGuid); busy = false;
+        stdUrl = ""; await Reload(); Toast.Success($"{sp.Title} added to menu.");
+    }
+    private async Task AddPage()
+    {
+        if (!Guid.TryParse(addPageId, out var pid)) { Toast.Error("Choose a page first."); return; }
+        if (!await FlushIfDirtyAsync()) return;
+        busy = true; await Svc.AddPageItemAsync(pid, ParentGuid); busy = false;
+        addPageId = ""; await Reload(); Toast.Success("Page added to menu.");
+    }
+    private async Task AddCategory()
+    {
+        if (!Guid.TryParse(addCatId, out var cid)) { Toast.Error("Choose a category first."); return; }
+        if (!await FlushIfDirtyAsync()) return;
+        busy = true; await Svc.AddCategoryItemAsync(cid, ParentGuid); busy = false;
+        addCatId = ""; await Reload(); Toast.Success("Category added to menu.");
+    }
+    private async Task AddCustom()
+    {
+        if (string.IsNullOrWhiteSpace(customTitle) || string.IsNullOrWhiteSpace(customUrl)) { Toast.Error("Enter a label and URL."); return; }
+        if (!await FlushIfDirtyAsync()) return;
+        busy = true; await Svc.AddCustomItemAsync(customTitle, customUrl, ParentGuid); busy = false;
+        customTitle = customUrl = ""; await Reload(); Toast.Success("Link added to menu.");
+    }
+
+    private async Task Delete(Guid id)
+    {
+        if (!await FlushIfDirtyAsync()) return;
+        busy = true; await Svc.DeleteAsync(id); busy = false; await Reload(); Toast.Info("Item removed.");
+    }
+
+    private void OpenEdit(MmNode n) { editId = n.Id; editTitle = n.Title; editUrl = n.Url; editEnabled = n.IsEnabled; editNewTab = n.OpenInNewTab; showEdit = true; }
+
+    private async Task SaveEdit()
+    {
+        busy = true;
+        var (ok, err) = await Svc.UpdateItemAsync(editId, editTitle, editUrl, editEnabled, editNewTab);
+        busy = false;
+        if (!ok) { Toast.Error(err ?? "Update failed."); return; }
+        // Update the local node in place — no reload, so any pending reorder is preserved.
+        var r = Find(editId);
+        if (r != null)
+        {
+            var n = r.Value.node;
+            n.Title = editTitle.Trim(); n.Url = string.IsNullOrWhiteSpace(editUrl) ? "#" : editUrl.Trim();
+            n.IsEnabled = editEnabled; n.OpenInNewTab = editNewTab;
+        }
+        showEdit = false; Toast.Success("Item updated.");
+    }
+
+    private RenderFragment TreeNode(MmNode n) => __builder =>
+    {
+        <li class="mt-li" data-id="@n.Id">
+            <div class="mt-row @(n.IsEnabled ? "" : "mt-row--off")">
+                <span class="mt-handle" title="Drag to reorder / re-nest">⠿</span>
+                <div class="mt-main">
+                    <div class="mt-title">@n.Title</div>
+                    <div class="mt-url">@n.Url</div>
+                </div>
+                <div class="mt-acts">
+                    <button class="mm-ico" title="Move up" @onclick="() => MoveVert(n.Id, true)">↑</button>
+                    <button class="mm-ico" title="Move down" @onclick="() => MoveVert(n.Id, false)">↓</button>
+                    <button class="mm-ico" title="Nest under previous sibling" @onclick="() => Indent(n.Id)">⇥</button>
+                    <button class="mm-ico" title="Promote one level up" @onclick="() => Outdent(n.Id)">⇤</button>
+                    <button class="mm-ico" title="Edit" @onclick="() => OpenEdit(n)">✎</button>
+                    <button class="mm-ico mm-ico--del" title="Delete (with all children)" @onclick="() => Delete(n.Id)">🗑</button>
+                </div>
+            </div>
+            @if (n.Children.Count > 0)
+            {
+                <ul class="mt mt-children">
+                    @foreach (var c in n.Children) { @TreeNode(c) }
+                </ul>
+            }
+        </li>
+    };
+
+    public void Dispose()
+    {
+        if (_ref != null)
+        {
+            try { JS.InvokeVoidAsync("hjc.menuTree.dispose", treeRoot); } catch { }
+            _ref.Dispose();
+        }
+    }
+}

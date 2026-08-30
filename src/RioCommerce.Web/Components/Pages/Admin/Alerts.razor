@@ -1,0 +1,80 @@
+@page "/admin/alerts"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,faculty,franchise_admin,backend_user")]
+@implements IDisposable
+@inject INotificationCenterService Center
+@inject IRealtimeBus Bus
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+<PageTitle>Notifications — RioCommerce Admin</PageTitle>
+
+<div class="page__header"><h1>Notifications</h1></div>
+
+<div class="data-card">
+    <div class="data-card__title">Activity feed</div>
+    @if (items == null)
+    {
+        <div style="padding:16px 20px">
+            @for (var i = 0; i < 6; i++) { <div class="skel" style="height:18px;width:@(60 + (i * 7) % 30)%;margin-bottom:12px"></div> }
+        </div>
+    }
+    else if (items.Count == 0)
+    {
+        <div style="padding:40px;text-align:center;color:var(--gray-400)">No notifications yet.</div>
+    }
+    else
+    {
+        @foreach (var n in items)
+        {
+            <div class="notif__item" style="border-bottom:1px solid var(--gray-100)" @onclick="() => Open(n)">
+                <span class="notif__dot notif__dot--@Variant(n.Severity)">@Icon(n.Type)</span>
+                <div class="notif__body" style="flex:1">
+                    <div class="notif__title">@n.Title</div>
+                    <div class="notif__msg">@n.Message</div>
+                </div>
+                <div class="notif__time">@n.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private List<AdminNotificationDto>? items;
+    private Guid? userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        userId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        items = await Center.ListAsync(100);
+        await Center.MarkAllReadAsync(userId);
+        Bus.NotificationPublished += OnNotification;
+    }
+
+    private void OnNotification(AdminNotificationDto n) => _ = InvokeAsync(() =>
+    {
+        items?.Insert(0, n);
+        StateHasChanged();
+    });
+
+    private void Open(AdminNotificationDto n) { if (!string.IsNullOrEmpty(n.LinkUrl)) Nav.NavigateTo(n.LinkUrl); }
+
+    public void Dispose() => Bus.NotificationPublished -= OnNotification;
+
+    private static string Variant(NotificationSeverity s) => s switch
+    {
+        NotificationSeverity.Success => "success",
+        NotificationSeverity.Warning => "warning",
+        NotificationSeverity.Error => "error",
+        _ => "info"
+    };
+    private static string Icon(AdminNotificationType t) => t switch
+    {
+        AdminNotificationType.NewOrder => "🛒",
+        AdminNotificationType.PaymentSuccess => "💰",
+        AdminNotificationType.Refund => "↩",
+        AdminNotificationType.EnrollmentActivated => "🎓",
+        AdminNotificationType.FranchisePayout => "🏪",
+        _ => "⚠"
+    };
+}

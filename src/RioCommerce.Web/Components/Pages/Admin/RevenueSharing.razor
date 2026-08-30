@@ -1,0 +1,233 @@
+@page "/admin/revenue-sharing"
+@using RioCommerce.Core.DTOs.Sharing
+@using Microsoft.AspNetCore.Components.Forms
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject ISharingImportExportService Svc
+@inject ToastService Toast
+<PageTitle>Revenue Sharing — RioCommerce Admin</PageTitle>
+
+@*
+    Hub page for bulk-managing both sharing tables. Two tabs side-by-side, each with:
+      • Download Template — blank .xlsx with header + example row + instructions sheet
+      • Export Current    — every active rule as .xlsx
+      • Import            — upload an edited .xlsx; per-row validation
+    Per-row editing for individual rules still lives on the per-franchise / faculty pages.
+*@
+
+<style>
+    .rs-tabs { display:flex; gap:4px; border-bottom:2px solid var(--gray-200); margin-bottom:18px }
+    .rs-tab { padding:11px 18px; cursor:pointer; font-size:13.5px; font-weight:600; color:var(--gray-500); border-bottom:2px solid transparent; margin-bottom:-2px; transition:color .15s }
+    .rs-tab--active { color:var(--orange); border-bottom-color:var(--orange) }
+    .rs-tab:hover { color:var(--navy) }
+
+    .rs-section { background:#fff; border:1px solid var(--gray-200); border-radius:14px; padding:22px; margin-bottom:16px }
+    .rs-section h3 { font-size:14px; font-weight:700; color:var(--navy); margin:0 0 6px 0 }
+    .rs-section p  { font-size:13px; color:var(--gray-600); margin:0 0 14px 0; line-height:1.55 }
+    .rs-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+
+    .rs-result { margin-top:16px; padding:14px; border-radius:10px; font-size:13px }
+    .rs-result--ok   { background:#D1FAE5; color:#065F46; border:1px solid #6EE7B7 }
+    .rs-result--err  { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5 }
+    .rs-result__row { display:flex; gap:18px; flex-wrap:wrap; margin-top:6px }
+    .rs-result__stat { font-weight:700 }
+
+    .rs-errors { margin-top:10px; max-height:280px; overflow:auto; background:#fff; border:1px solid #FCA5A5; border-radius:8px }
+    .rs-errors table { width:100%; border-collapse:collapse; font-size:12px }
+    .rs-errors th, .rs-errors td { padding:6px 10px; border-bottom:1px solid #FEE2E2; text-align:left }
+    .rs-errors th { background:#FEF2F2; font-weight:700; color:#7F1D1D }
+
+    .rs-uploading { color:var(--gray-500); font-size:12.5px; font-style:italic }
+</style>
+
+<div class="page__header">
+    <h1>Revenue Sharing</h1>
+    <p style="color:var(--gray-500); font-size:13.5px; margin:4px 0 0">
+        Bulk-manage product-level commission and faculty share configuration via Excel.
+        Use the per-franchise / faculty pages for single-rule edits.
+    </p>
+</div>
+
+<div class="rs-tabs">
+    <div class="rs-tab @(tab == "franchise" ? "rs-tab--active" : "")" @onclick="@(() => Switch("franchise"))">
+        🏢 Franchise Commissions
+    </div>
+    <div class="rs-tab @(tab == "faculty" ? "rs-tab--active" : "")" @onclick="@(() => Switch("faculty"))">
+        🎓 Faculty Shares
+    </div>
+</div>
+
+@if (tab == "franchise")
+{
+    <div class="rs-section">
+        <h3>Step 1 — Get the file</h3>
+        <p>
+            Download a blank <strong>template</strong> to set up new rules from scratch, or <strong>export</strong>
+            the current configuration to make edits. Either file uploads back here.
+        </p>
+        <div class="rs-row">
+            <a class="btn btn-ghost btn-sm" href="/api/admin/sharing/franchise/template" download>📄 Download Template</a>
+            <a class="btn btn-primary btn-sm" href="/api/admin/sharing/franchise/export" download>⬇ Export Current Rules</a>
+        </div>
+    </div>
+
+    <div class="rs-section">
+        <h3>Step 2 — Upload edited file</h3>
+        <p>
+            One row per rule. Matching by <strong>FranchiseCode</strong> + <strong>ProductSku</strong> —
+            existing pairs update, new pairs insert. Invalid rows are skipped and listed below.
+        </p>
+        <div class="rs-row">
+            <InputFile OnChange="OnFranchiseFile" accept=".xlsx" />
+            @if (uploading) { <span class="rs-uploading">Uploading…</span> }
+        </div>
+
+        @if (franchiseResult != null)
+        {
+            var hasErr = franchiseResult.Errors.Count > 0;
+            <div class="rs-result @(hasErr ? "rs-result--err" : "rs-result--ok")">
+                <div style="font-weight:700; font-size:14px">
+                    @(hasErr ? "Import completed with errors" : "✓ Import complete")
+                </div>
+                <div class="rs-result__row">
+                    <div><span class="rs-result__stat">@franchiseResult.Inserted</span> inserted</div>
+                    <div><span class="rs-result__stat">@franchiseResult.Updated</span> updated</div>
+                    <div><span class="rs-result__stat">@franchiseResult.Skipped</span> skipped</div>
+                    <div style="color:var(--gray-500)">of <span class="rs-result__stat">@franchiseResult.TotalRows</span> rows</div>
+                </div>
+                @if (hasErr)
+                {
+                    <div class="rs-errors">
+                        <table>
+                            <thead><tr><th style="width:70px">Row</th><th style="width:160px">Column</th><th>Issue</th><th>Value</th></tr></thead>
+                            <tbody>
+                                @foreach (var e in franchiseResult.Errors)
+                                {
+                                    <tr><td>@e.RowNumber</td><td>@e.Column</td><td>@e.Message</td><td><code>@(e.Value ?? "")</code></td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="rs-section">
+        <h3>Need single-rule editing?</h3>
+        <p>Per-franchise per-product rules can also be set one at a time via the franchise detail page.</p>
+        <a class="btn btn-ghost btn-sm" href="/admin/franchises">‹ All Franchises</a>
+    </div>
+}
+else if (tab == "faculty")
+{
+    <div class="rs-section">
+        <h3>Step 1 — Get the file</h3>
+        <p>
+            Download a blank <strong>template</strong> or <strong>export</strong> the current
+            configuration. Optional Effective Date column lets you set when a new rate kicks in.
+        </p>
+        <div class="rs-row">
+            <a class="btn btn-ghost btn-sm" href="/api/admin/sharing/faculty/template" download>📄 Download Template</a>
+            <a class="btn btn-primary btn-sm" href="/api/admin/sharing/faculty/export" download>⬇ Export Current Rules</a>
+        </div>
+    </div>
+
+    <div class="rs-section">
+        <h3>Step 2 — Upload edited file</h3>
+        <p>
+            Matching by <strong>FacultyShortCode</strong> + <strong>ProductSku</strong>.
+            Invalid rows are skipped and listed below — fix the spreadsheet and re-upload.
+        </p>
+        <div class="rs-row">
+            <InputFile OnChange="OnFacultyFile" accept=".xlsx" />
+            @if (uploading) { <span class="rs-uploading">Uploading…</span> }
+        </div>
+
+        @if (facultyResult != null)
+        {
+            var hasErr = facultyResult.Errors.Count > 0;
+            <div class="rs-result @(hasErr ? "rs-result--err" : "rs-result--ok")">
+                <div style="font-weight:700; font-size:14px">
+                    @(hasErr ? "Import completed with errors" : "✓ Import complete")
+                </div>
+                <div class="rs-result__row">
+                    <div><span class="rs-result__stat">@facultyResult.Inserted</span> inserted</div>
+                    <div><span class="rs-result__stat">@facultyResult.Updated</span> updated</div>
+                    <div><span class="rs-result__stat">@facultyResult.Skipped</span> skipped</div>
+                    <div style="color:var(--gray-500)">of <span class="rs-result__stat">@facultyResult.TotalRows</span> rows</div>
+                </div>
+                @if (hasErr)
+                {
+                    <div class="rs-errors">
+                        <table>
+                            <thead><tr><th style="width:70px">Row</th><th style="width:160px">Column</th><th>Issue</th><th>Value</th></tr></thead>
+                            <tbody>
+                                @foreach (var e in facultyResult.Errors)
+                                {
+                                    <tr><td>@e.RowNumber</td><td>@e.Column</td><td>@e.Message</td><td><code>@(e.Value ?? "")</code></td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="rs-section">
+        <h3>Need single-rule editing?</h3>
+        <p>Add or edit one faculty share at a time via the existing page.</p>
+        <a class="btn btn-ghost btn-sm" href="/admin/faculty-sharing">‹ Faculty Revenue Sharing</a>
+    </div>
+}
+
+@code {
+    private string tab = "franchise";
+    private bool uploading;
+    private SharingImportResult? franchiseResult;
+    private SharingImportResult? facultyResult;
+
+    private void Switch(string t) { tab = t; }
+
+    private async Task OnFranchiseFile(InputFileChangeEventArgs e)
+    {
+        franchiseResult = await UploadAsync(e.File, isFranchise: true);
+    }
+    private async Task OnFacultyFile(InputFileChangeEventArgs e)
+    {
+        facultyResult = await UploadAsync(e.File, isFranchise: false);
+    }
+
+    /// <summary>Read the uploaded xlsx into memory and hand to the service directly.
+    /// No HTTP round-trip → no auth/cookie/antiforgery dance, and any exception surfaces
+    /// here as a clean error.</summary>
+    private async Task<SharingImportResult?> UploadAsync(IBrowserFile file, bool isFranchise)
+    {
+        if (file == null) return null;
+        uploading = true; StateHasChanged();
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var result = isFranchise
+                ? await Svc.ImportFranchiseCommissionsAsync(bytes, actorId: null, actorName: "admin")
+                : await Svc.ImportFacultySharesAsync(bytes, actorId: null, actorName: "admin");
+
+            if (result.Errors.Count == 0) Toast.Success($"Imported {result.Inserted + result.Updated} row(s).");
+            else if (result.Inserted + result.Updated > 0) Toast.Info($"Imported {result.Inserted + result.Updated} row(s); {result.Errors.Count} skipped.");
+            else Toast.Error($"Import failed — {result.Errors.Count} row(s) had errors.");
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Upload error: {ex.Message}");
+            return null;
+        }
+        finally { uploading = false; StateHasChanged(); }
+    }
+}

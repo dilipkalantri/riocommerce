@@ -1,0 +1,109 @@
+@page "/preview/courses"
+@layout PreviewLayout
+@inject ISiteSettingsService Settings
+@* Standalone reproduction of the design zip's courses.html. Self-contained: own header/footer,
+   own scoped CSS (preview-courses.css, all rules under .pv). Does not touch or affect any existing page. *@
+<PageTitle>CA Courses — RioCommerce</PageTitle>
+<HeadContent>
+    <link rel="stylesheet" href="_content/RioCommerce.Web/css/preview-courses.css" />
+</HeadContent>
+
+<div class="pv">
+<div class="contact-strip"><div class="container"><div class="contact-strip__numbers"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> <a href="tel:9975242929">9975242929</a> / <a href="tel:9766582929">9766582929</a> / <a href="tel:9766182929">9766182929</a></div><div class="contact-strip__social"><a href="https://www.instagram.com/riocommerce/" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/></svg></a><a href="https://www.youtube.com/@@CAHarshadJaju" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48" fill="#1a3a5c"/></svg></a><a href="https://t.me/riocommerce" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215l-8.609 3.33c-2.068.8-4.133 1.598-5.724 2.21a405.15 405.15 0 0 1-2.849 1.09c-.42.147-.99.332-1.473.901-.728.855.075 1.644.357 1.866l4.024 2.773.883 2.89c.174.582.591 1.101.826.191.277-.046.497-.153.757-.382.26-.228 1.078-.95 1.545-1.365l3.434 2.511c.373.272.945.675 1.661.592.716-.083 1.154-.614 1.354-1.084.2-.47.335-1.036.464-1.802.128-.765 1.11-7.012 1.487-9.458.188-1.223.349-2.378.167-3.217-.092-.419-.285-.85-.724-1.131a1.507 1.507 0 0 0-.549-.236z"/></svg></a></div></div></div>
+
+<header class="hjc-header"><div class="container"><a href="/preview/home" class="hjc-logo"><img src="@LogoSrc" alt="RioCommerce"></a><nav class="hjc-nav"><a href="/preview/home">Home</a><a href="/preview/courses" class="active">Courses</a><a href="#">Test Series</a><a href="#">Books</a><a href="#">AIR Talks</a><a href="#">Blogs</a><a href="#">Free Resources</a><a href="#">Contact</a></nav><div class="hjc-nav-actions"><a href="#" class="cart-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="cart-badge">0</span></a><a href="#" class="btn btn-primary btn-sm">Login</a></div><button class="mobile-menu-btn" @onclick="OpenMenu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button></div></header>
+
+<div class="mobile-drawer__overlay @(menuOpen ? "open" : "")" @onclick="CloseMenu"></div>
+<div class="mobile-drawer @(menuOpen ? "open" : "")"><div class="mobile-drawer__header"><img src="@LogoSrc" alt="RioCommerce"><button class="mobile-drawer__close" @onclick="CloseMenu">×</button></div><div class="mobile-drawer__nav"><a href="/preview/home">Home</a><a href="/preview/courses" class="active">Courses</a><a href="#">CA Foundation</a><a href="#">CA Intermediate</a><a href="#">Test Series</a><a href="#">Books</a><a href="#">AIR Talks</a><a href="#">Blogs</a><a href="#">Free Resources</a><a href="#">Contact Us</a></div><div class="mobile-drawer__footer"><a href="#" class="btn btn-primary btn-block">Login</a></div><div class="mobile-drawer__contact">📞 <a href="tel:9975242929">9975242929</a></div></div>
+
+<div class="page-hero"><div class="container"><div class="breadcrumb" style="color:rgba(255,255,255,.4);margin-bottom:12px"><a href="/preview/home" style="color:rgba(255,255,255,.5)">Home</a><span>›</span><span class="current" style="color:rgba(255,255,255,.8)">CA Foundation Courses</span></div><h1>CA Foundation Courses</h1><p>Regular, Fastrack, Combo &amp; Face to Face — by CA Harshad Jaju &amp; team</p></div></div>
+
+<div class="modes-section"><div class="container">
+  <div class="modes-grid">
+    <button class="mode-btn @(activeMode == "regular" ? "is-active" : "")" @onclick='() => SetMode("regular")'>Regular Courses<small>(For First Time Learners &amp; Freshers)</small></button>
+    <button class="mode-btn @(activeMode == "fastrack" ? "is-active" : "")" @onclick='() => SetMode("fastrack")'>Fastrack Courses<small>(For Repeaters &amp; Revisions)</small></button>
+    <button class="mode-btn @(activeMode == "combo" ? "is-active" : "")" @onclick='() => SetMode("combo")'>Combo Courses<small>(Multiple Subjects in One Package)</small></button>
+    <button class="mode-btn @(activeMode == "f2f" ? "is-active" : "")" @onclick='() => SetMode("f2f")'>Face to Face Courses<small>(Offline at Shukrawar Peth, Pune)</small></button>
+  </div>
+</div></div>
+
+<div class="filter-bar"><div class="container"><div class="filter-bar__inner">
+  <div class="filter-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="Search courses..."></div>
+  <div class="filter-bar__selects">
+    <select class="filter-select"><option>All Subjects</option><option>Economics</option><option>Law</option><option>Accounts</option><option>Maths (QA)</option><option>Audit</option><option>Costing</option><option>Direct Tax</option><option>Adv. Accounting</option><option>FM</option><option>SM</option></select>
+    <select class="filter-select"><option>All Modes</option><option>Live Streaming</option><option>Recorded</option><option>Live + Recorded</option><option>Pendrive</option><option>Face to Face</option></select>
+    <select class="filter-select"><option>Attempt Year</option><option>May 2026</option><option>Sept 2026</option><option>Jan 2027</option></select>
+    <select class="filter-select"><option>All Faculty</option><option>CA Harshad Jaju</option><option>CA CS Tejal Katariya</option><option>Prof. Raj Awate</option><option>CA CS Harish Mathariya</option><option>CA Nipurn Modi</option><option>CA Vedant Bajaj</option></select>
+  </div>
+</div></div></div>
+
+<div class="container" style="padding-top:20px;padding-bottom:40px">
+  <div class="courses-grid-2col">
+    <a href="#" class="ca-card"><div class="ca-card__img" style="background:linear-gradient(135deg,#1a3a5c,#2a5580)"><span style="font-size:42px;opacity:.3">📊</span><span class="ca-card__badge">New Batch</span></div><div class="ca-card__body"><div class="ca-card__level">CA FOUNDATION</div><h3 class="ca-card__title">Economics Regular Live Streaming New Batch (Starts 10th April)</h3><div class="ca-card__faculty">By CA Harshad Jaju</div><div class="ca-card__tags"><span>📡 Live Streaming</span><span>📹 Recorded</span><span>📖 Softcopy</span><span>🎯 Mentorship</span></div><div class="ca-card__footer"><div><span class="ca-card__price">₹2,500</span><span class="ca-card__original">₹4,500</span></div><span class="ca-card__off">44% OFF</span></div></div></a>
+
+    <a href="#" class="ca-card"><div class="ca-card__img" style="background:linear-gradient(135deg,#3daa35,#16a34a)"><span style="font-size:42px;opacity:.3">⚖️</span><span class="ca-card__badge ca-card__badge--green">Live</span></div><div class="ca-card__body"><div class="ca-card__level">CA FOUNDATION</div><h3 class="ca-card__title">LAW Live Streaming New Batch by CA CS Tejal Katariya (Starts 10th April)</h3><div class="ca-card__faculty">By CA CS Tejal Katariya</div><div class="ca-card__tags"><span>📡 Live Streaming</span><span>📖 Hardcopy Notes</span><span>📝 Test Series</span></div><div class="ca-card__footer"><div><span class="ca-card__price">₹2,500</span></div><button class="ca-card__cart">+ Cart</button></div></div></a>
+
+    <a href="#" class="ca-card"><div class="ca-card__img" style="background:linear-gradient(135deg,#e8722a,#f59e0b)"><span style="font-size:42px;opacity:.3">📐</span><span class="ca-card__badge">Regular</span></div><div class="ca-card__body"><div class="ca-card__level">CA FOUNDATION</div><h3 class="ca-card__title">Economics Regular Pre Recorded Batch</h3><div class="ca-card__faculty">By CA Harshad Jaju</div><div class="ca-card__tags"><span>📹 Recorded</span><span>📖 Softcopy</span><span>🎯 Mentorship</span></div><div class="ca-card__footer"><div><span class="ca-card__price">₹2,500</span></div><button class="ca-card__cart">+ Cart</button></div></div></a>
+
+    <a href="#" class="ca-card"><div class="ca-card__img" style="background:linear-gradient(135deg,#6366f1,#8b5cf6)"><span style="font-size:42px;opacity:.3">📚</span><span class="ca-card__badge ca-card__badge--purple">Combo</span></div><div class="ca-card__body"><div class="ca-card__level">CA FOUNDATION</div><h3 class="ca-card__title">All Subjects Combo (Regular Batch) For Sep 26 | Jan 27</h3><div class="ca-card__faculty">By CA Harshad Jaju &amp; Team</div><div class="ca-card__tags"><span>📡 Live + Recorded</span><span>📖 Books</span><span>📝 Tests</span></div><div class="ca-card__footer"><div><span class="ca-card__price">₹15,999</span><span class="ca-card__original">₹18,499</span></div><span class="ca-card__off">14% OFF</span></div></div></a>
+
+    <a href="#" class="ca-card"><div class="ca-card__img" style="background:linear-gradient(135deg,#ec4899,#f472b6)"><span style="font-size:42px;opacity:.3">💼</span><span class="ca-card__badge">Combo</span></div><div class="ca-card__body"><div class="ca-card__level">CA FOUNDATION</div><h3 class="ca-card__title">Economics, Maths (QA) &amp; Business Laws Combo</h3><div class="ca-card__faculty">By CA Harshad Jaju &amp; CA CS Tejal Katariya</div><div class="ca-card__tags"><span>📡 Live</span><span>📹 Recorded</span><span>📖 Books</span></div><div class="ca-card__footer"><div><span class="ca-card__price">₹13,050</span><span class="ca-card__original">₹14,500</span></div><span class="ca-card__off">10% OFF</span></div></div></a>
+
+    <a href="#" class="ca-card"><div class="ca-card__img" style="background:linear-gradient(135deg,#06b6d4,#22d3ee)"><span style="font-size:42px;opacity:.3">🏫</span><span class="ca-card__badge ca-card__badge--green">F2F</span></div><div class="ca-card__body"><div class="ca-card__level">CA FOUNDATION</div><h3 class="ca-card__title">Business Laws (Regular Batch) For Sep 26 | Jan 27 | May 27</h3><div class="ca-card__faculty">By CA CS Tejal Katariya</div><div class="ca-card__tags"><span>🏫 Face to Face</span><span>📖 Hardcopy</span><span>📝 Test Series</span></div><div class="ca-card__footer"><div><span class="ca-card__price">₹5,500</span><span class="ca-card__original">₹6,000</span></div><span class="ca-card__off">8% OFF</span></div></div></a>
+
+    <a href="#" class="ca-card"><div class="ca-card__img" style="background:linear-gradient(135deg,#f59e0b,#fbbf24)"><span style="font-size:42px;opacity:.3">📝</span><span class="ca-card__badge">Recorded</span></div><div class="ca-card__body"><div class="ca-card__level">CA FOUNDATION</div><h3 class="ca-card__title">LAW Regular Batch for May &amp; Sept. 2026</h3><div class="ca-card__faculty">By CA CS Tejal Katariya</div><div class="ca-card__tags"><span>📹 Recorded</span><span>📖 Softcopy</span><span>🎯 Mentorship</span></div><div class="ca-card__footer"><div><span class="ca-card__price">₹2,500</span></div><button class="ca-card__cart">+ Cart</button></div></div></a>
+
+    <a href="#" class="ca-card"><div class="ca-card__img" style="background:linear-gradient(135deg,#1a3a5c,#3daa35)"><span style="font-size:42px;opacity:.3">📦</span><span class="ca-card__badge">Combo</span></div><div class="ca-card__body"><div class="ca-card__level">CA FOUNDATION</div><h3 class="ca-card__title">Law &amp; Economics Combo by CA Harshad Jaju &amp; CA CS Tejal Katariya</h3><div class="ca-card__faculty">By CA Harshad Jaju &amp; CA CS Tejal Katariya</div><div class="ca-card__tags"><span>📡 Live + Recorded</span><span>📖 Notes</span></div><div class="ca-card__footer"><div><span class="ca-card__price">₹8,500</span><span class="ca-card__original">₹9,500</span></div><span class="ca-card__off">11% OFF</span></div></div></a>
+  </div>
+
+  <div class="pagination">
+    <button class="nav-btn">← Prev</button>
+    <button class="active">1</button><button>2</button><button>3</button>
+    <button class="nav-btn">Next →</button>
+  </div>
+</div>
+
+<div class="bottom-filters">
+  <div class="bottom-filters__inner">
+    <button class="bottom-filters__tab">🔍 Filter</button>
+    <button class="bottom-filters__tab">👨‍🏫 Faculty</button>
+  </div>
+</div>
+
+<footer class="hjc-footer"><div class="container">
+  <div class="footer-grid">
+    <div class="footer-brand"><img src="@LogoSrc" alt="RioCommerce" style="height:48px;filter:brightness(0) invert(1);opacity:.9"><p>Best Online CA Coaching Classes in Pune.</p></div>
+    <div class="footer-col"><h4>Find Us</h4><p style="font-size:12px;color:rgba(255,255,255,.6);line-height:1.5">Office No. 66, 2nd Floor, Prestige Point, Bajirao Road, Shukrawar Peth, Pune — 411002</p><a href="tel:9975242929">📞 9975242929</a></div>
+    <div class="footer-col"><h4>Information</h4><a href="#">Contact Us</a><a href="#">Shipping</a><a href="#">Privacy</a><a href="#">Blogs</a><a href="#">About Us</a></div>
+    <div class="footer-col"><h4>Links</h4><a href="#">CA Foundation Classes Pune</a><a href="#">CA Coaching Pune</a><a href="#">CA Inter Classes Pune</a></div>
+  </div>
+  <div class="footer-bottom"><span>© 2026 RioCommerce. All rights reserved.</span><span><a href="#">Terms</a> · <a href="#">Privacy</a></span></div>
+</div></footer>
+
+<div class="floating-buttons">
+  <a href="https://wa.me/919975242929" class="float-btn float-btn--whatsapp" target="_blank"><svg viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
+  <a href="https://t.me/riocommerce" class="float-btn float-btn--telegram" target="_blank"><svg viewBox="0 0 24 24"><path d="M21.198 2.433a2.242 2.242 0 0 0-1.022.215l-8.609 3.33c-2.068.8-4.133 1.598-5.724 2.21a405.15 405.15 0 0 1-2.849 1.09c-.42.147-.99.332-1.473.901-.728.855.075 1.644.357 1.866l4.024 2.773.883 2.89c.174.582.591 1.101.826.191.277-.046.497-.153.757-.382.26-.228 1.078-.95 1.545-1.365l3.434 2.511c.373.272.945.675 1.661.592.716-.083 1.154-.614 1.354-1.084.2-.47.335-1.036.464-1.802.128-.765 1.11-7.012 1.487-9.458.188-1.223.349-2.378.167-3.217-.092-.419-.285-.85-.724-1.131a1.507 1.507 0 0 0-.549-.236z"/></svg></a>
+</div>
+</div>
+
+@code {
+
+    // Same source as every other logo on the site: whatever the admin uploaded on Admin › Settings,
+    // falling back to the bundled asset when nothing has been.
+    private string? customLogoUrl;
+    private const string FallbackLogo = "/_content/RioCommerce.Web/assets/logo.png";
+    private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Never let a settings hiccup keep the page from rendering.
+        try { customLogoUrl = (await Settings.GetAsync()).LogoUrl; } catch { }
+    }
+
+    private bool menuOpen;
+    private string activeMode = "regular";
+
+    private void OpenMenu() => menuOpen = true;
+    private void CloseMenu() => menuOpen = false;
+    private void SetMode(string mode) => activeMode = mode;
+}

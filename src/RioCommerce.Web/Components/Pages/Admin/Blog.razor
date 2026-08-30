@@ -1,0 +1,485 @@
+@page "/admin/blog"
+@layout AdminLayout
+@* seo is here for the SEO team, whose whole reason to enter /admin is this page. What they may
+   actually do once inside is still decided by content.blogs.* in AdminLayout, not by this list. *@
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user,seo")]
+@using RioCommerce.Core.Security
+@inject IContentService Svc
+<PageTitle>Blog — RioCommerce Admin</PageTitle>
+
+@* Scoped to the summary editor only — uses the admin form tokens, adds no new
+   colours and touches nothing else on the page. *@
+<style>
+    .bsp-grid{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+    .bsp-row{
+        display:flex;align-items:flex-start;gap:10px;
+        padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:var(--gray-50);
+    }
+    .bsp-num{
+        flex:none;width:26px;height:26px;border-radius:50%;
+        display:inline-flex;align-items:center;justify-content:center;
+        font-size:12px;font-weight:700;color:#fff;background:var(--navy);margin-top:5px;
+    }
+    .bsp-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
+    .bsp-fields textarea{resize:vertical}
+
+    /* Promo preview — square, matching how the storefront crops it, so what the
+       editor sees is what the sidebar shows. */
+    .bpi-preview{
+        width:200px;height:200px;object-fit:cover;display:block;
+        border-radius:12px;border:1px solid var(--gray-200);background:var(--gray-50);
+    }
+
+    /* Video preview — same 16:9 the storefront uses, kept small in the form. */
+    .bvp-preview{
+        width:320px;max-width:100%;aspect-ratio:16/9;margin-top:10px;
+        border-radius:12px;overflow:hidden;border:1px solid var(--gray-200);background:#000;
+    }
+    .bvp-preview iframe{width:100%;height:100%;border:0;display:block}
+
+    /* Explore Our Courses editor — 2-up so all four slots fit without a long scroll. */
+    .ecc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+    @@media (max-width:900px){ .ecc-grid{grid-template-columns:minmax(0,1fr)} }
+    .ecc-row{padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:var(--gray-50)}
+    .ecc-row__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .ecc-num{
+        width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+        font-size:12px;font-weight:700;color:#fff;background:var(--navy);
+    }
+    .ecc-toggle{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600}
+    .ecc-fields{display:flex;flex-direction:column;gap:7px}
+
+    .ecc-preview{margin-top:12px;padding:10px;border:1px dashed var(--gray-200);border-radius:10px}
+    .ecc-preview__label{display:block;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--gray-400);margin-bottom:8px}
+    .ecc-preview__row{display:flex;flex-wrap:wrap;gap:8px}
+    .ecc-chip{
+        display:flex;flex-direction:column;gap:2px;padding:8px 14px;border-radius:10px;color:#fff;
+        background:linear-gradient(135deg,#0B45AB,#0AC7E5);
+    }
+    .ecc-chip strong{font-size:13px;font-weight:800}
+    .ecc-chip span{font-size:11px;opacity:.9}
+
+    /* Image preview — transparent, unpadded, matching the storefront card exactly. */
+    .ecc-imgprev{display:block;border-radius:8px;overflow:hidden;background:transparent}
+    .ecc-imgprev img{width:100%;height:auto;object-fit:contain;display:block}
+    /* An image card in the preview strip shows the artwork, not the blue chip. */
+    .ecc-chip--img{padding:0;background:none;border-radius:8px;overflow:hidden;max-width:220px}
+    .ecc-chip--img img{width:100%;height:auto;display:block}
+</style>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Blog</h1>
+    <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ New Post</button>
+</div>
+
+@if (editing != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editing.Id == null ? "New Post" : "Edit Post")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">Title <span class="required">*</span></label><input class="form-input" @bind="editing.Title" /></div>
+            <div class="form-group"><label class="form-label">Slug</label><input class="form-input" @bind="editing.Slug" placeholder="auto from title" /></div>
+            <div class="form-group"><label class="form-label">Category</label><input class="form-input" @bind="editing.Category" /></div>
+            <div class="form-group"><label class="form-label">Display Order</label><input type="number" class="form-input" @bind="editing.DisplayOrder" /></div>
+            <div class="form-group form-group--full"><label class="form-label">Featured Image</label>
+                <div class="blog-upload">
+                    @if (!string.IsNullOrEmpty(editing.FeaturedImage))
+                    {
+                        <img src="@editing.FeaturedImage" alt="Featured image preview" class="blog-upload__preview" />
+                    }
+                    else
+                    {
+                        <div class="blog-upload__placeholder">No image — the gradient placeholder is shown on the site.</div>
+                    }
+                    <div class="blog-upload__controls">
+                        <label class="btn btn-outline btn-sm blog-upload__btn">
+                            @(string.IsNullOrEmpty(editing.FeaturedImage) ? "⬆ Upload image" : "🔄 Replace image")
+                            <InputFile OnChange="OnImageSelected" accept="image/*" />
+                        </label>
+                        @if (!string.IsNullOrEmpty(editing.FeaturedImage))
+                        {
+                            <button class="btn btn-danger btn-sm" type="button" @onclick="RemoveImage">🗑 Delete image</button>
+                        }
+                        @if (picBusy) { <span class="blog-upload__status">Uploading…</span> }
+                    </div>
+                </div>
+            </div>
+            <div class="form-group form-group--full"><label class="form-label">Excerpt</label><input class="form-input" @bind="editing.Excerpt" /></div>
+            <div class="form-group form-group--full">
+                <BodyHtmlEditor @bind-Value="editing.Body" Rows="14" Label="Body"
+                                Hint="Rich text, or switch to HTML / CSS for custom blog design. Any &lt;strong&gt;&amp;lt;style&amp;gt;&lt;/strong&gt; blocks — and the Custom CSS box below — are &lt;strong&gt;automatically scoped to this blog only&lt;/strong&gt;." />
+            </div>
+            <div class="form-group form-group--full">
+                <label class="form-label">Custom CSS <span style="font-weight:400;color:var(--gray-400)">(scoped to this blog only)</span></label>
+                <textarea class="form-input hce-area" rows="8" spellcheck="false"
+                          placeholder=".blog-hero { padding: 50px; border-radius: 24px; }&#10;.blog-content-card:hover { transform: translateY(-5px); }"
+                          @bind="editing.CustomCss" @bind:event="oninput"></textarea>
+                <div class="form-hint">Every selector is automatically prefixed to this blog's wrapper, so it can't affect other blogs, the header/footer or any other page.</div>
+            </div>
+            @* ── Blog promotional image. Per post, shown 350×350 in the blog detail
+                 sidebar. Upload (same /uploads/blog store as the featured image) or
+                 paste an external http(s) URL — both write the one field, so the
+                 last one set wins. Empty = the sidebar omits the block. ── *@
+            <div class="form-group form-group--full">
+                <label class="form-label">Blog Promotional Image
+                    <span style="font-weight:400;color:var(--gray-400)">(square, shown under Latest Blogs on this blog only)</span>
+                </label>
+                <div class="blog-upload">
+                    @if (!string.IsNullOrWhiteSpace(editing.PromotionalImageUrl))
+                    {
+                        <img src="@editing.PromotionalImageUrl" alt="Promotional image preview" class="bpi-preview" />
+                    }
+                    else
+                    {
+                        <div class="blog-upload__placeholder">No promotional image — the sidebar block is hidden on this blog.</div>
+                    }
+                    <div class="blog-upload__controls">
+                        <label class="btn btn-outline btn-sm blog-upload__btn">
+                            @(string.IsNullOrWhiteSpace(editing.PromotionalImageUrl) ? "⬆ Upload image" : "🔄 Replace image")
+                            <InputFile OnChange="OnPromoSelected" accept="image/png,image/jpeg,image/webp,image/gif" />
+                        </label>
+                        @if (!string.IsNullOrWhiteSpace(editing.PromotionalImageUrl))
+                        {
+                            <button class="btn btn-danger btn-sm" type="button" @onclick="RemovePromo">🗑 Remove image</button>
+                        }
+                        @if (promoBusy) { <span class="blog-upload__status">Uploading…</span> }
+                    </div>
+                    @* Bound on input so the preview above updates as the URL is typed. *@
+                    <label class="form-label" style="margin-top:10px">Or Image URL</label>
+                    <input class="form-input" placeholder="https://example.com/promo.jpg"
+                           @bind="editing.PromotionalImageUrl" @bind:event="oninput" />
+                    <div class="form-hint">Uploads are stored with the site. External links must start with http:// or https://.</div>
+
+                    @* Separate concept from the field above: that one is where the image COMES FROM,
+                       this one is where a click on it GOES. Leaving it empty keeps the image
+                       non-clickable rather than producing an empty href. *@
+                    <label class="form-label" style="margin-top:12px">Promotional Image Hyperlink URL</label>
+                    <input class="form-input" placeholder="https://example.com/your-page" maxlength="500"
+                           @bind="editing.PromotionalImageLinkUrl" @bind:event="oninput" />
+                    <div class="form-hint">
+                        When a visitor clicks the promotional image on the Blog Detail Page, they will be
+                        redirected to this URL. Leave empty to keep the image non-clickable.
+                        Internal links such as <code>/ca-foundation</code> also work.
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(editing.PromotionalImageLinkUrl)
+                         && !SafeUrl.IsHttpOrRelative(editing.PromotionalImageLinkUrl))
+                    {
+                        <div class="form-hint" style="color:var(--error);font-weight:600">
+                            Hyperlink must start with / or http(s)://
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── ⚡ In A Hurry summary. Five ordered points shown between the blog
+                 heading and the article. Numbers come from the row position, so the
+                 editor only supplies the words. Off by default; a post with the
+                 switch off renders no section at all on the storefront. ── *@
+            <div class="form-group form-group--full">
+                <label class="form-label">In A Hurry Summary</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:4px">
+                    <input type="checkbox" @bind="editing.ShowSummary" />
+                    Show the “In A Hurry” section on this blog
+                </label>
+                <div class="form-hint">
+                    All @BlogSummaryPointEdit.PointCount points need a title and a description before the section can be switched on.
+                    Leave the switch off to keep drafting.
+                </div>
+
+                <div class="bsp-grid">
+                    @foreach (var pt in editing.SummaryPoints)
+                    {
+                        <div class="bsp-row">
+                            <span class="bsp-num">@pt.Number</span>
+                            <div class="bsp-fields">
+                                <input class="form-input" placeholder="Point title" maxlength="200" @bind="pt.Title" />
+                                <textarea class="form-input" rows="2" placeholder="Short description" maxlength="600" @bind="pt.Description"></textarea>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Video + counselling block, rendered between the article and the
+                 Explore Our Courses cards. The two switches are independent: video
+                 only, form only, both, or neither (neither = nothing renders). ── *@
+            <div class="form-group form-group--full">
+                <label class="form-label">Blog Video &amp; Counselling</label>
+
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:8px">
+                    <input type="checkbox" @bind="editing.ShowVideoSection" /> Show the video on this blog
+                </label>
+
+                <label class="form-label" style="margin-top:2px">Video Heading</label>
+                <input class="form-input" maxlength="200" @bind="editing.VideoHeading"
+                       placeholder="e.g. Don't Feel Like Reading? Watch Us Explain It Instead." />
+
+                <label class="form-label" style="margin-top:10px">YouTube Video URL</label>
+                @* Bound on input so the preview below tracks what is typed. *@
+                <input class="form-input" maxlength="500" @bind="editing.YoutubeVideoUrl" @bind:event="oninput"
+                       placeholder="https://www.youtube.com/watch?v=XXXXXXXXXXX  or  https://youtu.be/XXXXXXXXXXX" />
+
+                @* Live feedback: the same parser the storefront uses, so what is shown
+                   here is exactly what will (or will not) render on the blog. *@
+                @if (!string.IsNullOrWhiteSpace(editing.YoutubeVideoUrl))
+                {
+                    var embed = YouTubeEmbed.TryGetEmbedUrl(editing.YoutubeVideoUrl);
+                    if (embed == null)
+                    {
+                        <div class="form-hint" style="color:var(--error);font-weight:600">
+                            Not a recognised YouTube link — saving with the video switched on will be blocked.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="bvp-preview">
+                            <iframe src="@embed" title="Video preview" loading="lazy" allowfullscreen
+                                    referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                        </div>
+                    }
+                }
+                <div class="form-hint">Paste the normal YouTube link. The embed is generated by the site — do not paste iframe code.</div>
+
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-top:12px">
+                    <input type="checkbox" @bind="editing.ShowCounsellingForm" /> Show the counselling form beside the video
+                </label>
+                <div class="form-hint">Submissions land in Leads, the same place the homepage enquiry popup writes to.</div>
+            </div>
+
+            @* ── Explore Our Courses. Four fixed slots rendered between the video block
+                 and Previous Article. Title/Sub Text are plain text; the link is
+                 allowlisted to / or http(s) on save. Unchecking a card removes it and
+                 the rest reflow — no blank tile. ── *@
+            <div class="form-group form-group--full">
+                <label class="form-label">Explore Our Courses</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:4px">
+                    <input type="checkbox" @bind="editing.ShowExploreCourses" />
+                    Show the “Explore Our Courses” section on this blog
+                </label>
+                <div class="form-hint">
+                    Links may be internal (<code>/ca-foundation</code>) or external (<code>https://…</code>).
+                    External links open in a new tab. Enabled cards need a title, sub text and link.
+                </div>
+
+                <div class="ecc-grid">
+                    @for (var i = 0; i < editing.CourseCards.Count; i++)
+                    {
+                        var card = editing.CourseCards[i];
+                        <div class="ecc-row">
+                            <div class="ecc-row__head">
+                                <span class="ecc-num">@(i + 1)</span>
+                                <label class="ecc-toggle">
+                                    <input type="checkbox" @bind="card.Enabled" /> Show Card
+                                </label>
+                            </div>
+                            <div class="ecc-fields">
+                                <input class="form-input" placeholder="Title (e.g. CA Foundation)" maxlength="80" @bind="card.Title" />
+                                <input class="form-input" placeholder="Sub text (e.g. View Courses →)" maxlength="80" @bind="card.SubText" />
+                                <input class="form-input" placeholder="Link URL — /ca-foundation  or  https://example.com/offer"
+                                       maxlength="500" @bind="card.Url" @bind:event="oninput" />
+                                @if (!string.IsNullOrWhiteSpace(card.Url) && !SafeUrl.IsHttpOrRelative(card.Url))
+                                {
+                                    <div class="form-hint" style="color:var(--error);font-weight:600">
+                                        Link must start with / or http(s)://
+                                    </div>
+                                }
+
+                                @* Optional artwork. When set, the card renders as this image on a
+                                   transparent background and the title/sub text above are not drawn. *@
+                                <input class="form-input" placeholder="Image / GIF URL (optional — replaces the text card)"
+                                       maxlength="500" @bind="card.ImageUrl" @bind:event="oninput" />
+                                <input class="form-input" placeholder="Alt text (describes the image; defaults to the title)"
+                                       maxlength="160" @bind="card.AltText" />
+                                @if (!string.IsNullOrWhiteSpace(card.ImageUrl))
+                                {
+                                    @if (!SafeUrl.IsHttpOrRelative(card.ImageUrl))
+                                    {
+                                        <div class="form-hint" style="color:var(--error);font-weight:600">
+                                            Image URL must start with / or http(s)://
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @* Rendered on the same transparent, unpadded container the
+                                           storefront uses, so this preview is what visitors get. *@
+                                        <span class="ecc-imgprev"><img src="@card.ImageUrl" alt="Card image preview" /></span>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @* Small live preview so the editor sees the reflow before saving. *@
+                @if (editing.ShowExploreCourses)
+                {
+                    var preview = editing.CourseCards
+                        .Where(c => c.Enabled && (!string.IsNullOrWhiteSpace(c.Title) || !string.IsNullOrWhiteSpace(c.ImageUrl)))
+                        .ToList();
+                    <div class="ecc-preview">
+                        <span class="ecc-preview__label">Preview</span>
+                        @if (preview.Count == 0)
+                        {
+                            <span class="form-hint">No cards enabled — the section will be hidden.</span>
+                        }
+                        else
+                        {
+                            <div class="ecc-preview__row">
+                                @foreach (var c in preview)
+                                {
+                                    @if (!string.IsNullOrWhiteSpace(c.ImageUrl) && SafeUrl.IsHttpOrRelative(c.ImageUrl))
+                                    {
+                                        <span class="ecc-chip ecc-chip--img"><img src="@c.ImageUrl" alt="@(c.AltText ?? c.Title)" /></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="ecc-chip">
+                                            <strong>@c.Title</strong>
+                                            <span>@c.SubText</span>
+                                        </span>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="form-group"><label class="form-label">SEO Title</label><input class="form-input" @bind="editing.SeoTitle" /></div>
+            <div class="form-group"><label class="form-label">SEO Description</label><input class="form-input" @bind="editing.SeoDescription" /></div>
+            <div class="form-group" style="display:flex;align-items:flex-end;gap:8px"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="editing.IsPublished" /> Published</label></div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save")</button>
+            <button class="btn btn-primary" disabled="@saving" @onclick="SaveContinue">Save &amp; continue edit</button>
+            @if (editing.Id != null && !string.IsNullOrWhiteSpace(editing.Slug))
+            {
+                <a class="btn btn-outline" href="/blog/@editing.Slug" target="_blank" rel="noopener">👁 Preview</a>
+            }
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:12px 0">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Title</th><th>Category</th><th class="blog-th-sort" @onclick="ToggleOrderSort" title="Sort by display order">Display Order <span class="blog-th-sort__ind">@(orderAsc ? "▲" : "▼")</span></th><th>Status</th><th>Views</th><th>Published</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No posts yet.</td></tr> }
+            else
+            {
+                @foreach (var p in items)
+                {
+                    <tr>
+                        <td><strong>@p.Title</strong><div style="font-size:12px;color:var(--gray-400)">/blog/@p.Slug</div></td>
+                        <td>@(p.Category ?? "—")</td>
+                        <td>@p.DisplayOrder</td>
+                        <td><span class="status @(p.IsPublished ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(p.IsPublished ? "Published" : "Draft")</span></td>
+                        <td>@p.Views</td>
+                        <td>@(p.PublishedAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(p.Id)">Edit</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(p.Id)">@(p.IsPublished ? "Unpublish" : "Publish")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(p.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<BlogAdminItem>? items;
+    private BlogEditModel? editing;
+    private bool saving, msgOk, picBusy, promoBusy;
+    private bool orderAsc = true;
+    private string? err, msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload() { items = await Svc.ListPostsAsync(); ApplySort(); }
+
+    // ── Display Order sorting (client-side; service already returns DisplayOrder ASC) ──
+    private void ToggleOrderSort() { orderAsc = !orderAsc; ApplySort(); }
+    private void ApplySort()
+    {
+        if (items == null) return;
+        items = orderAsc
+            ? items.OrderBy(i => i.DisplayOrder).ThenByDescending(i => i.PublishedAt).ToList()
+            : items.OrderByDescending(i => i.DisplayOrder).ThenByDescending(i => i.PublishedAt).ToList();
+    }
+
+    // ── Featured image upload (stored under /uploads/blog, only the relative path is saved) ──
+    private async Task OnImageSelected(InputFileChangeEventArgs e)
+    {
+        if (editing == null || e.File == null) return;
+        if (!e.File.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) { err = "Only image files are allowed."; return; }
+        picBusy = true; err = null;
+        try
+        {
+            await using var s = e.File.OpenReadStream(8 * 1024 * 1024);
+            editing.FeaturedImage = await Svc.UploadBlogImageAsync(Path.GetExtension(e.File.Name), s);
+        }
+        catch (Exception ex) { err = ex.Message; }
+        picBusy = false;
+    }
+    private void RemoveImage() { if (editing != null) editing.FeaturedImage = null; }
+
+    // ── Promotional image. Same upload service and 8 MB stream cap as the featured
+    //    image above, so there is one upload mechanism, not two. ──
+    private async Task OnPromoSelected(InputFileChangeEventArgs e)
+    {
+        if (editing == null || e.File == null) return;
+        if (!e.File.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) { err = "Only image files are allowed."; return; }
+        promoBusy = true; err = null;
+        try
+        {
+            await using var s = e.File.OpenReadStream(8 * 1024 * 1024);
+            editing.PromotionalImageUrl = await Svc.UploadBlogImageAsync(Path.GetExtension(e.File.Name), s);
+        }
+        catch (Exception ex) { err = ex.Message; }
+        promoBusy = false;
+    }
+    private void RemovePromo() { if (editing != null) editing.PromotionalImageUrl = null; }
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null ? new BlogEditModel() : await Svc.GetPostForEditAsync(id.Value);
+    }
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SavePostAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); Flash(true, "Post saved."); }
+        else err = error;
+    }
+
+    // Persist but keep the editor open, reloading the canonical saved record (so the exact saved
+    // HTML/CSS is what stays on screen — no stale content, no revert).
+    private async Task SaveContinue()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, newId) = await Svc.SavePostAsync(editing);
+        saving = false;
+        if (!ok) { err = error; return; }
+        await Reload();
+        editing = await Svc.GetPostForEditAsync(newId) ?? editing;
+        Flash(true, "Post saved.");
+    }
+
+    private async Task Toggle(Guid id) { await Svc.TogglePostAsync(id); await Reload(); }
+    private async Task Delete(Guid id) { var (ok, e) = await Svc.DeletePostAsync(id); await Reload(); Flash(ok, ok ? "Post deleted." : e!); }
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

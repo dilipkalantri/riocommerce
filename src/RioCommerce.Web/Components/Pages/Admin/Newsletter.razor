@@ -1,0 +1,154 @@
+@page "/admin/newsletter"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject INewsletterService Svc
+<PageTitle>Newsletter — RioCommerce Admin</PageTitle>
+
+<div class="page__header"><h1>Newsletter &amp; Campaigns</h1></div>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-card__label">Subscribers</div><div class="kpi-card__value">@(stats?.Subscribers ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Active</div><div class="kpi-card__value" style="color:var(--green)">@(stats?.ActiveSubscribers ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Campaigns</div><div class="kpi-card__value">@(stats?.Campaigns ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Sent</div><div class="kpi-card__value">@(stats?.Sent ?? 0)</div></div>
+</div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:14px 0">@msg</div> }
+
+<div class="data-card" style="margin-top:20px">
+    <div class="data-card__title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Campaigns</span>
+        <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ New Campaign</button>
+    </div>
+
+    @if (editing != null)
+    {
+        <div class="form-card" style="margin:0 16px 16px">
+            <div class="form-card__title">@(editing.Id == null ? "New Campaign" : "Edit Campaign")</div>
+            @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+            <div class="form-grid">
+                <div class="form-group"><label class="form-label">Campaign Name <span class="required">*</span></label><input class="form-input" @bind="editing.Name" /></div>
+                <div class="form-group"><label class="form-label">Email Subject <span class="required">*</span></label><input class="form-input" @bind="editing.Subject" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Body</label><textarea class="form-input" rows="5" @bind="editing.Body"></textarea></div>
+            </div>
+            <div class="form-actions">
+                <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save Draft")</button>
+                <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+            </div>
+        </div>
+    }
+
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Subject</th><th>Status</th><th>Recipients</th><th>Sent</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (campaigns == null) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (campaigns.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No campaigns yet.</td></tr> }
+            else
+            {
+                @foreach (var c in campaigns)
+                {
+                    <tr>
+                        <td><strong>@c.Name</strong></td>
+                        <td>@c.Subject</td>
+                        <td><span class="status @(c.IsSent ? "status--confirmed" : "status--pending")"><span class="dot"></span>@(c.IsSent ? "Sent" : "Draft")</span></td>
+                        <td>@(c.IsSent ? c.RecipientCount.ToString() : "—")</td>
+                        <td>@(c.SentAt.HasValue ? c.SentAt.Value.ToLocalTime().ToString("dd MMM yyyy") : "—")</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                @if (!c.IsSent)
+                                {
+                                    <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(c.Id)">Edit</button>
+                                    <button class="btn btn-success btn-sm" @onclick="() => Send(c.Id)">Send</button>
+                                    <button class="btn btn-danger btn-sm" @onclick="() => DeleteCampaign(c.Id)">Delete</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+<div class="data-card" style="margin-top:20px">
+    <div class="data-card__title">Subscribers</div>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Email</th><th>Name</th><th>Source</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (subscribers == null) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (subscribers.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No subscribers yet.</td></tr> }
+            else
+            {
+                @foreach (var s in subscribers)
+                {
+                    <tr>
+                        <td><strong>@s.Email</strong></td>
+                        <td>@(s.Name ?? "—")</td>
+                        <td>@(s.Source ?? "—")</td>
+                        <td><span class="status @(s.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(s.IsActive ? "Subscribed" : "Unsubscribed")</span></td>
+                        <td>@s.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => ToggleSub(s.Id)">@(s.IsActive ? "Unsubscribe" : "Resubscribe")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => RemoveSub(s.Id)">Remove</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private NewsletterStats? stats;
+    private List<CampaignItem>? campaigns;
+    private List<NewsletterSubscriberItem>? subscribers;
+    private CampaignEditModel? editing;
+    private bool saving, msgOk;
+    private string? err, msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        stats = await Svc.StatsAsync();
+        campaigns = await Svc.ListCampaignsAsync();
+        subscribers = await Svc.ListSubscribersAsync();
+    }
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null ? new CampaignEditModel() : await Svc.GetCampaignAsync(id.Value);
+    }
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveCampaignAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); Flash(true, "Campaign saved."); }
+        else err = error;
+    }
+
+    private async Task Send(Guid id)
+    {
+        var (ok, error, recipients) = await Svc.SendCampaignAsync(id);
+        await Reload();
+        Flash(ok, ok ? $"Campaign queued to {recipients} subscriber(s)." : error!);
+    }
+
+    private async Task DeleteCampaign(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteCampaignAsync(id);
+        await Reload();
+        Flash(ok, ok ? "Campaign deleted." : error!);
+    }
+
+    private async Task ToggleSub(Guid id) { await Svc.ToggleSubscriberAsync(id); await Reload(); }
+    private async Task RemoveSub(Guid id) { await Svc.RemoveSubscriberAsync(id); await Reload(); }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

@@ -1,0 +1,372 @@
+@* Rendered by the central PublicSlug resolver at /{slug} (not routed directly). *@
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<style>
+    /* ── Dynamic sub-category navigation cards (page-scoped .hj-subcat-*) ── */
+    .hj-subcat{padding:34px 20px 4px}
+    .hj-subcat-grid{display:grid;gap:16px;margin:0 auto}
+    /* Layout adapts to the number of children — no forced empty columns. */
+    .hj-subcat-grid--n1{grid-template-columns:minmax(0,440px);justify-content:center}
+    .hj-subcat-grid--n2{grid-template-columns:repeat(2,minmax(0,1fr));max-width:820px}
+    .hj-subcat-grid--n3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .hj-subcat-grid--n4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .hj-subcat-grid--nmany{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+
+    .hj-subcat-card{position:relative;display:flex;align-items:center;gap:14px;min-height:88px;
+        background:linear-gradient(180deg,#fff,var(--gray-50));
+        border:1px solid var(--gray-200);border-radius:16px;padding:18px;color:var(--navy);
+        box-shadow:0 1px 2px rgba(16,40,70,.05);
+        transition:transform .22s cubic-bezier(.4,0,.2,1),box-shadow .22s ease,border-color .22s ease}
+    .hj-subcat-card:hover{transform:translateY(-4px);border-color:var(--orange);
+        box-shadow:0 14px 30px -12px rgba(16,40,70,.28)}
+    .hj-subcat-card:focus-visible{outline:none;border-color:var(--orange);
+        box-shadow:0 0 0 3px rgba(10,199,229,.28)}
+
+    .hj-subcat-card__icon{flex-shrink:0;width:48px;height:48px;border-radius:13px;color:#fff;
+        display:flex;align-items:center;justify-content:center;
+        background:linear-gradient(135deg,var(--navy),var(--navy-light));
+        box-shadow:0 4px 10px -4px rgba(26,58,92,.5);transition:transform .22s ease}
+    .hj-subcat-card__icon svg{width:24px;height:24px}
+    .hj-subcat-card:hover .hj-subcat-card__icon{transform:scale(1.08)}
+
+    .hj-subcat-card__body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+    .hj-subcat-card__title{font-size:15.5px;font-weight:700;color:var(--navy);line-height:1.25;
+        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .hj-subcat-card__desc{font-size:12.5px;font-weight:500;color:var(--gray-500);line-height:1.4;
+        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+    .hj-subcat-card__arrow{flex-shrink:0;color:var(--gray-400);display:flex;
+        transition:transform .22s ease,color .22s ease}
+    .hj-subcat-card__arrow svg{width:18px;height:18px}
+    .hj-subcat-card:hover .hj-subcat-card__arrow{transform:translateX(4px);color:var(--orange)}
+
+    /* Active child (sibling navigation on a leaf page) — clearly distinct from inactive cards. */
+    .hj-subcat-card--active{border-color:var(--orange);border-width:1.5px;
+        background:linear-gradient(180deg,#fff,rgba(10,199,229,.06));
+        box-shadow:0 6px 18px -10px rgba(10,199,229,.35)}
+    .hj-subcat-card--active .hj-subcat-card__icon{background:linear-gradient(135deg,var(--orange),var(--orange-dark))}
+    .hj-subcat-card--active .hj-subcat-card__arrow{color:var(--orange)}
+    .hj-subcat-card--active::after{content:"";position:absolute;top:10px;right:10px;
+        width:8px;height:8px;border-radius:50%;background:var(--orange);
+        box-shadow:0 0 0 3px rgba(10,199,229,.18)}
+
+    @@media(max-width:1024px){
+        .hj-subcat-grid--n3,.hj-subcat-grid--n4{grid-template-columns:repeat(2,minmax(0,1fr));max-width:760px}
+    }
+    @@media(max-width:768px){
+        .hj-subcat{padding:24px 16px 2px}
+        .hj-subcat-grid{gap:12px}
+        .hj-subcat-grid--n2,.hj-subcat-grid--n3,.hj-subcat-grid--n4,.hj-subcat-grid--nmany{
+            grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+    /* ── Phones only (≤767.98px): 2×2 tile grid. 768px+ untouched. ──────────────
+       Two columns only work if the card chrome shrinks with them. At 390px a
+       two-column card is ~174px wide; the desktop chrome (48px icon + 2×14px gaps
+       + 18px arrow + 36px padding) ate all but 41px of that, which is what forced
+       the earlier one-per-row layout. Halving the chrome (32px icon, 7px gaps,
+       13px arrow, 9px padding) returns ~98px to the title — enough for these names
+       to wrap onto two lines at 12px.
+
+       The title is NOT clamped: it wraps freely, so a longer name than today's
+       simply takes a third line rather than being cut with an ellipsis.
+       min-height reserves two lines so every tile shares a baseline, and grid row
+       stretch keeps a row's cards equal even if one wraps further. */
+    @@media(max-width:767.98px){
+        .hj-subcat{padding:18px 16px 2px}
+        .hj-subcat-grid{gap:10px}
+        .hj-subcat-grid--n2,.hj-subcat-grid--n3,.hj-subcat-grid--n4,.hj-subcat-grid--nmany{
+            grid-template-columns:repeat(2,minmax(0,1fr))}
+
+        .hj-subcat-card{min-height:0;padding:9px;gap:7px;border-radius:14px;align-items:center}
+        .hj-subcat-card__icon{width:32px;height:32px;border-radius:9px}
+        /* responsive-normalize.css clamps loose svg elements with a (0,3,1)
+           selector, which outranks .hj-subcat-card__icon svg — hence the depth.
+           (Angle brackets are deliberately avoided in this comment: Razor parses
+           the style block as markup and would read them as a real tag.) */
+        .hj-subcat .hj-subcat-grid .hj-subcat-card .hj-subcat-card__icon svg{width:16px;height:16px}
+
+        .hj-subcat-card__body{gap:1px}
+        .hj-subcat-card__title{
+            font-size:12px;line-height:1.25;font-weight:600;
+            display:block;-webkit-line-clamp:none;overflow:visible;
+            white-space:normal;word-break:break-word;overflow-wrap:anywhere;
+            min-height:2.5em;
+        }
+        /* Optional blurb: unreadable in a ~98px column and the main cost of the
+           old card height, so it steps out on phones. Titles are unaffected. */
+        .hj-subcat-card__desc{display:none}
+
+        .hj-subcat .hj-subcat-grid .hj-subcat-card .hj-subcat-card__arrow svg{width:13px;height:13px}
+        .hj-subcat-card--active::after{top:6px;right:6px;width:6px;height:6px;box-shadow:0 0 0 2px rgba(10,199,229,.18)}
+    }
+
+    /* Narrow phones (≤375px). At 360px the chrome above left the title only 80px,
+       so "Exam Oriented Courses" needed a third line and its row grew taller than
+       the other. Trimming the icon, gaps, arrow and section padding returns ~15px
+       to the title — enough to hold every name to two lines, which keeps all four
+       tiles the same height. */
+    @@media(max-width:375px){
+        .hj-subcat{padding:16px 12px 2px}
+        .hj-subcat-grid{gap:8px}
+        .hj-subcat-card{padding:8px;gap:6px}
+        .hj-subcat-card__icon{width:28px;height:28px;border-radius:8px}
+        .hj-subcat .hj-subcat-grid .hj-subcat-card .hj-subcat-card__icon svg{width:14px;height:14px}
+        .hj-subcat .hj-subcat-grid .hj-subcat-card .hj-subcat-card__arrow svg{width:12px;height:12px}
+        .hj-subcat-card__title{font-size:11.5px}
+    }
+
+    /* Smallest phones (≤340px, e.g. 320px devices). Title width was still 74px
+       there — 4px short of holding "Exam Oriented" on one line, which pushed that
+       card to three lines and made its row taller than the other. */
+    @@media(max-width:340px){
+        .hj-subcat{padding:14px 10px 2px}
+        .hj-subcat-card{padding:7px;gap:5px}
+        .hj-subcat-card__icon{width:26px;height:26px;border-radius:7px}
+        .hj-subcat .hj-subcat-grid .hj-subcat-card .hj-subcat-card__icon svg{width:13px;height:13px}
+        .hj-subcat .hj-subcat-grid .hj-subcat-card .hj-subcat-card__arrow svg{width:11px;height:11px}
+        .hj-subcat-card__title{font-size:11px}
+    }
+    @@media(prefers-reduced-motion:reduce){
+        .hj-subcat-card,.hj-subcat-card__icon,.hj-subcat-card__arrow{transition:none}
+        .hj-subcat-card:hover,.hj-subcat-card:hover .hj-subcat-card__icon,
+        .hj-subcat-card:hover .hj-subcat-card__arrow{transform:none}
+    }
+</style>
+
+<SeoHead Seo="@seo" />
+
+@if (notFound)
+{
+    <div class="cat-notfound">
+        <h1>Category Not Found</h1>
+        <p>This category may have been removed or unpublished.</p>
+        <a href="/" class="btn btn-primary" style="margin-top:16px">Back To Home</a>
+    </div>
+}
+else
+{
+    <nav class="cat-crumb" aria-label="Breadcrumb">
+        <div class="section__inner cat-crumb__inner">
+            <a href="/">Home</a>
+            <span class="cat-crumb__sep" aria-hidden="true">/</span>
+            <span class="cat-crumb__current" aria-current="page">@(category?.Name ?? "Category")</span>
+        </div>
+    </nav>
+    <section class="page-hero">
+        <div class="section__inner">
+            <h1>@(category?.Name ?? "Category")</h1>
+            @if (!string.IsNullOrWhiteSpace(category?.Description))
+            {
+                <p class="page-hero__desc">@category!.Description</p>
+            }
+        </div>
+    </section>
+
+    @if (category is { Children.Count: > 0 })
+    {
+        var n = category.Children!.Count;
+        var gridMod = n == 1 ? "hj-subcat-grid--n1" : n == 2 ? "hj-subcat-grid--n2"
+            : n == 3 ? "hj-subcat-grid--n3" : n == 4 ? "hj-subcat-grid--n4" : "hj-subcat-grid--nmany";
+        <section class="hj-subcat">
+            <div class="section__inner">
+                <nav class="hj-subcat-grid @gridMod" aria-label="Sub-categories">
+                    @foreach (var ch in category.Children!)
+                    {
+                        var isActive = category.ActiveChildId == ch.Id;
+                        <a href="/@ch.Slug"
+                           class="hj-subcat-card@(isActive ? " hj-subcat-card--active" : "")"
+                           aria-current="@(isActive ? "page" : null)">
+                            <span class="hj-subcat-card__icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                            </span>
+                            <span class="hj-subcat-card__body">
+                                <span class="hj-subcat-card__title">@ch.Name</span>
+                                @if (!string.IsNullOrWhiteSpace(ch.Description))
+                                {
+                                    <span class="hj-subcat-card__desc">@ch.Description</span>
+                                }
+                            </span>
+                            <span class="hj-subcat-card__arrow" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                            </span>
+                        </a>
+                    }
+                </nav>
+            </div>
+        </section>
+    }
+
+    <section class="section" style="padding-top:32px">
+        <div class="section__inner">
+            <div class="filter-bar2">
+                <div class="filter-search">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" placeholder="Search courses…" value="@searchInput" @oninput="OnSearchInput" @onkeydown="OnSearchKey" />
+                </div>
+                <select class="filter-select" @onchange="OnSubject">
+                    <option value="">All Subjects</option>
+                    @if (category != null)
+                    {
+                        @foreach (var s in category.Subjects)
+                        {
+                            <option value="@s.Id" selected="@(s.Id == SubjectId)">@s.Name</option>
+                        }
+                    }
+                </select>
+                <select class="filter-select" @onchange="OnFaculty">
+                    <option value="">All Faculty</option>
+                    @if (category != null)
+                    {
+                        @foreach (var f in category.Faculty)
+                        {
+                            <option value="@f.Id" selected="@(f.Id == FacultyId)">@f.Name</option>
+                        }
+                    }
+                </select>
+                <button class="btn btn-primary btn-sm" @onclick="RunSearch">Search</button>
+                @if (HasActiveFilters)
+                {
+                    <button class="btn btn-ghost btn-sm" @onclick="ClearFilters">Clear Filters</button>
+                }
+            </div>
+
+            @if (loading)
+            {
+                <div class="course-grid"><p class="cat-msg">Loading…</p></div>
+            }
+            else if (items.Count == 0)
+            {
+                <div class="cat-empty">
+                    <div class="cat-empty__icon" aria-hidden="true">🔍</div>
+                    <h3>No courses found</h3>
+                    <p>Try changing your search or filters.</p>
+                    @if (HasActiveFilters)
+                    {
+                        <button class="btn btn-primary btn-sm" @onclick="ClearFilters">Clear Filters</button>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="course-grid">
+                    @foreach (var p in items) { <CourseCard Product="p" /> }
+                </div>
+            }
+
+            @if (TotalPages > 1)
+            {
+                <div class="pagination">
+                    <button class="pg-btn" disabled="@(page <= 1)" @onclick="() => GoTo(page - 1)">← Prev</button>
+                    @for (var i = 1; i <= TotalPages; i++)
+                    {
+                        var n = i;
+                        <button class="pg-btn @(n == page ? "active" : "")" @onclick="() => GoTo(n)">@n</button>
+                    }
+                    <button class="pg-btn" disabled="@(page >= TotalPages)" @onclick="() => GoTo(page + 1)">Next →</button>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    // URL-bound filter state so refresh / back / forward / share all work.
+    // Supplied by the PublicSlug resolver (which owns the [SupplyParameterFromQuery] binding).
+    [Parameter] public string? Q { get; set; }
+    [Parameter] public Guid? SubjectId { get; set; }
+    [Parameter] public Guid? FacultyId { get; set; }
+    [Parameter] public int? PageQ { get; set; }
+
+    private CategoryBrowseView? category;
+    private List<ProductListItem> items = new();
+    private string searchInput = "";
+    private int page = 1;
+    private const int PageSize = 12;
+    private int totalCount;
+    private bool loading = true;
+    private bool notFound;
+    private string? loadedSlug;
+    // What the last /api/categories call was made with, so a Subject/Faculty change re-reads the
+    // option lists rather than reusing lists computed for a different selection.
+    private Guid? loadedSubjectId, loadedFacultyId;
+    private SeoMetadata seo = new();
+
+    private int TotalPages => (int)Math.Ceiling(totalCount / (double)PageSize);
+    private bool HasActiveFilters => !string.IsNullOrWhiteSpace(Q) || SubjectId.HasValue || FacultyId.HasValue;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Load the category (and its filter options) only when the route slug changes.
+        // Re-fetch on a new category, and also when the visitor changes Subject or Faculty — the two
+        // dropdowns narrow each other, so their option lists come back from the same call.
+        var slugChanged = Slug != loadedSlug;
+        if (slugChanged || SubjectId != loadedSubjectId || FacultyId != loadedFacultyId)
+        {
+            loadedSlug = Slug;
+            loadedSubjectId = SubjectId;
+            loadedFacultyId = FacultyId;
+            if (slugChanged) { notFound = false; category = null; }
+
+            var url = $"/api/categories/{Slug}";
+            var sep = '?';
+            if (SubjectId.HasValue) { url += $"{sep}subjectId={SubjectId}"; sep = '&'; }
+            if (FacultyId.HasValue) { url += $"{sep}facultyId={FacultyId}"; }
+
+            try { var r = await Http.GetFromJsonAsync<ApiResponse<CategoryBrowseView>>(url); category = r?.Data ?? category; }
+            catch { if (slugChanged) category = null; }   // a failed refresh keeps the lists we have
+
+            if (category == null) { notFound = true; loading = false; return; }
+            if (slugChanged) seo = new() { Title = $"{category.Name} — RioCommerce" };
+        }
+        if (category == null) { notFound = true; loading = false; return; }
+
+        // Sync local state from the URL each time (keeps the search box + page in step with back/forward).
+        searchInput = Q ?? "";
+        page = PageQ is > 0 ? PageQ.Value : 1;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        if (category == null) return;
+        loading = true; StateHasChanged();
+        // Reuses the existing product endpoint: category scope + DisplayOrder sort live server-side.
+        var url = $"/api/products?CategoryId={category.Id}&SearchSubcategories=true&Page={page}&PageSize={PageSize}";
+        if (SubjectId.HasValue) url += $"&SubjectId={SubjectId}";
+        if (FacultyId.HasValue) url += $"&FacultyId={FacultyId}";
+        if (!string.IsNullOrWhiteSpace(Q)) url += $"&Search={Uri.EscapeDataString(Q.Trim())}";
+        try
+        {
+            var r = await Http.GetFromJsonAsync<ApiResponse<PagedResult<ProductListItem>>>(url);
+            items = r?.Data?.Items ?? new();
+            totalCount = r?.Data?.TotalCount ?? 0;
+        }
+        catch { items = new(); totalCount = 0; }
+        loading = false;
+    }
+
+    // Any filter change writes the new state to the URL (which re-triggers OnParametersSetAsync).
+    // Changing a filter always resets to page 1.
+    private void Navigate(string? q, Guid? subject, Guid? faculty, int toPage)
+    {
+        var uri = Nav.GetUriWithQueryParameters(new Dictionary<string, object?>
+        {
+            ["q"] = string.IsNullOrWhiteSpace(q) ? null : q.Trim(),
+            ["subject"] = subject,
+            ["faculty"] = faculty,
+            ["page"] = toPage <= 1 ? null : toPage
+        });
+        Nav.NavigateTo(uri);
+    }
+
+    private void OnSearchInput(ChangeEventArgs e) => searchInput = e.Value?.ToString() ?? "";
+    private void OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") RunSearch(); }
+    private void RunSearch() => Navigate(searchInput, SubjectId, FacultyId, 1);
+    private void OnSubject(ChangeEventArgs e) => Navigate(searchInput, Guid.TryParse(e.Value?.ToString(), out var g) ? g : null, FacultyId, 1);
+    private void OnFaculty(ChangeEventArgs e) => Navigate(searchInput, SubjectId, Guid.TryParse(e.Value?.ToString(), out var g) ? g : null, 1);
+    private void ClearFilters() { searchInput = ""; Navigate(null, null, null, 1); }
+    private void GoTo(int p) { if (p < 1 || p > TotalPages) return; Navigate(searchInput, SubjectId, FacultyId, p); }
+}

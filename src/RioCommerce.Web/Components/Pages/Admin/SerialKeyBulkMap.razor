@@ -1,0 +1,280 @@
+@page "/admin/serial-keys/bulk-map"
+@using RioCommerce.Core.DTOs.SerialKeys
+@using RioCommerce.Core.DTOs.Orders
+@using RioCommerce.Core.Interfaces
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ISerialKeyService Svc
+@inject IRioPlayTenantService Tenants
+@inject IOrderAdminService OrderAdmin
+@inject AuthenticationStateProvider AuthProvider
+@inject ToastService Toast
+<PageTitle>Bulk Serial-Key Mapping — RioCommerce Admin</PageTitle>
+
+@*
+    Map one provider + a shared config template onto many products in one shot.
+    Backend fans out to SaveProductConfigAsync per product (idempotent upsert — overwrites
+    any existing config for the selected products).
+*@
+
+<div class="page__header">
+    <h1>Bulk Serial-Key Mapping</h1>
+</div>
+
+<div class="data-card" style="padding:20px;max-width:920px">
+    <p style="color:var(--gray-500);margin-top:0">
+        Pick a provider, set the shared configuration once, then add the products to map.
+        Each product uses its own provider product code. Saving <strong>overwrites</strong> any
+        existing serial-key config for the selected products.
+    </p>
+
+    <div class="form-group">
+        <label class="form-label">Provider</label>
+        <select class="form-input" @bind="providerKey" style="max-width:320px">
+            <option value="">— Select provider —</option>
+            @foreach (var p in providers)
+            {
+                <option value="@p.Key">@p.DisplayName</option>
+            }
+        </select>
+    </div>
+
+    @if (providerKey == "rioplay")
+    {
+        <div class="data-card" style="padding:16px;background:var(--gray-50);margin-top:8px">
+            <strong style="font-size:13px">RioPlay shared config</strong>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Tenant</label>
+                    <select class="form-input" @bind="tenantIdStr">
+                        <option value="">— Default tenant —</option>
+                        @foreach (var t in tenantList)
+                        {
+                            <option value="@t.Id">@t.Name @(t.IsDefault ? "(default)" : "")</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Allowed devices</label>
+                    <input class="form-input" @bind="allowedDevices" placeholder="1" />
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Validity (EValidity)</label>
+                    <input class="form-input" type="number" @bind="eValidity" placeholder="e.g. 12" />
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Validity type (EValidityType)</label>
+                    <input class="form-input" type="number" @bind="eValidityType" placeholder="e.g. 2 (months)" />
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Template serial-key id (optional)</label>
+                    <input class="form-input" type="number" @bind="templateSerialKeyId" />
+                </div>
+            </div>
+        </div>
+    }
+    else if (providerKey == "valence")
+    {
+        <div class="data-card" style="padding:16px;background:var(--gray-50);margin-top:8px">
+            <strong style="font-size:13px">Valence (Edubees) shared config</strong>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Base URL *</label>
+                    <input class="form-input" @bind="valenceBaseUrl" placeholder="https://edubeessecurelms.com/edubeessecurelms" />
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Path segment *</label>
+                    <input class="form-input" @bind="valencePathSegment" placeholder="obfuscated controller segment" />
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Class id</label>
+                    <input class="form-input" @bind="valenceClassId" placeholder="e.g. 5702" />
+                </div>
+                <div class="form-group" style="margin:0">
+                    <label class="form-label">Key views</label>
+                    <input class="form-input" type="number" @bind="valenceKeyViews" placeholder="1" />
+                </div>
+            </div>
+            <p style="color:var(--gray-400);font-size:12px;margin:8px 0 0">
+                Valence keys the course by the product id automatically — the per-row product code is optional for Valence.
+            </p>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(providerKey))
+    {
+        <div style="display:flex;gap:18px;margin-top:14px;flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" @bind="autoActivate" /> Auto-activate</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" @bind="isActive" /> Active</label>
+        </div>
+
+        <hr style="margin:18px 0;border:none;border-top:1px solid var(--gray-200)" />
+
+        <div class="form-group">
+            <label class="form-label">Add products</label>
+            <input class="form-input" @bind="productQuery" @bind:event="oninput" @onkeyup="SearchProducts"
+                   placeholder="Search products by title or SKU…" style="max-width:420px" />
+            @if (searchHits.Count > 0)
+            {
+                <div class="data-card" style="margin-top:6px;max-width:520px;max-height:240px;overflow:auto">
+                    @foreach (var h in searchHits)
+                    {
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid var(--gray-100)">
+                            <span style="font-size:13px">@h.Title <span style="color:var(--gray-400)">@(string.IsNullOrWhiteSpace(h.Sku) ? "" : $"· {h.Sku}")</span></span>
+                            <button class="btn btn-ghost btn-sm" @onclick="() => AddProduct(h)" disabled="@rows.Any(r => r.ProductId == h.Id)">
+                                @(rows.Any(r => r.ProductId == h.Id) ? "Added" : "Add")
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (rows.Count > 0)
+        {
+            <div class="table-wrap" style="margin-top:10px"><table>
+                <thead><tr><th>Product</th><th>SKU</th><th>Provider product code</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in rows)
+                    {
+                        <tr>
+                            <td>@r.Title</td>
+                            <td style="color:var(--gray-400)">@r.Sku</td>
+                            <td><input class="form-input" @bind="r.ProviderProductCode"
+                                       placeholder="@(providerKey == "valence" ? "(optional)" : "Rio product id")" style="max-width:200px" /></td>
+                            <td><button class="btn btn-ghost btn-sm btn-danger" @onclick="() => RemoveRow(r)">Remove</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+
+            <div style="margin-top:16px;display:flex;gap:10px">
+                <button class="btn btn-primary" @onclick="Save" disabled="@busy">@(busy ? "Saving…" : $"Map {rows.Count} product(s)")</button>
+                <button class="btn btn-ghost" @onclick="() => rows.Clear()" disabled="@busy">Clear list</button>
+            </div>
+        }
+    }
+</div>
+
+@if (result != null)
+{
+    <div class="data-card" style="padding:20px;max-width:920px;margin-top:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="margin:0">Result</h3>
+            <span class="status @(result.Failed == 0 ? "status--success" : "status--warning")">
+                <span class="dot"></span>@result.Succeeded ok / @result.Failed failed
+            </span>
+        </div>
+        <div class="table-wrap" style="margin-top:12px"><table>
+            <thead><tr><th>Product</th><th>Result</th></tr></thead>
+            <tbody>
+                @foreach (var i in result.Items)
+                {
+                    <tr>
+                        <td>@i.ProductTitle</td>
+                        <td>
+                            @if (i.Ok) { <span class="status status--success"><span class="dot"></span>Mapped</span> }
+                            else { <span style="color:var(--danger,#DC2626)">@i.Error</span> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    </div>
+}
+
+@code {
+    private List<ProviderInfo> providers = new();
+    private List<RioPlayTenantItem> tenantList = new();
+    private string providerKey = "";
+    private Guid? actorId;
+
+    // Shared config
+    private string? tenantIdStr;
+    private Guid? tenantId => Guid.TryParse(tenantIdStr, out var g) ? g : null;
+    private string allowedDevices = "1";
+    private short? eValidity, eValidityType;
+    private int? templateSerialKeyId;
+    private string? valenceBaseUrl, valencePathSegment, valenceClassId;
+    private int? valenceKeyViews;
+    private bool autoActivate = true, isActive = true;
+
+    // Product picking
+    private string productQuery = "";
+    private List<ProductPickItem> searchHits = new();
+    private List<Row> rows = new();
+
+    private bool busy;
+    private BulkConfigResult? result;
+
+    private class Row
+    {
+        public Guid ProductId { get; set; }
+        public string Title { get; set; } = "";
+        public string? Sku { get; set; }
+        public string? ProviderProductCode { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        providers = await Svc.ListProvidersAsync();
+        tenantList = await Tenants.ListAsync();
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+    }
+
+    private async Task SearchProducts()
+    {
+        var q = (productQuery ?? "").Trim();
+        if (q.Length < 2) { searchHits = new(); return; }
+        searchHits = await OrderAdmin.SearchProductsAsync(q, 12);
+    }
+
+    private void AddProduct(ProductPickItem h)
+    {
+        if (rows.Any(r => r.ProductId == h.Id)) return;
+        rows.Add(new Row { ProductId = h.Id, Title = h.Title, Sku = h.Sku });
+    }
+
+    private void RemoveRow(Row r) => rows.Remove(r);
+
+    private async Task Save()
+    {
+        if (string.IsNullOrEmpty(providerKey)) { Toast.Error("Select a provider."); return; }
+        if (rows.Count == 0) { Toast.Error("Add at least one product."); return; }
+        if (providerKey == "valence" && (string.IsNullOrWhiteSpace(valenceBaseUrl) || string.IsNullOrWhiteSpace(valencePathSegment)))
+        {
+            Toast.Error("Valence requires Base URL and Path segment."); return;
+        }
+
+        busy = true;
+        try
+        {
+            var req = new BulkConfigRequest
+            {
+                ProviderKey = providerKey,
+                AutoActivate = autoActivate,
+                IsActive = isActive,
+                TenantId = tenantId,
+                AllowedDevices = allowedDevices,
+                EValidity = eValidity,
+                EValidityType = eValidityType,
+                TemplateSerialKeyId = templateSerialKeyId,
+                ValenceBaseUrl = valenceBaseUrl,
+                ValencePathSegment = valencePathSegment,
+                ValenceClassId = valenceClassId,
+                ValenceKeyViews = valenceKeyViews,
+                Products = rows.Select(r => new BulkConfigProductRow
+                {
+                    ProductId = r.ProductId,
+                    ProviderProductCode = r.ProviderProductCode,
+                }).ToList(),
+            };
+
+            result = await Svc.BulkSaveProductConfigAsync(req, actorId);
+            if (result.Failed == 0) Toast.Success($"Mapped {result.Succeeded} product(s).");
+            else Toast.Info($"{result.Succeeded} mapped, {result.Failed} failed — see results.");
+        }
+        finally { busy = false; }
+    }
+}

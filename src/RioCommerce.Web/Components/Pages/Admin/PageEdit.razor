@@ -1,0 +1,151 @@
+@page "/admin/pages/new"
+@page "/admin/pages/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IContentService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+<PageTitle>@(IsNew ? "Add" : "Edit") page — RioCommerce Admin</PageTitle>
+
+<style>
+    .pe-bar{position:sticky;top:52px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border:1px solid var(--gray-200);border-radius:14px;padding:10px 14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 24px -16px rgba(15,23,42,.35)}
+    .pe-bar__title{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .pe-bar__title h1{font-size:clamp(15px,1.8vw,19px);font-weight:800;color:var(--navy);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw}
+    .pe-bar__title a{font-size:12px;color:var(--orange);font-weight:600}
+    .pe-bar__actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+    .pe-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .pe-card__head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;cursor:pointer;font-weight:700;color:var(--navy);font-size:14px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,var(--gray-50))}
+    .pe-card__head .chev{color:var(--gray-400);font-size:11px;transition:transform .18s}
+    .pe-card.is-collapsed .pe-card__head{border-bottom:0}
+    .pe-card.is-collapsed .chev{transform:rotate(-90deg)}
+    .pe-card__body{padding:clamp(14px,1.6vw,20px)}
+    .pe-card.is-collapsed .pe-card__body{display:none}
+    .pe-chk{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--gray-700);cursor:pointer}
+    .code-area{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;white-space:pre;tab-size:2}
+    .pe-mode{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;color:var(--orange);background:rgba(232,114,42,.1);padding:2px 8px;border-radius:999px;vertical-align:middle}
+    .pe-url{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:6px} .pe-url a{color:var(--orange);word-break:break-all}
+    .richtext .ql-container{min-height:280px;font-family:inherit;font-size:14px}
+    .richtext .ql-toolbar,.richtext .ql-container{border-color:var(--gray-200)}
+    @@media(max-width:560px){.pe-bar{top:0;border-radius:0;margin:-4px -4px 14px}.pe-bar__title h1{max-width:70vw}.pe-bar__actions .btn{flex:1}}
+</style>
+
+@if (notFound)
+{
+    <div class="pe-card"><div class="pe-card__body">Page not found. <a href="/admin/pages">Back to pages</a></div></div>
+}
+else if (model == null)
+{
+    <div class="pe-card"><div class="pe-card__body"><div class="skel" style="height:18px;width:220px;margin-bottom:14px"></div>@for (var i = 0; i < 4; i++) { <div class="skel" style="height:14px;width:@(70 - i * 8)%;margin-bottom:10px"></div> }</div></div>
+}
+else
+{
+    <div class="pe-bar">
+        <div class="pe-bar__title">
+            <h1 title="@model.Title">@(IsNew ? "Add a new page" : $"Edit page — {model.Title}")</h1>
+            <a href="/admin/pages">← back to page list</a>
+        </div>
+        <div class="pe-bar__actions">
+            @if (!IsNew && !string.IsNullOrWhiteSpace(model.Slug)) { <a href="/page/@model.Slug" target="_blank" class="btn btn-outline btn-sm">👁 Preview</a> }
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "💾 Save")</button>
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="SaveContinue">Save &amp; continue edit</button>
+            @if (!IsNew) { <button class="btn btn-danger btn-sm" @onclick="Delete">🗑 Delete</button> }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error)) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@error</div> }
+
+    @* ── Info ── *@
+    <div class="pe-card @(IsCollapsed("info") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("info")'><span>ℹ️ Info</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-group form-group--full"><label class="form-label">Title <span class="required">*</span></label><input class="form-input" @bind="model.Title" /></div>
+
+            <div class="form-group form-group--full">
+                <BodyHtmlEditor @bind-Value="model.Body" Rows="18"
+                                Hint="Raw HTML — include &lt;strong&gt;&amp;lt;style&amp;gt;&lt;/strong&gt; blocks for custom CSS. Your CSS is &lt;strong&gt;automatically scoped to this page only&lt;/strong&gt;, so it can't affect the rest of the site." />
+            </div>
+
+            <div class="form-group form-group--full">
+                <label class="form-label">URL (slug)</label>
+                <input class="form-input" @bind="model.Slug" placeholder="auto-generated from title if blank" />
+                @if (!IsNew && !string.IsNullOrWhiteSpace(model.Slug))
+                {
+                    <div class="pe-url">
+                        <a href="@PageUrl" target="_blank">@PageUrl</a>
+                        <button type="button" class="btn btn-ghost btn-sm" @onclick="CopyUrl">📋 Copy</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ── Display ── *@
+    <div class="pe-card @(IsCollapsed("display") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("display")'><span>🖥 Display</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group"><label class="form-label">Display order</label><input type="number" class="form-input" @bind="model.DisplayOrder" /></div>
+            </div>
+            <label class="pe-chk" style="margin-top:6px"><input type="checkbox" @bind="model.IsPublished" /> Published</label>
+        </div>
+    </div>
+
+    @* ── SEO ── *@
+    <div class="pe-card @(IsCollapsed("seo") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("seo")'><span>🔍 SEO</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group form-group--full"><label class="form-label">Meta title</label><input class="form-input" @bind="model.SeoTitle" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Meta description</label><textarea class="form-input" rows="2" @bind="model.SeoDescription"></textarea></div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+
+    private CmsPageEditModel? model;
+    private bool notFound, saving;
+    private string? error;
+    private readonly HashSet<string> collapsed = new();
+
+    private string PageUrl => $"{Nav.BaseUri.TrimEnd('/')}/page/{model?.Slug}";
+
+    private void Toggle(string k) { if (!collapsed.Remove(k)) collapsed.Add(k); }
+    private bool IsCollapsed(string k) => collapsed.Contains(k);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsNew) { model = new CmsPageEditModel { IsPublished = true }; notFound = false; }
+        else { model = await Svc.GetPageForEditAsync(Id); notFound = model == null; }
+    }
+
+    private Task Save() => DoSave(false);
+    private Task SaveContinue() => DoSave(true);
+
+    private async Task DoSave(bool stay)
+    {
+        if (model == null) return;
+        if (string.IsNullOrWhiteSpace(model.Title)) { error = "Title is required."; return; }
+        error = null; saving = true;
+        var (ok, err, newId) = await Svc.SavePageAsync(model);
+        saving = false;
+        if (!ok) { error = err; Toast.Error(err ?? "Save failed."); return; }
+        Toast.Success("Page saved.");
+        if (!stay) Nav.NavigateTo("/admin/pages");
+        else if (IsNew) Nav.NavigateTo($"/admin/pages/{newId}");
+        else model = await Svc.GetPageForEditAsync(Id);
+    }
+
+    private async Task Delete()
+    {
+        var (ok, err) = await Svc.DeletePageAsync(Id);
+        if (ok) { Toast.Info("Page deleted."); Nav.NavigateTo("/admin/pages"); }
+        else Toast.Error(err ?? "Could not delete.");
+    }
+
+    private async Task CopyUrl() { await JS.InvokeVoidAsync("hjc.copy", PageUrl); Toast.Info("URL copied."); }
+}

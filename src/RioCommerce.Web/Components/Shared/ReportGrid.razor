@@ -1,0 +1,227 @@
+@*
+    Renders any ReportTable: sortable headers, right-aligned numerics, the filter-aware summary bar,
+    and the pager.
+
+    One grid for all eight reports (§29). Because a report's rows arrive as pre-rendered cells
+    aligned to its columns, nothing here knows or cares which report it is showing — a ninth report
+    would render through this untouched.
+*@
+@using RioCommerce.Core.DTOs.Reporting
+
+@if (Table is null)
+{
+    <div class="rg__state">Loading…</div>
+}
+else
+{
+    @if (Table.Totals.Items().Any())
+    {
+        <div class="rg__totals">
+            @foreach (var (label, value) in Table.Totals.Items())
+            {
+                <div class="rg__total">
+                    <div class="rg__total-k">@label</div>
+                    <div class="rg__total-v">@value</div>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="rg__meta">
+        <span>
+            @if (Table.TotalRows == 0)
+            {
+                <text>No records match these filters.</text>
+            }
+            else
+            {
+                <text><strong>@Table.TotalRows.ToString("N0")</strong> @(Table.TotalRows == 1 ? "row" : "rows")</text>
+                @if (Table.TotalPages > 1)
+                {
+                    <text> — page @Table.Page of @Table.TotalPages</text>
+                }
+            }
+        </span>
+        <span class="rg__meta-sub">@Table.Subtitle</span>
+        @if (Table.Columns.Count > 10)
+        {
+            <span class="rg__meta-sub rg__scroll-hint">↔ scroll the table for more columns</span>
+        }
+    </div>
+
+    <div class="rg__wrap @(Table.Columns.Count <= 8 ? "rg__wrap--narrow" : "")">
+        <table class="rg">
+            <thead>
+                <tr>
+                    @foreach (var c in Table.Columns)
+                    {
+                        var active = c.IsSortable && c.Key == SortBy;
+                        <th class="@(c.IsNumeric ? "rg--num" : "") @(c.IsSortable ? "rg--sortable" : "")"
+                            @onclick="() => OnHeaderClick(c)"
+                            title="@(c.IsSortable ? "Sort by " + c.Header : null)">
+                            @c.Header
+                            @if (active)
+                            {
+                                <span class="rg__sort">@(SortDesc ? "▼" : "▲")</span>
+                            }
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @if (Table.Rows.Count == 0)
+                {
+                    <tr>
+                        <td colspan="@Math.Max(1, Table.Columns.Count)" class="rg__state">
+                            @Table.EmptyMessage
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var row in Table.Rows)
+                    {
+                        <tr>
+                            @for (var i = 0; i < Table.Columns.Count; i++)
+                            {
+                                var col = Table.Columns[i];
+                                var cell = i < row.Length ? row[i] : "";
+                                <td class="@(col.IsNumeric ? "rg--num" : "")">
+                                    @if (col.Kind == ReportColumnKind.Status && !string.IsNullOrWhiteSpace(cell))
+                                    {
+                                        <span class="rg__pill rg__pill--@StatusTone(cell)">@cell</span>
+                                    }
+                                    else
+                                    {
+                                        @cell
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (Table.TotalPages > 1)
+    {
+        <div class="rg__pager">
+            <button class="btn btn-ghost btn-sm" disabled="@(Table.Page <= 1)" @onclick="() => Go(1)">« First</button>
+            <button class="btn btn-ghost btn-sm" disabled="@(Table.Page <= 1)" @onclick="() => Go(Table.Page - 1)">‹ Prev</button>
+            <span class="rg__pager-at">Page @Table.Page of @Table.TotalPages</span>
+            <button class="btn btn-ghost btn-sm" disabled="@(Table.Page >= Table.TotalPages)" @onclick="() => Go(Table.Page + 1)">Next ›</button>
+            <button class="btn btn-ghost btn-sm" disabled="@(Table.Page >= Table.TotalPages)" @onclick="() => Go(Table.TotalPages)">Last »</button>
+        </div>
+    }
+}
+
+<style>
+    .rg__totals {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+        gap: 1px; background: var(--gray-200); border: 1px solid var(--gray-200);
+        border-radius: 8px; overflow: hidden; margin-bottom: 14px;
+    }
+    .rg__total { background: #fff; padding: 10px 13px; min-width: 0; }
+    .rg__total-k {
+        font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em;
+        color: var(--gray-500); font-weight: 650; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+    }
+    .rg__total-v {
+        font-size: 16px; font-weight: 650; color: var(--gray-900); margin-top: 3px;
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .rg__meta {
+        display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline;
+        font-size: 13px; color: var(--gray-600); margin-bottom: 8px;
+    }
+    .rg__meta-sub { color: var(--gray-500); font-size: 12.5px; }
+    .rg__scroll-hint { margin-left: auto; font-style: italic; }
+
+    /* The wide financial reports run to 18 columns; they scroll inside this box so the page itself
+       never scrolls sideways. */
+    .rg__wrap { overflow-x: auto; border: 1px solid var(--gray-200); border-radius: 8px; background: #fff; }
+
+    table.rg { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+    table.rg thead th {
+        position: sticky; top: 0; z-index: 2;
+        background: var(--gray-100); text-align: left; padding: 9px 11px; white-space: nowrap;
+        font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 650;
+        color: var(--gray-600); border-bottom: 1px solid var(--gray-300); user-select: none;
+    }
+    table.rg thead th.rg--sortable { cursor: pointer; }
+    table.rg thead th.rg--sortable:hover { color: var(--gray-900); }
+    .rg__sort { margin-left: 4px; font-size: 9px; color: var(--orange, #e07b39); }
+
+    table.rg tbody td {
+        padding: 8px 11px; border-bottom: 1px solid var(--gray-100);
+        color: var(--gray-800); vertical-align: top;
+    }
+    table.rg tbody tr:last-child td { border-bottom: 0; }
+    table.rg tbody tr:hover td { background: var(--gray-50, #fafafa); }
+
+    /* First column pinned. On an 18-column report the identifying value — order number, invoice
+       number, faculty — scrolls out of view within two columns, and every row to the right then
+       belongs to nobody. Its own background is required: a transparent sticky cell lets the
+       columns it is covering show through. */
+    table.rg thead th:first-child { left: 0; z-index: 3; }
+    table.rg tbody td:first-child { position: sticky; left: 0; z-index: 1; background: #fff; }
+    table.rg tbody tr:hover td:first-child { background: var(--gray-50, #fafafa); }
+    table.rg thead th:first-child,
+    table.rg tbody td:first-child { box-shadow: 1px 0 0 var(--gray-200); }
+
+    /* Pinning costs more than it gains on a narrow table that already fits. */
+    .rg__wrap--narrow table.rg thead th:first-child,
+    .rg__wrap--narrow table.rg tbody td:first-child { position: static; box-shadow: none; }
+
+    /* Digits line up column-wise; without tabular figures a money column reads as ragged. */
+    .rg--num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .rg__pill {
+        display: inline-block; padding: 2px 8px; border-radius: 999px;
+        font-size: 11.5px; font-weight: 600; white-space: nowrap;
+    }
+    .rg__pill--good { background: #e6f4ec; color: #14683f; }
+    .rg__pill--warn { background: #fdf1dc; color: #8a5a09; }
+    .rg__pill--bad { background: #fbe9ec; color: #97243a; }
+    .rg__pill--mute { background: var(--gray-100); color: var(--gray-600); }
+
+    .rg__state { padding: 28px 12px; text-align: center; color: var(--gray-500); font-size: 14px; }
+
+    .rg__pager { display: flex; align-items: center; gap: 6px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+    .rg__pager-at { font-size: 13px; color: var(--gray-600); padding: 0 8px; }
+</style>
+
+@code {
+    [Parameter] public ReportTable? Table { get; set; }
+    [Parameter] public string? SortBy { get; set; }
+    [Parameter] public bool SortDesc { get; set; }
+
+    /// <summary>Raised with the column key. The page decides whether that means a new sort column
+    /// or a direction flip, because it owns the query.</summary>
+    [Parameter] public EventCallback<string> OnSort { get; set; }
+    [Parameter] public EventCallback<int> OnPage { get; set; }
+
+    private async Task OnHeaderClick(ReportColumn c)
+    {
+        if (!c.IsSortable) return;
+        await OnSort.InvokeAsync(c.Key);
+    }
+
+    private Task Go(int page) => OnPage.InvokeAsync(page);
+
+    /// <summary>Maps a status word to a tone so state reads at a glance rather than requiring the
+    /// text to be parsed. Unknown values fall through to neutral rather than guessing.</summary>
+    private static string StatusTone(string s) => s.Trim().ToLowerInvariant() switch
+    {
+        "paid" or "delivered" or "success" or "active" or "issued" or "confirmed" or "activated" => "good",
+        // Unsettled sits with the other "needs action" states: money is owed and no settlement
+        // record exists for it yet.
+        "pending" or "partially paid" or "processing" or "dispatched" or "draft" or "unsettled" => "warn",
+        "cancelled" or "failed" or "refunded" => "bad",
+        _ => "mute"
+    };
+}

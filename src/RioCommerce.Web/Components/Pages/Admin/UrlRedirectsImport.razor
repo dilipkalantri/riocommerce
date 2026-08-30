@@ -1,0 +1,232 @@
+@page "/admin/url-redirects/import"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IUrlRedirectService Svc
+@inject IUrlMatchService Matcher
+@inject ToastService Toast
+@inject NavigationManager Nav
+<PageTitle>Sitemap Migration — URL Redirects</PageTitle>
+
+<div class="page__header">
+    <h1>📥 Sitemap Migration</h1>
+    <a href="/admin/url-redirects" class="btn btn-ghost btn-sm">← Back to redirects</a>
+</div>
+
+@if (preview == null)
+{
+    @* ── Upload form ── *@
+    <div class="form-card">
+        <div class="form-card__title">Step 1 — Upload old sitemap.xml</div>
+        <p class="form-hint" style="margin:6px 0 12px">
+            Upload the <code>sitemap.xml</code> from the legacy site. We parse every <code>&lt;url&gt;&lt;loc&gt;…&lt;/loc&gt;</code>
+            entry, attempt to match each path against current products, faculty, categories and known static pages,
+            and present a reviewable list before any rows are written.
+        </p>
+        @if (uploadErr != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:10px">@uploadErr</div> }
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <label class="btn btn-outline">
+                <InputFile OnChange="OnFile" accept=".xml" hidden />
+                @(uploading ? "Parsing…" : "📁 Choose sitemap.xml")
+            </label>
+            <span style="font-size:13px;color:var(--gray-500)">Or paste the XML below.</span>
+        </div>
+        <div class="form-group form-group--full" style="margin-top:12px">
+            <label class="form-label">Or paste sitemap.xml content</label>
+            <textarea class="form-input" rows="6" @bind="pastedXml" placeholder="<urlset xmlns=&quot;http://www.sitemaps.org/schemas/sitemap/0.9&quot;>…</urlset>"></textarea>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@(uploading || string.IsNullOrWhiteSpace(pastedXml))" @onclick="ParsePasted">Parse pasted XML</button>
+        </div>
+    </div>
+}
+else
+{
+    @* ── Review grid ── *@
+    <div class="kpi-grid" style="margin-bottom:16px">
+        <div class="kpi-card"><div class="kpi-card__label">URLs parsed</div><div class="kpi-card__value">@preview.Rows.Count</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Exact matches</div><div class="kpi-card__value" style="color:#15803D">@preview.ExactCount</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Partial matches</div><div class="kpi-card__value" style="color:#B45309">@preview.PartialCount</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">No match (→ home)</div><div class="kpi-card__value" style="color:#B91C1C">@preview.NoMatchCount</div></div>
+    </div>
+
+    <div class="form-card" style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <strong>Bulk actions:</strong>
+        <button class="btn btn-ghost btn-sm" @onclick="SelectAll">Select all</button>
+        <button class="btn btn-ghost btn-sm" @onclick="SelectNone">Select none</button>
+        <button class="btn btn-ghost btn-sm" @onclick="() => SelectByStatus(UrlMatchStatus.ExactMatch)">Select exact matches only</button>
+        <button class="btn btn-ghost btn-sm" @onclick="() => SelectByStatus(UrlMatchStatus.PartialMatch)">Select partial matches</button>
+        <button class="btn btn-ghost btn-sm" @onclick="() => SelectByStatus(UrlMatchStatus.NoMatch)">Select no-matches</button>
+        <span style="flex:1"></span>
+        <span style="font-size:13px;color:var(--gray-500)">@SelectedCount selected</span>
+        <button class="btn btn-primary btn-sm" disabled="@(SelectedCount == 0 || importing)" @onclick="DoImport">
+            @(importing ? "Importing…" : $"Create {SelectedCount} redirect(s)")
+        </button>
+        <button class="btn btn-ghost btn-sm" @onclick="StartOver">Start over</button>
+    </div>
+
+    <div class="data-card">
+        <div class="table-wrap"><table>
+            <thead><tr>
+                <th style="width:36px"><input type="checkbox" checked="@AllSelected" @onchange="@(e => ToggleAll((bool)(e.Value ?? false)))" /></th>
+                <th>Old URL</th>
+                <th>Suggested Destination</th>
+                <th>Match</th>
+                <th>Reason</th>
+            </tr></thead>
+            <tbody>
+                @foreach (var r in preview.Rows)
+                {
+                    <tr>
+                        <td><input type="checkbox" checked="@selection.Contains(r.Index)" @onchange="@(e => ToggleRow(r.Index, (bool)(e.Value ?? false)))" /></td>
+                        <td><code>@r.OldUrl</code></td>
+                        <td><code>@r.SuggestedNewUrl</code></td>
+                        <td><span class="ur-match @MatchClass(r.Status)">@MatchLabel(r.Status)</span></td>
+                        <td class="ur-trim">@r.Reason</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    </div>
+}
+
+<style>
+    .ur-match{display:inline-flex;font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:3px 9px;border-radius:999px}
+    .ur-match--ok{background:#DCFCE7;color:#15803D}
+    .ur-match--warn{background:#FEF3C7;color:#B45309}
+    .ur-match--err{background:#FEE2E2;color:#B91C1C}
+    .ur-trim{max-width:340px;color:var(--gray-500);font-size:12.5px}
+</style>
+
+@code {
+    private string? uploadErr;
+    private bool uploading;
+    private string pastedXml = "";
+    private SitemapMigrationPreview? preview;
+    private HashSet<int> selection = new();
+    private bool importing;
+
+    private int SelectedCount => selection.Count;
+    private bool AllSelected => preview != null && preview.Rows.Count > 0 && selection.Count == preview.Rows.Count;
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        uploadErr = null;
+        var file = e.File;
+        if (file == null) return;
+        const long max = 5 * 1024 * 1024;
+        if (file.Size > max) { uploadErr = "File too large — max 5 MB."; return; }
+        uploading = true;
+        try
+        {
+            using var sr = new StreamReader(file.OpenReadStream(max));
+            var xml = await sr.ReadToEndAsync();
+            await Parse(xml);
+        }
+        catch (Exception ex) { uploadErr = $"Could not read the file: {ex.Message}"; }
+        finally { uploading = false; }
+    }
+
+    private async Task ParsePasted()
+    {
+        uploadErr = null; uploading = true;
+        try { await Parse(pastedXml); }
+        catch (Exception ex) { uploadErr = $"Could not parse XML: {ex.Message}"; }
+        finally { uploading = false; }
+    }
+
+    private async Task Parse(string xml)
+    {
+        var paths = ExtractLocs(xml);
+        if (paths.Count == 0) { uploadErr = "No <loc> entries found in the file."; return; }
+
+        var rows = new List<SitemapMigrationRow>(paths.Count);
+        var idx = 0;
+        foreach (var p in paths)
+        {
+            var path = TryExtractPath(p);
+            if (string.IsNullOrEmpty(path)) continue;
+            var (newUrl, status, reason) = await Matcher.MatchAsync(path);
+            rows.Add(new SitemapMigrationRow(idx++, path, newUrl, status, reason, Selected: status != UrlMatchStatus.NoMatch));
+        }
+
+        preview = new SitemapMigrationPreview(
+            rows,
+            rows.Count(r => r.Status == UrlMatchStatus.ExactMatch),
+            rows.Count(r => r.Status == UrlMatchStatus.PartialMatch),
+            rows.Count(r => r.Status == UrlMatchStatus.NoMatch));
+        selection = rows.Where(r => r.Selected).Select(r => r.Index).ToHashSet();
+    }
+
+    private static List<string> ExtractLocs(string xml)
+    {
+        var locs = new List<string>();
+        if (string.IsNullOrWhiteSpace(xml)) return locs;
+        try
+        {
+            var doc = System.Xml.Linq.XDocument.Parse(xml);
+            // Sitemaps use the sitemap.org namespace — find <loc> regardless of prefix.
+            foreach (var loc in doc.Descendants().Where(e => e.Name.LocalName == "loc"))
+            {
+                var v = loc.Value?.Trim();
+                if (!string.IsNullOrEmpty(v)) locs.Add(v);
+            }
+        }
+        catch { /* swallow — caller handles via uploadErr */ }
+        return locs;
+    }
+
+    private static string TryExtractPath(string locValue)
+    {
+        if (Uri.TryCreate(locValue, UriKind.Absolute, out var abs)) return abs.AbsolutePath;
+        if (locValue.StartsWith('/')) return locValue;
+        return "/" + locValue;
+    }
+
+    private void ToggleRow(int idx, bool on) { if (on) selection.Add(idx); else selection.Remove(idx); }
+    private void ToggleAll(bool on)
+    {
+        if (preview == null) return;
+        selection = on ? preview.Rows.Select(r => r.Index).ToHashSet() : new();
+    }
+    private void SelectAll()  { if (preview != null) selection = preview.Rows.Select(r => r.Index).ToHashSet(); }
+    private void SelectNone() => selection.Clear();
+    private void SelectByStatus(UrlMatchStatus s)
+    {
+        if (preview == null) return;
+        selection = preview.Rows.Where(r => r.Status == s).Select(r => r.Index).ToHashSet();
+    }
+    private void StartOver() { preview = null; pastedXml = ""; selection = new(); }
+
+    private async Task DoImport()
+    {
+        if (preview == null || selection.Count == 0) return;
+        importing = true;
+        var rowsToInsert = preview.Rows.Where(r => selection.Contains(r.Index))
+            .Select(r => new UrlRedirectEdit
+            {
+                OldUrl = r.OldUrl,
+                NewUrl = r.SuggestedNewUrl,
+                RedirectType = 301,
+                IsActive = true,
+                Notes = $"Imported from sitemap · {r.Status}",
+            })
+            .ToList();
+        var (inserted, skipped) = await Svc.BulkInsertAsync(rowsToInsert);
+        importing = false;
+        Toast.Success($"Inserted {inserted} redirect(s). Skipped {skipped} duplicates.");
+        Nav.NavigateTo("/admin/url-redirects");
+    }
+
+    private static string MatchClass(UrlMatchStatus s) => s switch
+    {
+        UrlMatchStatus.ExactMatch   => "ur-match ur-match--ok",
+        UrlMatchStatus.PartialMatch => "ur-match ur-match--warn",
+        _                           => "ur-match ur-match--err"
+    };
+    private static string MatchLabel(UrlMatchStatus s) => s switch
+    {
+        UrlMatchStatus.ExactMatch   => "Exact",
+        UrlMatchStatus.PartialMatch => "Partial",
+        _                           => "No match"
+    };
+}

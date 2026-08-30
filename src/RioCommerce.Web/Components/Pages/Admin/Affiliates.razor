@@ -1,0 +1,152 @@
+@page "/admin/affiliates"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IAffiliateService Svc
+@inject NavigationManager Nav
+<PageTitle>Affiliates — RioCommerce Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Affiliates</h1>
+    <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ New Affiliate</button>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-card__label">Affiliates</div><div class="kpi-card__value">@(stats?.Affiliates ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Referrals</div><div class="kpi-card__value" style="color:var(--green)">@(stats?.Referrals ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Total Commission</div><div class="kpi-card__value">₹@((stats?.TotalCommission ?? 0).ToString("N0"))</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Pending Payout</div><div class="kpi-card__value" style="color:var(--warning)">₹@((stats?.PendingCommission ?? 0).ToString("N0"))</div></div>
+</div>
+
+@if (editing != null)
+{
+    <div class="form-card" style="margin-top:20px">
+        <div class="form-card__title">@(editing.Id == null ? "New Affiliate" : "Edit Affiliate")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="editing.Name" /></div>
+            <div class="form-group"><label class="form-label">Referral Code</label><input class="form-input" @bind="editing.Code" placeholder="blank = auto-generate" style="text-transform:uppercase" /></div>
+            <div class="form-group"><label class="form-label">Email</label><input class="form-input" @bind="editing.Email" /></div>
+            <div class="form-group"><label class="form-label">Phone</label><input class="form-input" @bind="editing.Phone" /></div>
+            <div class="form-group"><label class="form-label">Commission Type</label><select class="form-input" @bind="editing.CommissionType"><option value="Percentage">Percentage (%)</option><option value="FixedAmount">Fixed per order (₹)</option></select></div>
+            <div class="form-group"><label class="form-label">Commission @(editing.CommissionType == SharingType.Percentage ? "(%)" : "(₹)")</label><input type="number" step="0.01" class="form-input" @bind="editing.CommissionValue" /></div>
+            <div class="form-group" style="display:flex;align-items:flex-end;gap:8px"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="editing.IsActive" /> Active</label></div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin:12px 0">@msg</div> }
+
+<div class="data-card" style="margin-top:20px">
+    <div class="data-card__title">Affiliate Partners</div>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Code / Link</th><th>Commission</th><th>Referrals</th><th>Earned</th><th>Pending</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No affiliates yet.</td></tr> }
+            else
+            {
+                @foreach (var a in items)
+                {
+                    <tr>
+                        <td><strong>@a.Name</strong>@if (!string.IsNullOrEmpty(a.Email)) { <div style="font-size:12px;color:var(--gray-500)">@a.Email</div> }</td>
+                        <td><code>@a.Code</code><div style="font-size:11px;color:var(--gray-400)">@RefLink(a.Code)</div></td>
+                        <td>@(a.CommissionType == SharingType.Percentage ? $"{a.CommissionValue:0.##}%" : $"₹{a.CommissionValue:N0}")</td>
+                        <td>@a.TotalReferrals</td>
+                        <td>₹@a.TotalEarned.ToString("N0")</td>
+                        <td>₹@a.Pending.ToString("N0")</td>
+                        <td><span class="status @(a.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(a.IsActive ? "Active" : "Inactive")</span></td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(a.Id)">Edit</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(a.Id)">@(a.IsActive ? "Disable" : "Enable")</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => Delete(a.Id)">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+<div class="data-card" style="margin-top:20px">
+    <div class="data-card__title">Commission Ledger</div>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Affiliate</th><th>Order</th><th>Order Amount</th><th>Coupon</th><th>Discount</th><th>Commission</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+            @if (referrals == null) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (referrals.Count == 0) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No referrals recorded yet.</td></tr> }
+            else
+            {
+                @foreach (var r in referrals)
+                {
+                    <tr>
+                        <td>@r.AffiliateName <span style="color:var(--gray-400)">(@r.AffiliateCode)</span></td>
+                        <td><strong>#@r.OrderNumber</strong></td>
+                        <td>₹@r.OrderAmount.ToString("N0")</td>
+                        <td>@(string.IsNullOrEmpty(r.CouponCode) ? "—" : r.CouponCode)</td>
+                        <td>@(r.Discount > 0 ? $"₹{r.Discount:N0}" : "—")</td>
+                        <td><strong>₹@r.Commission.ToString("N0")</strong></td>
+                        <td><span class="status @(r.IsPaid ? "status--confirmed" : "status--pending")"><span class="dot"></span>@(r.IsPaid ? "Paid" : "Pending")</span></td>
+                        <td>@if (!r.IsPaid) { <button class="btn btn-success btn-sm" @onclick="() => MarkPaid(r.Id)">Mark Paid</button> }</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<AffiliateAdminItem>? items;
+    private List<AffiliateReferralItem>? referrals;
+    private AffiliateStats? stats;
+    private AffiliateEditModel? editing;
+    private bool saving, msgOk;
+    private string? err, msg;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        items = await Svc.ListAsync();
+        stats = await Svc.StatsAsync();
+        referrals = await Svc.ReferralsAsync();
+    }
+
+    private string RefLink(string code) => $"{Nav.BaseUri}r/{code}";
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null
+            ? new AffiliateEditModel { IsActive = true, CommissionType = SharingType.Percentage }
+            : await Svc.GetAsync(id.Value);
+    }
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); Flash(true, "Affiliate saved."); }
+        else err = error;
+    }
+
+    private async Task Toggle(Guid id) { await Svc.ToggleAsync(id); await Reload(); }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteAsync(id);
+        if (ok) { await Reload(); Flash(true, "Affiliate deleted."); }
+        else Flash(false, error!);
+    }
+
+    private async Task MarkPaid(Guid id) { await Svc.MarkPaidAsync(id); await Reload(); Flash(true, "Commission marked paid."); }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

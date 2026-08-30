@@ -1,0 +1,236 @@
+@*
+    Reusable multi-select picker (§17).
+
+    Every report filter that names a dimension — faculty, product, subject, franchisee — must accept
+    several values at once and offer an All option, so this is written once rather than four times.
+
+    "All" is the EMPTY selection, not a sentinel entry in the list. That keeps the component and the
+    ReportQuery in agreement without a special value to synchronise, and means a filter nobody
+    touched simply does not narrow anything.
+*@
+@typeparam TValue where TValue : notnull
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="ms @(open ? "ms--open" : "")" @ref="root" tabindex="-1">
+    <button type="button" class="ms__control" @onclick="Toggle" aria-haspopup="listbox" aria-expanded="@open">
+        <span class="ms__value">@SummaryText</span>
+        <span class="ms__caret" aria-hidden="true">▾</span>
+    </button>
+
+    @if (open)
+    {
+        <div class="ms__panel" role="listbox">
+            @if (Options.Count > 8)
+            {
+                <input class="ms__search" placeholder="Search…" @bind="filter" @bind:event="oninput"
+                       @onkeydown="OnSearchKey" aria-label="Filter options" />
+            }
+
+            <div class="ms__actions">
+                <button type="button" class="ms__link" @onclick="SelectAll">All</button>
+                <button type="button" class="ms__link" @onclick="ClearAll" disabled="@(Selected.Count == 0)">Clear</button>
+            </div>
+
+            <div class="ms__list">
+                @if (Visible.Count == 0)
+                {
+                    <div class="ms__empty">No matches.</div>
+                }
+                else
+                {
+                    @foreach (var o in Visible)
+                    {
+                        var isOn = Selected.Contains(o.Value);
+                        <label class="ms__opt @(isOn ? "ms__opt--on" : "")">
+                            <input type="checkbox" checked="@isOn" @onchange="() => Toggle(o.Value)" />
+                            <span>@o.Label</span>
+                        </label>
+                    }
+                    @if (Truncated > 0)
+                    {
+                        <div class="ms__empty">+@Truncated more — narrow the search to see them.</div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .ms { position: relative; }
+
+    .ms__control {
+        width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 8px 10px; border: 1px solid var(--gray-300); border-radius: 6px;
+        background: #fff; font-size: 14px; cursor: pointer; text-align: left; color: var(--gray-800);
+        min-height: 38px;
+    }
+    .ms__control:hover { border-color: var(--gray-400); }
+    .ms--open .ms__control { border-color: var(--orange, #e07b39); }
+    .ms__value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ms__caret { color: var(--gray-500); font-size: 11px; flex: none; }
+
+    .ms__panel {
+        position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0;
+        background: #fff; border: 1px solid var(--gray-300); border-radius: 6px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 8px; min-width: 220px;
+    }
+    .ms__search {
+        width: 100%; padding: 6px 8px; font-size: 13px; margin-bottom: 6px;
+        border: 1px solid var(--gray-300); border-radius: 4px;
+    }
+    .ms__actions { display: flex; gap: 10px; padding: 0 2px 6px; border-bottom: 1px solid var(--gray-200); margin-bottom: 6px; }
+    .ms__link {
+        background: none; border: 0; padding: 0; font-size: 12px; font-weight: 600;
+        color: var(--orange, #e07b39); cursor: pointer;
+    }
+    .ms__link:disabled { color: var(--gray-400); cursor: default; }
+
+    /* Capped so a few hundred products cannot make the panel taller than the viewport. */
+    .ms__list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+    .ms__opt {
+        display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px;
+        font-size: 13.5px; cursor: pointer; color: var(--gray-800);
+    }
+    .ms__opt:hover { background: var(--gray-100); }
+    .ms__opt--on { background: var(--gray-100); font-weight: 500; }
+    .ms__opt input { margin: 0; flex: none; }
+    .ms__empty { padding: 8px 6px; font-size: 12.5px; color: var(--gray-500); }
+</style>
+
+@code {
+    public sealed record Option(TValue Value, string Label);
+
+    [Parameter, EditorRequired] public List<Option> Options { get; set; } = new();
+    [Parameter, EditorRequired] public List<TValue> Selected { get; set; } = new();
+    [Parameter] public EventCallback<List<TValue>> SelectedChanged { get; set; }
+
+    /// <summary>Shown when nothing is selected — the All state.</summary>
+    [Parameter] public string Placeholder { get; set; } = "All";
+
+    /// <summary>Plural noun for the "3 products" summary once the selection is too wide to name.</summary>
+    [Parameter] public string ItemNoun { get; set; } = "selected";
+
+    private bool open;
+    private string filter = "";
+
+    // Rendering every option of a long list on each keystroke is the thing that makes a picker feel
+    // slow; the list is capped and the overflow is reported instead.
+    private const int MaxVisible = 200;
+
+    private List<Option> Matches => string.IsNullOrWhiteSpace(filter)
+        ? Options
+        : Options.Where(o => o.Label.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private List<Option> Visible => Matches.Take(MaxVisible).ToList();
+    private int Truncated => Math.Max(0, Matches.Count - MaxVisible);
+
+    private string SummaryText
+    {
+        get
+        {
+            if (Selected.Count == 0) return Placeholder;
+            if (Selected.Count == 1)
+            {
+                var hit = Options.FirstOrDefault(o => EqualityComparer<TValue>.Default.Equals(o.Value, Selected[0]));
+                return hit?.Label ?? $"1 {ItemNoun}";
+            }
+            // Two still fit; beyond that the names crowd each other out of the control.
+            if (Selected.Count == 2)
+            {
+                var labels = Selected
+                    .Select(v => Options.FirstOrDefault(o => EqualityComparer<TValue>.Default.Equals(o.Value, v))?.Label)
+                    .Where(l => l != null)
+                    .ToList();
+                if (labels.Count == 2) return string.Join(", ", labels);
+            }
+            return $"{Selected.Count} {ItemNoun}";
+        }
+    }
+
+    private void Toggle() => open = !open;
+
+    // ── Closing when the user clicks elsewhere ──────────────────────────────────────────────────
+    // A focusout handler used to sit here and did nothing, so the panel stayed open behind whatever
+    // the user clicked next — including other filters on the same row.
+    //
+    // A transparent backdrop would be simpler but would swallow that next click, so picking the
+    // filter beside this one would take two clicks. The document listener lets the click through.
+
+    private ElementReference root;
+    private DotNetObjectReference<MultiSelect<TValue>>? selfRef;
+    private bool listening;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Attached only while the panel is open, so a page of filters does not carry one dormant
+        // document listener per picker.
+        if (open == listening) return;
+
+        try
+        {
+            if (open)
+            {
+                selfRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("hjc.dismiss.on", root, selfRef, nameof(CloseFromOutside));
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("hjc.dismiss.off", root);
+            }
+            listening = open;
+        }
+        catch (JSDisconnectedException) { /* circuit gone — nothing to detach from */ }
+    }
+
+    /// <summary>Called from JS when a pointer goes down outside this control, or Escape is pressed.</summary>
+    [JSInvokable]
+    public Task CloseFromOutside()
+    {
+        if (!open) return Task.CompletedTask;
+        open = false;
+        filter = "";
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // The listener lives on document, so leaving it behind would keep calling into a component
+        // that no longer exists.
+        try { if (listening) await JS.InvokeVoidAsync("hjc.dismiss.off", root); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        selfRef?.Dispose();
+    }
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { open = false; filter = ""; }
+    }
+
+    private async Task Toggle(TValue value)
+    {
+        var next = new List<TValue>(Selected);
+        if (!next.Remove(value)) next.Add(value);
+        Selected = next;
+        await SelectedChanged.InvokeAsync(next);
+    }
+
+    private async Task SelectAll()
+    {
+        // All == nothing selected, so this clears rather than ticking every box. Selecting all of
+        // them individually would produce an IN clause with every id in it for no benefit.
+        Selected = new List<TValue>();
+        filter = "";
+        open = false;
+        await SelectedChanged.InvokeAsync(Selected);
+    }
+
+    private async Task ClearAll()
+    {
+        Selected = new List<TValue>();
+        await SelectedChanged.InvokeAsync(Selected);
+    }
+}

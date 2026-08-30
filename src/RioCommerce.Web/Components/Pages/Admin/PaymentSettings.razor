@@ -1,0 +1,194 @@
+@page "/admin/settings/payments"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IIntegrationSettingsService Svc
+@inject NavigationManager Nav
+<PageTitle>Payment Gateways — RioCommerce Admin</PageTitle>
+
+<div class="page__header"><h1>Payment Gateways</h1></div>
+
+@if (razorpay == null || easebuzz == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+}
+else
+{
+    @if (msg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:14px">@msg</div> }
+    @if (err != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@err</div> }
+
+    <div class="account-grid">
+        <div class="form-card">
+            <div class="form-card__title">
+                Razorpay
+                @if (!string.IsNullOrWhiteSpace(razorpay.KeyId))
+                {
+                    <span class="rzp-chip rzp-chip--@(DetectedMode.ToLowerInvariant())">@DetectedMode Mode</span>
+                }
+            </div>
+            <p class="form-hint" style="margin:-4px 0 14px">
+                Paste your Razorpay Key ID and Key Secret. The mode (Test or Live) is detected automatically from the Key ID prefix — no toggle needed. Changes take effect immediately on the next checkout; no restart required.
+            </p>
+
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px">
+                    <input type="checkbox" @bind="razorpay.Enabled" /> Enable Razorpay at checkout
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Key ID</label>
+                <input class="form-input" @bind="razorpay.KeyId" placeholder="rzp_test_xxxxxxxx or rzp_live_xxxxxxxx" />
+                @if (KeyIdProblem != null) { <div class="form-hint" style="color:#DC2626">@KeyIdProblem</div> }
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Key Secret</label>
+                <input type="password" class="form-input" @bind="razorpay.KeySecret" autocomplete="new-password" placeholder="Paste your Razorpay Key Secret" />
+                @if (KeySecretProblem != null) { <div class="form-hint" style="color:#DC2626">@KeySecretProblem</div> }
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Webhook Secret <span style="color:var(--gray-400);font-weight:500">(optional)</span></label>
+                <input type="password" class="form-input" @bind="razorpay.WebhookSecret" autocomplete="new-password" placeholder="From Razorpay → Settings → Webhooks" />
+            </div>
+
+            <div class="form-actions" style="margin-top:4px">
+                <button class="btn btn-primary" disabled="@saving" @onclick="SaveRazorpay">@(saving ? "Saving…" : "Save")</button>
+            </div>
+        </div>
+
+        <div class="form-card">
+            <div class="form-card__title">Easebuzz</div>
+
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px">
+                    <input type="checkbox" @bind="easebuzz.Enabled" /> Enable Easebuzz at checkout
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Merchant Key</label>
+                <input class="form-input" @bind="easebuzz.MerchantKey" placeholder="Your Easebuzz Merchant Key" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Salt</label>
+                <input type="password" class="form-input" @bind="easebuzz.Salt" autocomplete="new-password" placeholder="Your Easebuzz Salt" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">End Point</label>
+                <input class="form-input" @bind="easebuzz.EndPoint" placeholder="https://pay.easebuzz.in" />
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Webhook URL</label>
+                <input class="form-input" @bind="easebuzz.WebhookUrl" placeholder="@EasebuzzWebhookUrl" />
+            </div>
+
+            <div class="form-actions" style="margin-top:4px">
+                <button class="btn btn-primary" disabled="@saving" @onclick="SaveEasebuzz">@(saving ? "Saving…" : "Save Settings")</button>
+            </div>
+        </div>
+    </div>
+    <div class="form-hint" style="margin-top:12px">Secrets are encrypted at rest using ASP.NET Core Data Protection.</div>
+}
+
+<style>
+    .rzp-chip{display:inline-flex;align-items:center;gap:6px;margin-left:10px;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:3px 9px;border-radius:999px;vertical-align:middle}
+    .rzp-chip--test,.rzp-chip--sandbox{background:#FFF7ED;color:#9A3412;border:1px solid #FCD9C0}
+    .rzp-chip--live,.rzp-chip--production{background:#DCFCE7;color:#15803D;border:1px solid #BBF7D0}
+    .rzp-chip--invalid{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+    .inline-alert--err{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;padding:10px 14px;border-radius:10px;font-size:13.5px;font-weight:600}
+</style>
+
+@code {
+    private RazorpaySettings? razorpay;
+    private EasebuzzSettings? easebuzz;
+    private bool saving;
+    private string? msg;
+    private string? err;
+
+    protected override async Task OnInitializedAsync()
+    {
+        razorpay = await Svc.GetRazorpayAsync();
+        easebuzz = await Svc.GetEasebuzzAsync();
+
+        // Prefill helpful defaults when the admin opens the form for the first time.
+        // The user can edit either field freely — these are just hints.
+        if (string.IsNullOrWhiteSpace(easebuzz.EndPoint))
+            easebuzz.EndPoint = EasebuzzSettings.DefaultEndPoint;
+        if (string.IsNullOrWhiteSpace(easebuzz.WebhookUrl))
+            easebuzz.WebhookUrl = EasebuzzWebhookUrl;
+    }
+
+    private string DetectedMode
+    {
+        get
+        {
+            var k = razorpay?.KeyId?.Trim() ?? string.Empty;
+            if (k.StartsWith("rzp_live_", StringComparison.Ordinal)) return "Live";
+            if (k.StartsWith("rzp_test_", StringComparison.Ordinal)) return "Test";
+            return "Invalid";
+        }
+    }
+
+    private string EasebuzzWebhookUrl
+    {
+        get
+        {
+            var uri = new Uri(Nav.BaseUri);
+            return $"{uri.Scheme}://{uri.Authority}/api/payments/easebuzz/webhook";
+        }
+    }
+
+    private string? KeyIdProblem
+    {
+        get
+        {
+            var k = razorpay?.KeyId?.Trim();
+            if (string.IsNullOrEmpty(k)) return null; // Save-time validation handles required
+            if (!k.StartsWith("rzp_test_", StringComparison.Ordinal) && !k.StartsWith("rzp_live_", StringComparison.Ordinal))
+                return "Key ID must start with rzp_test_ or rzp_live_.";
+            return null;
+        }
+    }
+
+    private string? KeySecretProblem => null; // No format check we can do without leaking secrets
+
+    private async Task SaveRazorpay()
+    {
+        if (razorpay == null) return;
+        msg = null; err = null;
+
+        // Per-spec validation messages
+        if (string.IsNullOrWhiteSpace(razorpay.KeyId)) { err = "Please configure Razorpay Key ID."; return; }
+        if (string.IsNullOrWhiteSpace(razorpay.KeySecret)) { err = "Please configure Razorpay Key Secret."; return; }
+        if (KeyIdProblem != null) { err = KeyIdProblem; return; }
+
+        saving = true;
+        try
+        {
+            await Svc.SaveRazorpayAsync(razorpay);
+            msg = $"Razorpay settings saved. Mode: {DetectedMode}. New checkouts will use these credentials immediately.";
+        }
+        catch (Exception ex)
+        {
+            err = ex.Message;
+        }
+        finally { saving = false; }
+    }
+
+    private async Task SaveEasebuzz()
+    {
+        if (easebuzz == null) return;
+        saving = true; msg = null; err = null;
+        try
+        {
+            await Svc.SaveEasebuzzAsync(easebuzz);
+            msg = "Easebuzz settings saved.";
+        }
+        catch (Exception ex) { err = ex.Message; }
+        finally { saving = false; }
+    }
+}

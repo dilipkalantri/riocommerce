@@ -1,0 +1,944 @@
+@page "/admin/orders"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,faculty,franchise_admin,backend_user")]
+@implements IDisposable
+@inject IOrderAdminService Svc
+@inject IAuditService Audit
+@inject IJSRuntime JS
+@inject ToastService Toast
+@inject IRealtimeBus Bus
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IPaymentModeRegistry PaymentModes
+@inject RioCommerce.Web.Services.AdminScreenState ScreenState
+<PageTitle>Orders — RioCommerce Admin</PageTitle>
+
+<style>
+    .orders-toolbar{display:flex;gap:8px;flex-wrap:wrap}
+    .search-card{margin-top:18px}
+    .search-card__head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;cursor:pointer;border-bottom:1px solid var(--gray-100)}
+    .search-card__head h3{font-size:15px;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:8px}
+    .search-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px 16px;padding:18px 20px}
+    .search-grid .fg{display:flex;flex-direction:column;gap:4px;min-width:0}
+    .search-grid label{font-size:12px;font-weight:600;color:var(--gray-500)}
+    .search-grid .form-input{width:100%}
+    .search-grid .fg--span2{grid-column:span 2}
+    .search-grid .range-row{display:flex;gap:6px;align-items:center}
+    .search-grid .range-row .form-input{flex:1;min-width:0}
+    .search-grid .range-row span{font-size:11px;color:var(--gray-400);font-weight:600}
+    .search-actions{display:flex;gap:8px;justify-content:flex-end;padding:4px 20px 18px;flex-wrap:wrap}
+
+    /* ── 🔍 Searchable Product dropdown (Product filter) ── */
+    .pf-wrap{position:relative}
+    .pf-shell{position:relative}
+    .pf-toggle{width:100%;display:flex;align-items:center;gap:8px;padding:9px 12px;background:#fff;border:1.5px solid var(--gray-200);border-radius:12px;font-weight:600;color:var(--navy);font-size:13.5px;cursor:pointer;text-align:left;transition:border-color .18s,box-shadow .18s,transform .12s;min-height:40px}
+    .pf-toggle:hover{transform:translateY(-1px)}
+    .pf-toggle:focus,.pf-shell.is-open .pf-toggle{outline:0;border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,114,42,.16)}
+    .pf-toggle__val{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--navy)}
+    .pf-toggle__ph{flex:1;color:var(--gray-400);font-weight:500}
+    .pf-toggle__chev{color:var(--gray-400);font-size:11px;transition:transform .18s}
+    .pf-shell.is-open .pf-toggle__chev{transform:rotate(180deg);color:var(--orange)}
+    .pf-toggle__clear{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--gray-100);color:var(--gray-500);font-size:11px;font-weight:800;line-height:1;cursor:pointer;transition:background .12s,color .12s}
+    .pf-toggle__clear:hover{background:#FEE2E2;color:#DC2626}
+    .pf-pop{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;background:#fff;border:1px solid var(--gray-200);border-radius:14px;box-shadow:0 18px 44px -22px rgba(15,23,42,.45),0 3px 10px rgba(15,23,42,.06);overflow:hidden;animation:pf-pop-in .18s ease-out both;display:flex;flex-direction:column;max-height:340px}
+    @@keyframes pf-pop-in{from{opacity:0;transform:translateY(-6px) scale(.99)}to{opacity:1;transform:none}}
+    .pf-pop__search{position:relative;padding:10px 12px;border-bottom:1px solid var(--gray-100);background:#FAFBFC}
+    .pf-pop__search-ico{position:absolute;left:22px;top:50%;transform:translateY(-50%);color:var(--gray-400);font-size:13px;pointer-events:none}
+    .pf-pop__input{width:100%;padding:8px 36px 8px 32px;border-radius:10px;border:1px solid var(--gray-200);background:#fff;font-size:13px;font-weight:600;color:var(--navy)}
+    .pf-pop__input:focus{outline:0;border-color:var(--orange);box-shadow:0 0 0 2px rgba(232,114,42,.14)}
+    .pf-pop__spin{position:absolute;right:22px;top:50%;transform:translateY(-50%);width:14px;height:14px;border:2px solid var(--gray-200);border-top-color:var(--orange);border-radius:50%;animation:pf-spin .85s linear infinite}
+    @@keyframes pf-spin{to{transform:translateY(-50%) rotate(360deg)}}
+    .pf-pop__list{overflow-y:auto;max-height:300px;scroll-behavior:smooth}
+    .pf-pop__list::-webkit-scrollbar{width:8px}
+    .pf-pop__list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:4px}
+    .pf-pop__empty{padding:18px 14px;text-align:center;color:var(--gray-400);font-size:13px;font-weight:600}
+    .pf-pop__row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;font-size:13px;color:var(--navy);cursor:pointer;border-bottom:1px solid var(--gray-100);transition:background .12s,padding .12s}
+    .pf-pop__row:last-child{border-bottom:0}
+    .pf-pop__row:hover,.pf-pop__row.is-active{background:linear-gradient(180deg,#FFF7ED,#FEF2E7);padding-left:18px}
+    .pf-pop__row.is-selected{font-weight:800;color:var(--orange)}
+    .pf-pop__check{color:var(--orange);font-weight:800}
+    /* ── Mobile bottom sheet for the Product dropdown ── */
+    @@media(max-width:639px){
+      .pf-pop{position:fixed;left:8px;right:8px;top:auto;bottom:8px;max-height:75vh;border-radius:18px}
+      .pf-pop__list{max-height:60vh}
+    }
+    .bulk-bar{display:flex;align-items:center;gap:10px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--radius-sm);padding:10px 14px;margin:16px 0;flex-wrap:wrap}
+
+    /* ── 💰 Finance summary bar ── */
+    .fin-summary{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:18px}
+    .fin-tile{background:#fff;border:1px solid var(--gray-200);border-radius:14px;padding:14px 16px;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:transform .15s,box-shadow .15s;position:relative;overflow:hidden}
+    .fin-tile:hover{transform:translateY(-1px);box-shadow:0 6px 16px -10px rgba(15,23,42,.2)}
+    .fin-tile__label{font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:6px}
+    .fin-tile__value{font-size:clamp(14px,1.15vw,18px);font-weight:800;letter-spacing:-.2px;margin-top:5px;color:var(--navy);line-height:1.2;word-break:break-word;font-variant-numeric:tabular-nums}
+    .fin-tile__bar{position:absolute;left:0;right:0;bottom:0;height:3px}
+    .fin-tile--orders   .fin-tile__bar{background:#0F172A}
+    .fin-tile--gross    .fin-tile__bar{background:#1E3A8A}        /* dark blue */
+    .fin-tile--gross    .fin-tile__value{color:#1E3A8A}
+    .fin-tile--student  .fin-tile__bar{background:#F97316}        /* orange */
+    .fin-tile--student  .fin-tile__value{color:#F97316}
+    .fin-tile--franchise .fin-tile__bar{background:#7C3AED}       /* purple */
+    .fin-tile--franchise .fin-tile__value{color:#7C3AED}
+    .fin-tile--net      .fin-tile__bar{background:#16A34A}        /* green */
+    .fin-tile--net      .fin-tile__value{color:#16A34A}
+    .fin-tile--gst      .fin-tile__bar{background:#059669}        /* emerald */
+    .fin-tile--gst      .fin-tile__value{color:#059669}
+    @@media(max-width:1199px){.fin-summary{grid-template-columns:repeat(3,1fr)}}
+    @@media(max-width:639px){.fin-summary{grid-template-columns:repeat(2,1fr)}}
+
+    /* ── 📊 Finance/ERP grid ── */
+    .orders-table{min-width:1450px;table-layout:auto;font-variant-numeric:tabular-nums}
+    .orders-table th{padding:10px 12px;font-size:10.5px;white-space:nowrap;font-weight:800;color:var(--gray-600);text-transform:uppercase;letter-spacing:.4px}
+    .orders-table th.sortable{cursor:pointer;user-select:none}
+    .orders-table th.sortable:hover{color:var(--orange)}
+    .orders-table thead th{position:sticky;top:0;background:#F8FAFC;z-index:3;box-shadow:inset 0 -1px 0 var(--gray-200)}
+    .orders-table td{padding:9px 12px;vertical-align:middle;font-size:12.5px}
+    .orders-table tbody tr{cursor:pointer;transition:background .12s}
+    .orders-table tbody tr:nth-child(even){background:#FCFDFE}
+    .orders-table tbody tr:hover{background:#F1F5F9}
+    .orders-table tbody tr.is-selected{background:#FFF7ED}
+    .orders-table th:first-child,.orders-table td:first-child{width:36px}
+    .orders-table td .sub{font-size:11px;color:var(--gray-400);line-height:1.2;font-weight:500}
+
+    /* Identity cell — Order # link */
+    .cell-orderno a{font-weight:800;color:var(--navy);font-size:13px;letter-spacing:-.1px;text-decoration:none}
+    .cell-orderno a:hover{color:var(--orange);text-decoration:underline}
+
+    /* Student cell — avatar + name + mobile */
+    .cell-student{display:flex;align-items:center;gap:9px;min-width:0}
+    .cell-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#2563EB,#1E40AF);color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 8px -5px rgba(37,99,235,.5)}
+    .cell-student__info{min-width:0}
+    .cell-student__name{font-weight:700;color:var(--navy);font-size:12.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+
+    /* Product cell — title + level subtitle */
+    .cell-product{max-width:220px;line-height:1.3;display:flex;flex-direction:column;gap:1px}
+    .cell-product__title{font-weight:700;color:var(--navy);font-size:12.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .cell-product__lvl{font-size:10.5px;color:var(--gray-400);font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+
+    /* Source badge */
+    .src-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;line-height:1.2;border:1px solid transparent}
+    .src-badge--website  {background:#EFF6FF;color:#2563EB;border-color:rgba(37,99,235,.2)}
+    .src-badge--franchise{background:#F5F3FF;color:#7C3AED;border-color:rgba(124,58,237,.2)}
+    .src-badge--admin    {background:#FEF3C7;color:#B45309;border-color:rgba(180,83,9,.2)}
+    .src-badge--walkin   {background:#FFEDD5;color:#9A3412;border-color:rgba(154,52,18,.2)}
+    .src-badge--affiliate{background:#ECFEFF;color:#0891B2;border-color:rgba(8,145,178,.22)}
+    .src-badge--corporate{background:#E0F2FE;color:#0369A1;border-color:rgba(3,105,161,.22)}
+    .src-badge--other    {background:#F1F5F9;color:#475569;border-color:rgba(71,85,105,.2)}
+
+    /* Date cell — date + time */
+    .cell-date{white-space:nowrap;line-height:1.25;font-size:12px}
+    .cell-date .t{display:block;font-size:11px;color:var(--gray-400)}
+
+    /* Status badge */
+    .orders-table .status{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;font-size:11px;font-weight:700;border-radius:999px;white-space:nowrap;line-height:1}
+
+    /* Money cells — colour-coded per spec */
+    .m-cell{white-space:nowrap;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+    .m-gross   {color:#1E3A8A}                                  /* Gross — Dark Blue */
+    .m-student {color:#F97316}                                  /* Student Discount — Orange */
+    .m-fpct    {color:#7C3AED;font-weight:800}                  /* Franchise % — Purple */
+    .m-famt    {color:#7C3AED}                                  /* Franchise amount — Purple */
+    .m-net     {color:#16A34A;font-weight:800;font-size:13.5px} /* Net — Bold Green */
+    .m-taxable {color:#475569}                                  /* Taxable — Gray */
+    .m-gst     {color:#059669}                                  /* GST — Emerald */
+    .m-zero    {color:var(--gray-300);font-weight:600}
+
+    /* Net cell — tooltip on hover (CSS-only, no JS) */
+    .net-wrap{position:relative;display:inline-block}
+    .net-wrap__tip{position:absolute;right:0;top:calc(100% + 6px);z-index:10;background:#0F172A;color:#fff;padding:10px 12px;border-radius:10px;font-size:11.5px;font-weight:600;white-space:nowrap;line-height:1.5;box-shadow:0 12px 28px -10px rgba(15,23,42,.5);opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity .15s,transform .15s;text-align:left}
+    .net-wrap__tip dt{color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.4px;font-size:10px;margin-top:5px}
+    .net-wrap__tip dt:first-child{margin-top:0}
+    .net-wrap__tip dd{margin:0;color:#fff;font-weight:800}
+    .net-wrap:hover .net-wrap__tip{opacity:1;transform:translateY(0)}
+
+    /* Sticky action column */
+    .orders-table th:last-child,.orders-table td:last-child{position:sticky;right:0;text-align:right;background:#fff;box-shadow:-7px 0 9px -7px rgba(15,23,42,.15);z-index:2}
+    .orders-table thead th:last-child{background:#F8FAFC}
+    .orders-table tbody tr:nth-child(even) td:last-child{background:#FCFDFE}
+    .orders-table tbody tr:hover td:last-child{background:#F1F5F9}
+    .orders-table tbody tr.is-selected td:last-child{background:#FFF7ED}
+
+    /* Sticky first column on tablet so Order # stays in view */
+    @@media(min-width:641px) and (max-width:1199px){
+      .orders-table th:nth-child(2),.orders-table td:nth-child(2){position:sticky;left:36px;background:#fff;z-index:1}
+      .orders-table thead th:nth-child(2){background:#F8FAFC;z-index:3}
+      .orders-table tbody tr:nth-child(even) td:nth-child(2){background:#FCFDFE}
+      .orders-table tbody tr:hover td:nth-child(2){background:#F1F5F9}
+    }
+
+    .table-pagination button{min-width:30px}
+
+    /* ── 📱 Mobile card view ── */
+    @@media(max-width:640px){
+      .orders-toolbar{width:100%}.orders-toolbar .btn{flex:1}
+      .orders-table{min-width:0}
+      .orders-table thead{display:none}
+      .orders-table tbody,.orders-table tr,.orders-table td{display:block;width:100%}
+      .orders-table tbody tr{border:1px solid var(--gray-200);border-radius:12px;margin-bottom:12px;background:#fff!important;overflow:hidden;padding:6px 4px}
+      .orders-table td{display:flex;justify-content:space-between;align-items:center;gap:12px;border:0;border-bottom:1px solid var(--gray-100);padding:8px 14px;text-align:right}
+      .orders-table td::before{content:attr(data-label);font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.4px;flex:0 0 auto;text-align:left}
+      .orders-table th:first-child,.orders-table td:first-child{display:none}
+      .orders-table td:last-child{position:static;box-shadow:none;border-bottom:0;background:#fff!important}
+      .orders-table td.m-hide-mobile{display:none}              /* hide low-value columns on mobile */
+      .cell-student{justify-content:flex-end}
+      .cell-student__name{max-width:none}
+      .cell-product{max-width:none;-webkit-line-clamp:3;align-items:flex-end}
+      .net-wrap__tip{display:none}
+    }
+</style>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <h1>Orders</h1>
+    <div class="orders-toolbar">
+        <button class="btn btn-success btn-sm" disabled="@exporting" @onclick="ExportCsv">@(exporting ? "Exporting…" : "⤓ Export CSV")</button>
+        <button class="btn btn-outline btn-sm" disabled="@exporting" @onclick="ExportExcel">📊 Excel</button>
+        <button class="btn btn-outline btn-sm" @onclick="Print">🖨 Print / PDF</button>
+        <a href="/admin/orders/create" class="btn btn-primary btn-sm">➕ Create Order</a>
+    </div>
+</div>
+
+@* ── 💰 Live finance summary bar — recomputed from the filtered query on every load ── *@
+<div class="fin-summary" title="Live aggregate across the rows matching your current filter">
+    <div class="fin-tile fin-tile--orders">
+        <div class="fin-tile__label">📦 Orders</div>
+        <div class="fin-tile__value">@(summary?.TotalOrders ?? total)</div>
+        <div class="fin-tile__bar"></div>
+    </div>
+    <div class="fin-tile fin-tile--gross">
+        <div class="fin-tile__label">💰 Gross Revenue</div>
+        <div class="fin-tile__value">₹@FormatMoney(summary?.GrossRevenue ?? 0)</div>
+        <div class="fin-tile__bar"></div>
+    </div>
+    <div class="fin-tile fin-tile--student">
+        <div class="fin-tile__label">🎓 Student Discount</div>
+        <div class="fin-tile__value">₹@FormatMoney(summary?.StudentDiscount ?? 0)</div>
+        <div class="fin-tile__bar"></div>
+    </div>
+    <div class="fin-tile fin-tile--franchise">
+        <div class="fin-tile__label">🏬 Franchise Discount</div>
+        <div class="fin-tile__value">₹@FormatMoney(summary?.FranchiseDiscount ?? 0)</div>
+        <div class="fin-tile__bar"></div>
+    </div>
+    <div class="fin-tile fin-tile--net">
+        <div class="fin-tile__label">✅ Net Revenue</div>
+        <div class="fin-tile__value">₹@FormatMoney(summary?.NetRevenue ?? 0)</div>
+        <div class="fin-tile__bar"></div>
+    </div>
+    <div class="fin-tile fin-tile--gst">
+        <div class="fin-tile__label">🧾 GST</div>
+        <div class="fin-tile__value">₹@FormatMoney(summary?.GstTotal ?? 0)</div>
+        <div class="fin-tile__bar"></div>
+    </div>
+</div>
+
+@* ── Search / filter card ── *@
+<div class="data-card search-card">
+    <div class="search-card__head" @onclick="() => filtersOpen = !filtersOpen">
+        <h3>🔍 Search &amp; Filters</h3>
+        <span style="color:var(--gray-400)">@(filtersOpen ? "▲" : "▼")</span>
+    </div>
+    @if (filtersOpen)
+    {
+        <div class="search-grid">
+            <div class="fg"><label>Order #</label><input class="form-input" @bind="filter.OrderNumber" @onkeydown="OnKey" placeholder="e.g. RIO-1043" /></div>
+            <div class="fg"><label>Source No.</label><input class="form-input" @bind="filter.SourceNo" @onkeydown="OnKey" placeholder="Reference from the originating system" /></div>
+            <div class="fg"><label>Student name</label><input class="form-input" @bind="filter.StudentName" @onkeydown="OnKey" /></div>
+            <div class="fg"><label>Student email</label><input class="form-input" @bind="filter.StudentEmail" @onkeydown="OnKey" /></div>
+            <div class="fg"><label>Student phone</label><input class="form-input" @bind="filter.StudentPhone" @onkeydown="OnKey" /></div>
+            @* ── 🔍 Searchable Product dropdown — AJAX-loaded Active products, sorted by Title. ── *@
+            <div class="fg pf-wrap">
+                <label>Product</label>
+                <div class="pf-shell @(productDdOpen ? "is-open" : "")">
+                    <button type="button" class="pf-toggle" @onclick="ToggleProductDd" @onkeydown="OnProductKey">
+                        @if (selectedProduct != null)
+                        {
+                            <span class="pf-toggle__val" title="@selectedProduct.Name">@selectedProduct.Name</span>
+                            <span class="pf-toggle__clear" title="Clear selection" role="button"
+                                  @onclick="ClearProductSelection" @onclick:stopPropagation>✕</span>
+                        }
+                        else
+                        {
+                            <span class="pf-toggle__ph">Select Product...</span>
+                        }
+                        <span class="pf-toggle__chev">▾</span>
+                    </button>
+                    @if (productDdOpen)
+                    {
+                        <div class="pf-pop" @onmousedown:stopPropagation @onclick:stopPropagation>
+                            <div class="pf-pop__search">
+                                <span class="pf-pop__search-ico">🔍</span>
+                                <input @ref="productSearchInput" class="pf-pop__input" placeholder="Search products..."
+                                       @bind="productQuery" @bind:event="oninput" @bind:after="OnProductQueryChanged"
+                                       @onkeydown="OnProductKey" autocomplete="off" />
+                                @if (productSearching) { <span class="pf-pop__spin"></span> }
+                            </div>
+                            <div class="pf-pop__list">
+                                @if (productOptions == null) { <div class="pf-pop__empty">Loading…</div> }
+                                else if (productOptions.Count == 0) { <div class="pf-pop__empty">No products found.</div> }
+                                else
+                                {
+                                    @for (var i = 0; i < productOptions.Count; i++)
+                                    {
+                                        var idx = i; var opt = productOptions[i];
+                                        <div class="pf-pop__row @(productActiveIdx == idx ? "is-active" : "") @(selectedProduct?.Id == opt.Id ? "is-selected" : "")"
+                                             @onmousedown="() => SelectProduct(idx)"
+                                             @onmouseover="() => productActiveIdx = idx">
+                                            <span>@opt.Name</span>
+                                            @if (selectedProduct?.Id == opt.Id) { <span class="pf-pop__check">✓</span> }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="fg"><label>Faculty</label>
+                <select class="form-input" @onchange="OnFacultyFilterChanged">
+                    <option value="">All</option>
+                    @if (meta != null) { @foreach (var f in meta.Faculty) { <option value="@f.Id" selected="@(f.Id == filter.FacultyId)">@f.Name</option> } }
+                </select>
+            </div>
+            <div class="fg"><label>Start date</label><input type="date" class="form-input" @bind="filter.StartDate" /></div>
+            <div class="fg"><label>End date</label><input type="date" class="form-input" @bind="filter.EndDate" /></div>
+            <div class="fg"><label>Franchise</label>
+                <select class="form-input" @onchange="e => filter.FranchiseId = ParseGuid(e.Value)">
+                    <option value="">All</option>
+                    @if (meta != null) { @foreach (var f in meta.Franchises) { <option value="@f.Id" selected="@(f.Id == filter.FranchiseId)">@f.Name</option> } }
+                </select>
+            </div>
+            <div class="fg"><label>Order status</label>
+                <select class="form-input" @onchange="e => filter.Status = ParseEnum<OrderStatus>(e.Value)">
+                    <option value="">All</option>
+                    @foreach (var s in Enum.GetValues<OrderStatus>()) { <option value="@((int)s)" selected="@(filter.Status == s)">@s</option> }
+                </select>
+            </div>
+            <div class="fg"><label>Payment status</label>
+                <select class="form-input" @onchange="e => filter.PaymentStatus = ParseEnum<PaymentStatus>(e.Value)">
+                    <option value="">All</option>
+                    @foreach (var s in Enum.GetValues<PaymentStatus>()) { <option value="@((int)s)" selected="@(filter.PaymentStatus == s)">@PaymentLabel(s)</option> }
+                </select>
+            </div>
+            <div class="fg"><label>Enrollment status</label>
+                <select class="form-input" @onchange="e => filter.Enrollment = ParseEnum<EnrollmentStatus>(e.Value)">
+                    <option value="">All</option>
+                    @foreach (var s in Enum.GetValues<EnrollmentStatus>()) { <option value="@((int)s)" selected="@(filter.Enrollment == s)">@EnrollmentLabel(s)</option> }
+                </select>
+            </div>
+            <div class="fg"><label>Order source (Franchisee)</label>
+                <select class="form-input" @onchange="e => filter.Source = ParseEnum<OrderSource>(e.Value)">
+                    <option value="">All</option>
+                    @foreach (var s in Enum.GetValues<OrderSource>()) { <option value="@((int)s)" selected="@(filter.Source == s)">@s</option> }
+                </select>
+            </div>
+            <div class="fg"><label>Payment method</label>
+                <select class="form-input" @onchange="e => filter.PaymentMode = ParseEnum<PaymentMode>(e.Value)">
+                    <option value="">All</option>
+                    @foreach (var s in allowedPaymentModes) { <option value="@((int)s)" selected="@(filter.PaymentMode == s)">@s</option> }
+                </select>
+            </div>
+            <div class="fg"><label>Coupon code</label><input class="form-input" @bind="filter.CouponCode" @onkeydown="OnKey" /></div>
+            <div class="fg"><label>Order notes</label><input class="form-input" @bind="filter.Notes" @onkeydown="OnKey" /></div>
+
+            @* ── 💰 Finance filters ── *@
+            <div class="fg"><label>Gross amount (₹)</label>
+                <div class="range-row">
+                    <input class="form-input" type="number" min="0" placeholder="Min" @bind="filter.GrossMin" @onkeydown="OnKey" />
+                    <span>—</span>
+                    <input class="form-input" type="number" min="0" placeholder="Max" @bind="filter.GrossMax" @onkeydown="OnKey" />
+                </div>
+            </div>
+            <div class="fg"><label>Net amount (₹)</label>
+                <div class="range-row">
+                    <input class="form-input" type="number" min="0" placeholder="Min" @bind="filter.NetMin" @onkeydown="OnKey" />
+                    <span>—</span>
+                    <input class="form-input" type="number" min="0" placeholder="Max" @bind="filter.NetMax" @onkeydown="OnKey" />
+                </div>
+            </div>
+            <div class="fg"><label>Student discount applied</label>
+                <select class="form-input" @bind="discountStr">
+                    <option value="">All</option>
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                </select>
+            </div>
+            <div class="fg"><label>Franchise discount %</label>
+                <div class="range-row">
+                    <input class="form-input" type="number" min="0" max="100" placeholder="Min" @bind="filter.FranchiseDiscountPctMin" @onkeydown="OnKey" />
+                    <span>—</span>
+                    <input class="form-input" type="number" min="0" max="100" placeholder="Max" @bind="filter.FranchiseDiscountPctMax" @onkeydown="OnKey" />
+                </div>
+            </div>
+            <div class="fg"><label>GST / Tax range (₹)</label>
+                <div class="range-row">
+                    <input class="form-input" type="number" min="0" placeholder="Min" @bind="filter.TaxMin" @onkeydown="OnKey" />
+                    <span>—</span>
+                    <input class="form-input" type="number" min="0" placeholder="Max" @bind="filter.TaxMax" @onkeydown="OnKey" />
+                </div>
+            </div>
+        </div>
+        <div class="search-actions">
+            <button class="btn btn-primary" @onclick="Search">🔍 Search</button>
+            <button class="btn btn-ghost" @onclick="ClearFilters">Clear</button>
+        </div>
+    }
+</div>
+
+@* ── Bulk action bar ── *@
+@if (selected.Count > 0)
+{
+    <div class="bulk-bar">
+        <strong>@selected.Count selected</strong>
+        <span>· Set status to</span>
+        <select class="form-input" style="width:auto" @bind="bulkStatus">
+            @foreach (var s in Enum.GetValues<OrderStatus>().Where(s => s != OrderStatus.Cancelled || isSuperAdmin)) { <option value="@s">@s</option> }
+        </select>
+        <button class="btn btn-primary btn-sm" disabled="@bulkBusy" @onclick="ApplyBulk">@(bulkBusy ? "Applying…" : "Apply")</button>
+        <button class="btn btn-outline btn-sm" disabled="@bulkBusy" @onclick="BulkActivateEnrollment">🎓 Activate enrollment</button>
+        <button class="btn btn-ghost btn-sm" @onclick="() => selected.Clear()">Clear selection</button>
+    </div>
+}
+
+@* ── 📊 Finance/ERP grid ── *@
+<div class="data-card" style="margin-top:16px">
+    <div class="table-wrap">
+        <table class="orders-table">
+            <thead>
+                <tr>
+                    <th style="width:34px"><input type="checkbox" checked="@AllOnPageSelected" @onchange="ToggleAll" /></th>
+                    <th class="sortable" @onclick='() => Sort("order")'>Order # @SortArrow("order")</th>
+                    <th class="sortable" @onclick='() => Sort("date")'>Order Date @SortArrow("date")</th>
+                    <th class="sortable" @onclick='() => Sort("student")'>Student @SortArrow("student")</th>
+                    <th>Product</th>
+                    <th>Franchisee / Source</th>
+                    <th>Order Status</th>
+                    <th>Payment Status</th>
+                    <th class="sortable" style="text-align:right" @onclick='() => Sort("gross")'>Gross Amount @SortArrow("gross")</th>
+                    <th style="text-align:right">Student Discount</th>
+                    <th style="text-align:right">Franchise Disc %</th>
+                    <th style="text-align:right">Franchise Disc ₹</th>
+                    <th class="sortable" style="text-align:right" @onclick='() => Sort("net")'>Net (GST Incl.) @SortArrow("net")</th>
+                    <th class="sortable" style="text-align:right" @onclick='() => Sort("taxable")'>Taxable @SortArrow("taxable")</th>
+                    <th class="sortable" style="text-align:right" @onclick='() => Sort("gst")'>GST (18%) @SortArrow("gst")</th>
+                    <th>Payment Method</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (items == null) { <tr><td colspan="17" style="text-align:center;color:var(--gray-400);padding:24px">Loading…</td></tr> }
+                else if (items.Count == 0) { <tr><td colspan="17" style="text-align:center;color:var(--gray-400);padding:24px">No orders match your filters.</td></tr> }
+                else
+                {
+                    @foreach (var o in items)
+                    {
+                        var ob = OrderBadge(o.Status);
+                        var pb = PaymentBadge(o.PaymentStatus);
+                        var srcCls = SourceClass(o);
+                        var srcLbl = SourceLabel(o);
+                        <tr class="@RowCss(o)" @onclick="() => OpenOrder(o.Id)">
+                            <td data-label="" @onclick:stopPropagation="true"><input type="checkbox" checked="@selected.Contains(o.Id)" @onchange="e => ToggleRow(o.Id, e)" /></td>
+                            <td data-label="Order #" class="cell-orderno" @onclick:stopPropagation="true"><a href="/admin/orders/@o.Id">#@o.OrderNumber</a></td>
+                            <td data-label="Order Date"><div class="cell-date">@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")<span class="t">@o.CreatedAt.ToLocalTime().ToString("hh:mm tt")</span></div></td>
+                            <td data-label="Student">
+                                <div class="cell-student">
+                                    <span class="cell-avatar">@Initials(o.StudentName)</span>
+                                    <div class="cell-student__info">
+                                        <div class="cell-student__name" title="@o.StudentName">@o.StudentName</div>
+                                        <div class="sub">@o.StudentPhone</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td data-label="Product">
+                                <div class="cell-product">
+                                    <span class="cell-product__title" title="@o.ProductSummary">@o.ProductSummary</span>
+                                    @if (!string.IsNullOrEmpty(o.CourseLevel)) { <span class="cell-product__lvl">@FormatLevel(o.CourseLevel)</span> }
+                                </div>
+                            </td>
+                            <td data-label="Source"><span class="src-badge src-badge--@srcCls">@srcLbl</span></td>
+                            <td data-label="Order Status"><StatusBadge Label="@ob.label" Variant="@ob.variant" /></td>
+                            <td data-label="Payment"><StatusBadge Label="@pb.label" Variant="@pb.variant" /></td>
+                            <td data-label="Gross"><span class="m-cell m-gross">₹@o.GrossAmount.ToString("N0")</span></td>
+                            <td data-label="Student Disc."><span class="m-cell @(o.StudentDiscount > 0 ? "m-student" : "m-zero")">@(o.StudentDiscount > 0 ? "₹" + o.StudentDiscount.ToString("N0") : "—")</span></td>
+                            <td data-label="Fr. Disc %"><span class="m-cell @(o.FranchiseDiscountPercent > 0 ? "m-fpct" : "m-zero")">@(o.FranchiseDiscountPercent > 0 ? o.FranchiseDiscountPercent.ToString("0.##") + "%" : "—")</span></td>
+                            <td data-label="Fr. Disc ₹"><span class="m-cell @(o.FranchiseDiscountAmount > 0 ? "m-famt" : "m-zero")">@(o.FranchiseDiscountAmount > 0 ? "₹" + o.FranchiseDiscountAmount.ToString("N0") : "—")</span></td>
+                            <td data-label="Net">
+                                <div class="net-wrap">
+                                    <span class="m-cell m-net">₹@o.NetAmount.ToString("N0")</span>
+                                    <dl class="net-wrap__tip">
+                                        <dt>Gross</dt><dd>₹@o.GrossAmount.ToString("N2")</dd>
+                                        <dt>Student Discount</dt><dd>− ₹@o.StudentDiscount.ToString("N2")</dd>
+                                        <dt>Franchise Discount</dt><dd>− ₹@o.FranchiseDiscountAmount.ToString("N2") (@o.FranchiseDiscountPercent.ToString("0.##")%)</dd>
+                                        <dt>Net (GST Incl.)</dt><dd>₹@o.NetAmount.ToString("N2")</dd>
+                                        <dt>Taxable</dt><dd>₹@o.TaxableAmount.ToString("N2")</dd>
+                                        <dt>GST</dt><dd>₹@o.GstAmount.ToString("N2")</dd>
+                                    </dl>
+                                </div>
+                            </td>
+                            <td data-label="Taxable"><span class="m-cell m-taxable">₹@o.TaxableAmount.ToString("N0")</span></td>
+                            <td data-label="GST"><span class="m-cell m-gst">₹@o.GstAmount.ToString("N0")</span></td>
+                            <td data-label="Method">@(o.PaymentMode?.ToString() ?? "—")</td>
+                            <td data-label="" @onclick:stopPropagation="true">
+                                <a href="/admin/orders/@o.Id" class="btn btn-ghost btn-sm">View</a>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer">
+        <span>
+            @(total == 0 ? "No orders" : $"Showing {((page - 1) * pageSize) + 1}–{Math.Min(page * pageSize, total)} of {total}")
+            <select class="form-input" style="display:inline-block;width:auto;padding:4px 8px;margin-left:10px" @onchange="OnPageSize">
+                @foreach (var n in new[] { 15, 25, 50, 100 }) { <option value="@n" selected="@(pageSize == n)">@n / page</option> }
+            </select>
+        </span>
+        <div class="table-pagination">
+            <button disabled="@(page <= 1)" @onclick="() => Go(1)">«</button>
+            <button disabled="@(page <= 1)" @onclick="() => Go(page - 1)">‹</button>
+            <span style="padding:0 10px">@(page) / @Math.Max(1, TotalPages)</span>
+            <button disabled="@(page >= TotalPages)" @onclick="() => Go(page + 1)">›</button>
+            <button disabled="@(page >= TotalPages)" @onclick="() => Go(TotalPages)">»</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<OrderListItem>? items;
+    private OrderFinanceSummary? summary;
+    private OrderFilterMeta? meta;
+    private OrderFilter filter = new();
+    private readonly HashSet<Guid> selected = new();
+    private OrderStatus bulkStatus = OrderStatus.Confirmed;
+    private bool filtersOpen = true, bulkBusy, exporting;
+    private Guid? actorId;
+    private string actorName = "admin";
+    private bool isSuperAdmin;
+    private HashSet<Guid> prevIds = new();
+    private readonly HashSet<Guid> newIds = new();
+    private int reloadToken;
+    private int page = 1, total;
+    private int pageSize = 15;
+    private string discountStr = ""; // bound to the "Student discount applied" select; maps to filter.HasStudentDiscount
+
+    // ── 🔍 Product dropdown state (AJAX-backed searchable picker) ──
+    private List<RioCommerce.Core.DTOs.Meta.IdName>? productOptions;
+    private RioCommerce.Core.DTOs.Meta.IdName? selectedProduct;
+    private bool productDdOpen, productSearching;
+    private string productQuery = "";
+    private int productActiveIdx = -1;
+    private ElementReference productSearchInput;
+    private CancellationTokenSource? productSearchCts;
+    private long productSearchToken;
+
+    private int TotalPages => (int)Math.Ceiling(total / (double)pageSize);
+    private bool AllOnPageSelected => items is { Count: > 0 } && items.All(i => selected.Contains(i.Id));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+        // Bulk-cancel is super-admin only, matching the order page and the service gate.
+        isSuperAdmin = state.User.IsInRole("super_admin");
+        meta = await Svc.GetFilterMetaAsync();
+        // Payment-mode filter dropdown only offers modes whose gateway is currently enabled
+        // in /admin/payment-settings (Razorpay, Easebuzz) plus BankTransfer which is always on.
+        allowedPaymentModes = await PaymentModes.GetAvailableAsync();
+        RestoreScreenState();
+        await Load();
+        Bus.DataChanged += OnData;
+    }
+
+    private List<PaymentMode> allowedPaymentModes = new();
+
+    private void OnData(RealtimeEvent e) { if (e.Scope == "orders") _ = DebouncedReload(); }
+
+    private async Task DebouncedReload()
+    {
+        var token = ++reloadToken;
+        await Task.Delay(400);
+        if (token != reloadToken) return;
+        await InvokeAsync(async () =>
+        {
+            await Load(markNew: true);
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => Bus.DataChanged -= OnData;
+
+    private void OpenOrder(Guid id) => Nav.NavigateTo($"/admin/orders/{id}");
+
+    // ── Filters survive an order detail, but not the section ────────────────────────────────────
+    // Opening an order and coming back used to rebuild this component from scratch, losing the
+    // filters — so checking five filtered orders meant re-entering the filters five times.
+    // AdminScreenState holds them while the user is anywhere under /admin/orders and drops them the
+    // moment they go elsewhere in the admin, so Orders is never silently pre-filtered on arrival.
+
+    private const string ScreenKey = "/admin/orders";
+
+    /// <summary>Everything the user set by hand. Paging and sort ride along on the filter itself.</summary>
+    private sealed class SavedState
+    {
+        public OrderFilter Filter { get; init; } = new();
+        public int Page { get; init; } = 1;
+        public int PageSize { get; init; } = 15;
+        public string DiscountStr { get; init; } = "";
+        public RioCommerce.Core.DTOs.Meta.IdName? SelectedProduct { get; init; }
+        public string ProductQuery { get; init; } = "";
+        public bool FiltersOpen { get; init; } = true;
+    }
+
+    private void RestoreScreenState()
+    {
+        if (ScreenState.Restore<SavedState>(ScreenKey) is not { } s) return;
+        filter = s.Filter;
+        page = s.Page; pageSize = s.PageSize;
+        discountStr = s.DiscountStr;
+        selectedProduct = s.SelectedProduct;
+        productQuery = s.ProductQuery;
+        filtersOpen = s.FiltersOpen;
+    }
+
+    private void SaveScreenState() => ScreenState.Save(ScreenKey, new SavedState
+    {
+        Filter = filter, Page = page, PageSize = pageSize, DiscountStr = discountStr,
+        SelectedProduct = selectedProduct, ProductQuery = productQuery, FiltersOpen = filtersOpen,
+    });
+
+    private async Task Load(bool markNew = false)
+    {
+        filter.Page = page; filter.PageSize = pageSize;
+        filter.HasStudentDiscount = discountStr switch { "true" => true, "false" => false, _ => (bool?)null };
+        // Saved on every load, so whatever the user is looking at right now is what comes back.
+        SaveScreenState();
+        // Two server-side calls — list (paged) + summary (filter-scoped aggregate). Both reuse the same WHERE clause.
+        var r = await Svc.ListAsync(filter);
+        items = r.Items; total = r.TotalCount;
+        summary = await Svc.SummaryAsync(filter);
+
+        var ids = items.Select(i => i.Id).ToHashSet();
+        newIds.Clear();
+        if (markNew) foreach (var id in ids) if (!prevIds.Contains(id)) newIds.Add(id);
+        prevIds = ids;
+    }
+
+    private async Task Search() { page = 1; await Load(); }
+
+    private async Task ClearFilters()
+    {
+        filter = new OrderFilter();
+        discountStr = "";
+        selectedProduct = null; productQuery = ""; productDdOpen = false;
+        page = 1; selected.Clear();
+        // Nothing narrows the pickers any more, so the full lists have to come back with it.
+        meta = await Svc.GetFilterMetaAsync();
+        await LoadProductOptions(null);
+        await Load();
+    }
+
+    private async Task OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Search(); }
+    private async Task OnPageSize(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var n)) { pageSize = n; page = 1; await Load(); } }
+    private async Task Go(int p) { if (p < 1 || p > Math.Max(1, TotalPages) || p == page) return; page = p; await Load(); }
+
+    private async Task Sort(string col)
+    {
+        if (filter.SortBy == col) filter.SortDesc = !filter.SortDesc;
+        else { filter.SortBy = col; filter.SortDesc = true; }
+        await Load();
+    }
+    private string SortArrow(string col) => filter.SortBy == col ? (filter.SortDesc ? "▼" : "▲") : "";
+
+    private void ToggleRow(Guid id, ChangeEventArgs e) { if (e.Value is true) selected.Add(id); else selected.Remove(id); }
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        if (items == null) return;
+        if (e.Value is true) foreach (var i in items) selected.Add(i.Id);
+        else foreach (var i in items) selected.Remove(i.Id);
+    }
+
+    private async Task ApplyBulk()
+    {
+        if (selected.Count == 0) return;
+        bulkBusy = true;
+        var (n, error) = await Svc.BulkUpdateStatusAsync(selected.ToList(), bulkStatus, actorId, actorName);
+        bulkBusy = false;
+        if (error != null)
+        {
+            // Keep the selection — the admin may want to pick a different status for the same rows.
+            Toast.Error(error);
+            return;
+        }
+        selected.Clear();
+        await Load();
+        Toast.Success($"Updated {n} order(s) to {bulkStatus}.");
+    }
+
+    private async Task BulkActivateEnrollment()
+    {
+        if (selected.Count == 0) return;
+        bulkBusy = true;
+        var ids = selected.ToList();
+        foreach (var id in ids) await Svc.ActivateEnrollmentAsync(id, actorId, actorName);
+        bulkBusy = false;
+        selected.Clear();
+        await Load();
+        Toast.Success($"Enrollment activated for {ids.Count} order(s).");
+    }
+
+    // ── Export — audit-logs the action (user / time / IP / filters used) before the file is downloaded.
+    private async Task LogExport(string format)
+    {
+        try
+        {
+            await Audit.LogAsync(actorId, actorName, "OrdersExported", "Order", null,
+                System.Text.Json.JsonSerializer.Serialize(new { format, ip = (string?)null, filter }));
+        }
+        catch { /* audit failure must never break the export */ }
+    }
+    private async Task ExportCsv()
+    {
+        exporting = true;
+        var csv = await Svc.ExportCsvAsync(filter);
+        exporting = false;
+        await LogExport("csv");
+        await JS.InvokeVoidAsync("hjc.downloadCsv", $"orders-{DateTime.Now:yyyyMMdd}.csv", csv);
+    }
+    private async Task ExportExcel()
+    {
+        // The CSV is fully Excel-compatible — open in Excel and it auto-imports the financial columns.
+        exporting = true;
+        var csv = await Svc.ExportCsvAsync(filter);
+        exporting = false;
+        await LogExport("excel");
+        await JS.InvokeVoidAsync("hjc.downloadCsv", $"orders-{DateTime.Now:yyyyMMdd}.xls", csv);
+    }
+    private async Task Print()
+    {
+        await LogExport("pdf");
+        await JS.InvokeVoidAsync("window.print");
+    }
+
+    private static Guid? ParseGuid(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
+    private static T? ParseEnum<T>(object? v) where T : struct, Enum
+        => int.TryParse(v?.ToString(), out var n) && Enum.IsDefined(typeof(T), n) ? (T)(object)n : null;
+
+    private string RowCss(OrderListItem o)
+    {
+        var c = "";
+        if (selected.Contains(o.Id)) c += "is-selected ";
+        if (newIds.Contains(o.Id)) c += "row-new";
+        return c;
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "–";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name.Trim()[..Math.Min(2, name.Trim().Length)].ToUpper();
+    }
+
+    // Exact rupees and paise, never abbreviated. This used to collapse anything from ₹1,00,000 into
+    // "1L", which rounded ₹1,00,483 and ₹91,289 to the SAME "₹1L" — the summary bar could not be
+    // read, let alone reconciled against a report. These tiles are a finance total; the whole point
+    // is the figure.
+    private static string FormatMoney(decimal v) => v.ToString("N2");
+    private static string PaymentLabel(PaymentStatus s) => s switch
+    {
+        PaymentStatus.Success => "Paid",
+        PaymentStatus.PartialRefund => "Partial Refund",
+        _ => s.ToString()
+    };
+    private static string EnrollmentLabel(EnrollmentStatus s) => s switch
+    {
+        EnrollmentStatus.NotActivated => "Not Activated",
+        _ => s.ToString()
+    };
+
+    // Source badge — derives the displayed label from OrderSource PLUS the order's affiliate &
+    // customer-type flags so the spec's six examples (Website, Franchise, Admin, Affiliate,
+    // Walk-In, Corporate) all surface from the existing data without schema changes.
+    private static string SourceLabel(OrderListItem o)
+    {
+        // Franchise is checked BEFORE corporate. A franchisee is almost always registered as an
+        // Organization, so testing IsCorporate first collapsed every franchise order to a generic
+        // "Corporate" badge and threw the partner's name away — 20 of the 21 franchise orders on
+        // record. Which franchise placed the order is the whole point of this column; "Corporate"
+        // is the fallback for a non-franchise organisation buyer.
+        if (o.Source == OrderSource.Franchisee) return string.IsNullOrWhiteSpace(o.FranchiseName) ? "🏬 Franchise" : $"🏬 {o.FranchiseName}";
+        if (o.IsCorporate)                     return "🏢 Corporate";
+        if (o.HasAffiliate)                    return "🤝 Affiliate";
+        return o.Source switch
+        {
+            OrderSource.Counter => "🚶 Walk-In",
+            OrderSource.Website => "🌐 Website",
+            OrderSource.Other   => "📋 Admin",
+            _                   => o.Source.ToString()
+        };
+    }
+    private static string SourceClass(OrderListItem o)
+    {
+        // Same precedence as SourceLabel — the badge colour must match the label it paints.
+        if (o.Source == OrderSource.Franchisee) return "franchise";
+        if (o.IsCorporate)                      return "corporate";
+        if (o.HasAffiliate)                     return "affiliate";
+        return o.Source switch
+        {
+            OrderSource.Counter => "walkin",
+            OrderSource.Website => "website",
+            OrderSource.Other   => "admin",
+            _                   => "other"
+        };
+    }
+
+    private static string FormatLevel(string? lvl) => lvl switch
+    {
+        "CaFoundation"   => "CA Foundation",
+        "CaIntermediate" => "CA Intermediate",
+        "Books"          => "Books",
+        "TestSeries"     => "Test Series",
+        _                => lvl ?? ""
+    };
+
+    private static (string label, string variant) OrderBadge(OrderStatus s) => s switch
+    {
+        OrderStatus.Confirmed or OrderStatus.Activated or OrderStatus.Delivered => (s.ToString(), "confirmed"),
+        OrderStatus.Pending or OrderStatus.Draft => (s.ToString(), "pending"),
+        OrderStatus.Processing => (s.ToString(), "processing"),
+        OrderStatus.Cancelled => (s.ToString(), "danger"),
+        OrderStatus.Refunded => (s.ToString(), "refunded"),
+        _ => (s.ToString(), "neutral")
+    };
+    private static (string label, string variant) PaymentBadge(PaymentStatus s) => s switch
+    {
+        PaymentStatus.Success => ("Paid", "confirmed"),
+        PaymentStatus.Pending => ("Pending", "pending"),
+        PaymentStatus.Failed => ("Failed", "danger"),
+        PaymentStatus.Refunded => ("Refunded", "refunded"),
+        PaymentStatus.PartialRefund => ("Partial Refund", "refunded"),
+        _ => (s.ToString(), "neutral")
+    };
+
+    // ── 🔍 Product dropdown — AJAX-loaded, searchable, keyboard-navigable single-select ──
+    private async Task ToggleProductDd()
+    {
+        productDdOpen = !productDdOpen;
+        if (productDdOpen)
+        {
+            if (productOptions == null) await LoadProductOptions(null);
+            productActiveIdx = -1;
+            // Focus the inline search box so the admin can start typing immediately.
+            try { await Task.Yield(); await productSearchInput.FocusAsync(); } catch { }
+        }
+    }
+
+    private async Task LoadProductOptions(string? q)
+    {
+        productSearching = true;
+        try { productOptions = await Svc.ListProductsForFilterAsync(q, 100, filter.FacultyId); }
+        finally { productSearching = false; }
+    }
+
+    private async Task OnProductQueryChanged()
+    {
+        // 200ms debounce + cancel-previous + stale-response guard so very large catalogues
+        // don't drown the circuit in superseded results.
+        productSearchCts?.Cancel();
+        productSearchCts = new CancellationTokenSource();
+        var token = ++productSearchToken;
+        var ct = productSearchCts.Token;
+        productSearching = true;
+        try
+        {
+            await Task.Delay(200, ct);
+            if (ct.IsCancellationRequested || token != productSearchToken) return;
+            var results = await Svc.ListProductsForFilterAsync(productQuery, 100, filter.FacultyId);
+            if (token != productSearchToken) return;
+            productOptions = results;
+            productActiveIdx = results.Count > 0 ? 0 : -1;
+        }
+        catch (TaskCanceledException) { /* superseded — fine */ }
+        finally { if (token == productSearchToken) { productSearching = false; StateHasChanged(); } }
+    }
+
+    private void OnProductKey(KeyboardEventArgs e)
+    {
+        if (!productDdOpen)
+        {
+            if (e.Key == "Enter" || e.Key == "ArrowDown" || e.Key == " ")
+                _ = ToggleProductDd();
+            return;
+        }
+        var n = productOptions?.Count ?? 0;
+        switch (e.Key)
+        {
+            case "ArrowDown": if (n > 0) productActiveIdx = (productActiveIdx + 1) % n; break;
+            case "ArrowUp":   if (n > 0) productActiveIdx = (productActiveIdx - 1 + n) % n; break;
+            case "Enter":     if (productActiveIdx >= 0 && productActiveIdx < n) SelectProduct(productActiveIdx); break;
+            case "Escape":    productDdOpen = false; productActiveIdx = -1; break;
+        }
+    }
+
+    private void SelectProduct(int idx)
+    {
+        if (productOptions == null || idx < 0 || idx >= productOptions.Count) return;
+        selectedProduct = productOptions[idx];
+        filter.ProductId = selectedProduct.Id;
+        productDdOpen = false;
+        productActiveIdx = -1;
+        _ = RefreshFacultyOptions();
+    }
+
+    private void ClearProductSelection()
+    {
+        selectedProduct = null;
+        filter.ProductId = null;
+        productQuery = "";
+        productDdOpen = false;
+        _ = RefreshFacultyOptions();
+    }
+
+    // ── Cascading Faculty ↔ Product ─────────────────────────────────────────────────────────────
+    // The only two catalog filters on this screen. Franchisee, statuses, dates and the amount ranges
+    // are untouched by this and keep filtering the results exactly as they did.
+    //
+    // Catalog only: a course a faculty teaches stays on offer whether or not it sold in the chosen
+    // dates. The order list itself is unchanged — it still applies every date and status filter.
+
+    /// <summary>
+    /// Faculty changed: the Product list narrows to that faculty's courses, and a product they do
+    /// not teach is dropped. Nothing else the admin set is touched.
+    /// </summary>
+    private async Task OnFacultyFilterChanged(ChangeEventArgs e)
+    {
+        filter.FacultyId = ParseGuid(e.Value);
+
+        await LoadProductOptions(productQuery);
+
+        // Only a now-impossible product is cleared — every other filter stands.
+        if (filter.ProductId is { } picked && productOptions?.Any(p => p.Id == picked) != true)
+            ClearProductSelectionQuietly();
+    }
+
+    /// <summary>Product changed: the Faculty list narrows to its teachers, and a faculty who does
+    /// not teach it is dropped.</summary>
+    private async Task RefreshFacultyOptions()
+    {
+        meta = await Svc.GetFilterMetaAsync(filter.ProductId);
+
+        if (filter.FacultyId is { } picked && meta.Faculty.All(f => f.Id != picked))
+            filter.FacultyId = null;
+
+        StateHasChanged();
+    }
+
+    /// <summary>Clears the product without re-running the faculty cascade — used when the faculty
+    /// filter is what just changed, so refreshing faculty from it would be circular.</summary>
+    private void ClearProductSelectionQuietly()
+    {
+        selectedProduct = null;
+        filter.ProductId = null;
+        productQuery = "";
+        productDdOpen = false;
+    }
+}

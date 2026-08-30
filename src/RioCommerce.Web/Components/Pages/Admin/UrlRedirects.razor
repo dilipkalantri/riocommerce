@@ -1,0 +1,289 @@
+@page "/admin/url-redirects"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IUrlRedirectService Svc
+@inject IUrlMatchService Matcher
+@inject ToastService Toast
+@inject NavigationManager Nav
+<PageTitle>URL Redirects — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>URL Redirects</h1>
+    <div style="display:flex;gap:8px">
+        <a href="/admin/url-redirects/import" class="btn btn-outline btn-sm">📥 Import Sitemap</a>
+        <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">➕ Add Redirect</button>
+    </div>
+</div>
+
+@* ── KPI strip ── *@
+@if (stats is { } s)
+{
+    <div class="kpi-grid" style="margin-bottom:16px">
+        <div class="kpi-card"><div class="kpi-card__label">Total Redirects</div><div class="kpi-card__value">@s.Total</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Active</div><div class="kpi-card__value" style="color:#15803D">@s.Active</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Total Hits</div><div class="kpi-card__value" style="color:var(--orange)">@s.Hits</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Last Accessed</div><div class="kpi-card__value" style="font-size:14px">@(s.LastHit?.ToLocalTime().ToString("dd-MMM HH:mm") ?? "—")</div></div>
+    </div>
+}
+
+@* ── Filter strip ── *@
+<div class="form-card" style="margin-bottom:14px">
+    <div class="form-grid">
+        <div class="form-group form-group--full"><label class="form-label">Search</label><input class="form-input" placeholder="Old URL or destination contains…" @bind="filter.Search" @bind:after="ResetPage" /></div>
+        <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-input" @bind="activeFilter" @bind:after="ApplyActiveFilter">
+                <option value="">Any</option>
+                <option value="true">Active</option>
+                <option value="false">Disabled</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Type</label>
+            <select class="form-input" @bind="filter.RedirectType" @bind:after="ResetPage">
+                <option value="0">Any</option>
+                <option value="301">301</option>
+                <option value="302">302</option>
+            </select>
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;gap:8px;justify-content:flex-end">
+            <button class="btn btn-ghost btn-sm"   @onclick="ClearFilters">Clear</button>
+            <button class="btn btn-primary btn-sm" @onclick="Reload">Apply</button>
+        </div>
+    </div>
+</div>
+
+@* ── Editor modal ── *@
+@if (editor != null)
+{
+    <div class="ur-modal-bg" @onclick="CloseEditor"></div>
+    <div class="ur-modal" role="dialog" aria-label="Edit redirect">
+        <div class="ur-modal__head">
+            <div class="ur-modal__title">@(editor.Id == null ? "Add Redirect" : "Edit Redirect")</div>
+            <button class="ur-modal__close" @onclick="CloseEditor" aria-label="Close">×</button>
+        </div>
+        <div class="ur-modal__body">
+            @if (editorErr != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:10px">@editorErr</div> }
+            <div class="form-group"><label class="form-label">Source URL (Old) <span class="required">*</span></label><input class="form-input" @bind="editor.OldUrl" placeholder="/ca-foundation" /></div>
+            <div class="form-group"><label class="form-label">Destination URL <span class="required">*</span></label><input class="form-input" @bind="editor.NewUrl" placeholder="/courses?level=ca-foundation or /" /></div>
+            <div class="form-grid">
+                <div class="form-group"><label class="form-label">Type</label>
+                    <select class="form-input" @bind="editor.RedirectType">
+                        <option value="301">301 Permanent</option>
+                        <option value="302">302 Temporary</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display:flex;align-items:flex-end">
+                    <label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="editor.IsActive" /> Active</label>
+                </div>
+            </div>
+            <div class="form-group"><label class="form-label">Notes (optional)</label><input class="form-input" @bind="editor.Notes" placeholder="Imported / Manual / from sitemap" /></div>
+        </div>
+        <div class="ur-modal__foot">
+            <button class="btn btn-ghost" @onclick="CloseEditor" disabled="@saving">Cancel</button>
+            <button class="btn btn-primary" @onclick="SaveEditor" disabled="@saving">@(saving ? "Saving…" : "Save")</button>
+        </div>
+    </div>
+}
+
+@* ── Test URL modal ── *@
+@if (testOpen)
+{
+    <div class="ur-modal-bg" @onclick="() => testOpen = false"></div>
+    <div class="ur-modal" role="dialog" aria-label="Test URL">
+        <div class="ur-modal__head">
+            <div class="ur-modal__title">🧪 Test URL</div>
+            <button class="ur-modal__close" @onclick="() => testOpen = false" aria-label="Close">×</button>
+        </div>
+        <div class="ur-modal__body">
+            <div class="form-group"><label class="form-label">Path to test</label><input class="form-input" @bind="testPath" placeholder="/ca-foundation" /></div>
+            <button class="btn btn-primary btn-sm" @onclick="RunTest" disabled="@testing">@(testing ? "Testing…" : "Test")</button>
+            @if (testResult != null)
+            {
+                <div style="margin-top:12px">
+                    <div class="ur-lbl">Result</div>
+                    @if (testResult.Value.Found)
+                    {
+                        <div class="inline-alert inline-alert--ok" style="margin-top:6px">
+                            ✅ HTTP @testResult.Value.Code → <code>@testResult.Value.Destination</code>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="inline-alert" style="background:#FEF3C7;border:1px solid #FCD34D;color:#92400E;margin-top:6px">
+                            ⚠ No redirect rule for this path. The user would hit the real route (or 404).
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(testResult.Value.SuggestedDestination) && !testResult.Value.Found)
+                    {
+                        <div style="margin-top:10px">
+                            <div class="ur-lbl">Auto-match suggestion</div>
+                            <div style="font-size:13px"><code>@testResult.Value.SuggestedDestination</code> · @testResult.Value.SuggestedReason</div>
+                            <button class="btn btn-outline btn-sm" style="margin-top:8px" @onclick="CreateFromTest">➕ Create this redirect</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        <div class="ur-modal__foot">
+            <button class="btn btn-ghost" @onclick="() => testOpen = false">Close</button>
+        </div>
+    </div>
+}
+
+@* ── Grid ── *@
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr>
+            <th>Old URL</th>
+            <th>Type</th>
+            <th>Destination</th>
+            <th>Hits</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr></thead>
+        <tbody>
+            @if (page == null) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (page.Items.Count == 0) { <tr><td colspan="7" style="text-align:center;color:var(--gray-400)">No redirects match these filters.</td></tr> }
+            else
+            {
+                @foreach (var r in page.Items)
+                {
+                    <tr>
+                        <td><code>@r.OldUrl</code></td>
+                        <td><span class="ur-type ur-type--@r.RedirectType">@r.RedirectType</span></td>
+                        <td><code>@r.NewUrl</code></td>
+                        <td>@r.HitCount</td>
+                        <td><span class="status @(r.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(r.IsActive ? "Active" : "Disabled")</span></td>
+                        <td>@r.CreatedAt.ToLocalTime().ToString("dd-MMM-yyyy")</td>
+                        <td>
+                            <div style="display:flex;gap:4px">
+                                <button class="ur-act" title="Test"    @onclick="() => OpenTest(r.OldUrl)">🧪</button>
+                                <button class="ur-act" title="Edit"    @onclick="() => OpenEditor(r.Id)">✏</button>
+                                <button class="ur-act" title="@(r.IsActive ? "Disable" : "Enable")" @onclick="() => Toggle(r.Id)">⏸</button>
+                                <button class="ur-act ur-act--danger" title="Delete" @onclick="() => Delete(r.Id)">🗑</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+
+    @if (page != null && page.TotalCount > 0)
+    {
+        var totalPages = Math.Max(1, (int)Math.Ceiling((double)page.TotalCount / page.PageSize));
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--gray-200);font-size:13px;color:var(--gray-500)">
+            <span>Showing @((page.Page - 1) * page.PageSize + 1) – @(Math.Min(page.Page * page.PageSize, page.TotalCount)) of @(page.TotalCount)</span>
+            <div style="display:flex;gap:6px;align-items:center">
+                <button class="btn btn-ghost btn-sm" disabled="@(filter.Page <= 1)"          @onclick="() => Goto(filter.Page - 1)">‹ Prev</button>
+                <span style="font-weight:700;color:var(--navy)">@(page.Page) / @totalPages</span>
+                <button class="btn btn-ghost btn-sm" disabled="@(filter.Page >= totalPages)" @onclick="() => Goto(filter.Page + 1)">Next ›</button>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .ur-type{display:inline-flex;font-size:11.5px;font-weight:800;letter-spacing:.4px;padding:3px 9px;border-radius:999px}
+    .ur-type--301{background:#DCFCE7;color:#15803D}
+    .ur-type--302{background:#FEF3C7;color:#B45309}
+    .ur-act{width:32px;height:32px;border-radius:8px;border:1px solid var(--gray-200);background:#fff;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,color .15s,border-color .15s,transform .15s}
+    .ur-act:hover{background:var(--orange);color:#fff;border-color:var(--orange);transform:translateY(-1px)}
+    .ur-act--danger:hover{background:#B91C1C;border-color:#B91C1C}
+
+    .ur-modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(2px);z-index:90}
+    .ur-modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100vw - 32px));max-height:90vh;background:#fff;border-radius:18px;box-shadow:0 28px 60px -20px rgba(15,23,42,.5);z-index:91;display:flex;flex-direction:column;overflow:hidden}
+    .ur-modal__head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--gray-200)}
+    .ur-modal__title{font-size:16px;font-weight:800;color:var(--navy)}
+    .ur-modal__close{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:var(--gray-100);color:var(--gray-600);font-size:18px;cursor:pointer}
+    .ur-modal__body{padding:16px 20px;overflow-y:auto}
+    .ur-modal__foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;background:var(--gray-50);border-top:1px solid var(--gray-200)}
+    .ur-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-500)}
+</style>
+
+@code {
+    private UrlRedirectFilter filter = new() { PageSize = 25, Page = 1 };
+    private UrlRedirectPage? page;
+    private (int Total, int Active, int Hits, DateTime? LastHit)? stats;
+    private string activeFilter = "";
+
+    private UrlRedirectEdit? editor;
+    private string? editorErr;
+    private bool saving;
+
+    private bool testOpen;
+    private string testPath = "";
+    private bool testing;
+    private (bool Found, int Code, string Destination, string? SuggestedDestination, string? SuggestedReason)? testResult;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        page  = await Svc.ListAsync(filter);
+        stats = await Svc.StatsAsync();
+    }
+
+    private void ApplyActiveFilter()
+    {
+        filter.IsActive = activeFilter switch { "true" => true, "false" => false, _ => null };
+        ResetPage();
+    }
+    private async void ResetPage() { filter.Page = 1; await Reload(); }
+    private async Task Goto(int p) { filter.Page = Math.Max(1, p); await Reload(); }
+    private async Task ClearFilters() { filter = new() { PageSize = 25, Page = 1 }; activeFilter = ""; await Reload(); }
+
+    // ── Editor ─────────────────────────────────────────────────────────────
+    private async Task OpenEditor(Guid? id)
+    {
+        editorErr = null;
+        editor = id == null ? new UrlRedirectEdit() : (await Svc.GetAsync(id.Value)) ?? new UrlRedirectEdit();
+    }
+    private void CloseEditor() { editor = null; editorErr = null; }
+    private async Task SaveEditor()
+    {
+        if (editor == null) return;
+        saving = true; editorErr = null;
+        var (ok, err, _) = await Svc.SaveAsync(editor);
+        saving = false;
+        if (ok) { editor = null; await Reload(); Toast.Success("Redirect saved."); }
+        else editorErr = err;
+    }
+
+    private async Task Toggle(Guid id) { await Svc.ToggleAsync(id); await Reload(); }
+    private async Task Delete(Guid id)
+    {
+        var ok = await Svc.DeleteAsync(id);
+        await Reload();
+        if (ok) Toast.Success("Redirect deleted."); else Toast.Error("Delete failed.");
+    }
+
+    // ── Test URL ───────────────────────────────────────────────────────────
+    private void OpenTest(string path) { testPath = path; testResult = null; testOpen = true; }
+    private async Task RunTest()
+    {
+        if (string.IsNullOrWhiteSpace(testPath)) return;
+        testing = true;
+        var hit = await Svc.FindActiveAsync(testPath);
+        if (hit != null)
+        {
+            testResult = (true, hit.RedirectType, hit.NewUrl, null, null);
+        }
+        else
+        {
+            var (suggested, _, reason) = await Matcher.MatchAsync(testPath);
+            testResult = (false, 0, "", suggested, reason);
+        }
+        testing = false;
+    }
+    private async Task CreateFromTest()
+    {
+        if (testResult is not { Found: false, SuggestedDestination: { } dest }) return;
+        await OpenEditor(null);
+        editor!.OldUrl = testPath;
+        editor.NewUrl = dest;
+        testOpen = false;
+    }
+}

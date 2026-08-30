@@ -1,0 +1,191 @@
+@page "/admin/email-logs"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,backend_user")]
+@inject IEmailLogService LogSvc
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+<PageTitle>Email Logs — RioCommerce Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Email Logs</h1>
+    <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" @onclick="ExportCsv"  disabled="@busy">Export CSV</button>
+        <button class="btn btn-outline btn-sm" @onclick="ExportXlsx" disabled="@busy">Export Excel</button>
+        <button class="btn btn-ghost   btn-sm" @onclick="Reload"     disabled="@busy">Refresh</button>
+    </div>
+</div>
+
+@* ── Filter strip ── *@
+<div class="form-card" style="margin-bottom:14px">
+    <div class="form-grid">
+        <div class="form-group"><label class="form-label">From</label><input type="date" class="form-input" @bind="fromDate" /></div>
+        <div class="form-group"><label class="form-label">To</label><input type="date" class="form-input" @bind="toDate" /></div>
+        <div class="form-group"><label class="form-label">Recipient contains</label><input class="form-input" @bind="filter.Recipient" placeholder="email or domain" /></div>
+        <div class="form-group"><label class="form-label">Subject contains</label><input class="form-input" @bind="filter.Subject" /></div>
+        <div class="form-group">
+            <label class="form-label">Template</label>
+            <input class="form-input" @bind="filter.TemplateKey" placeholder="e.g. order_confirmation" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Provider</label>
+            <select class="form-input" @bind="filter.Provider">
+                <option value="">Any</option>
+                <option value="smtp">SMTP</option>
+                <option value="zeptomail">ZeptoMail</option>
+                <option value="sendgrid">SendGrid</option>
+                <option value="mailgun">Mailgun</option>
+                <option value="brevo">Brevo</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-input" @bind="filter.Status">
+                <option value="">Any</option>
+                <option value="Sent">Sent</option>
+                <option value="Delivered">Delivered</option>
+                <option value="Resent">Resent</option>
+                <option value="Failed">Failed</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Queued">Queued</option>
+                <option value="Sending">Sending</option>
+                <option value="Retry Pending">Retry Pending</option>
+            </select>
+        </div>
+        <div class="form-group"><label class="form-label">Triggered by</label><input class="form-input" @bind="filter.TriggeredBy" placeholder="Order Placed / Resend / …" /></div>
+    </div>
+    <div class="form-actions" style="margin-top:6px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost btn-sm"   @onclick="ClearFilter">Clear</button>
+        <button class="btn btn-primary btn-sm" @onclick="Reload" disabled="@busy">Apply</button>
+    </div>
+</div>
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr>
+            <th>Date / Time</th>
+            <th>To</th>
+            <th>Subject</th>
+            <th>Template</th>
+            <th>Provider</th>
+            <th>Status</th>
+            <th>Response</th>
+            <th>Triggered by</th>
+        </tr></thead>
+        <tbody>
+            @if (page == null) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Loading…</td></tr> }
+            else if (page.Items.Count == 0) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No logs match these filters.</td></tr> }
+            else
+            {
+                @foreach (var r in page.Items)
+                {
+                    <tr style="cursor:pointer" @onclick="() => OpenDetail(r.Id)">
+                        <td>@r.SentAt.ToLocalTime().ToString("dd-MMM-yyyy HH:mm")</td>
+                        <td>@r.Recipient</td>
+                        <td class="el-trim">@(r.Subject ?? "—")</td>
+                        <td>@(r.TemplateKey ?? "—")</td>
+                        <td>@(string.IsNullOrEmpty(r.Provider) ? "—" : r.Provider!.ToUpper())</td>
+                        <td><span class="@StatusClass(r.Status)">@r.Status</span></td>
+                        <td class="el-trim">@(r.Response ?? "—")</td>
+                        <td>@(r.TriggeredBy ?? "—")</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+
+    @if (page != null && page.TotalCount > 0)
+    {
+        var pages = (int)Math.Ceiling((double)page.TotalCount / page.PageSize);
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--gray-200);font-size:13px;color:var(--gray-500)">
+            <span>Showing @((page.Page - 1) * page.PageSize + 1) – @(Math.Min(page.Page * page.PageSize, page.TotalCount)) of @(page.TotalCount)</span>
+            <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm" disabled="@(filter.Page <= 1 || busy)" @onclick="() => GoTo(filter.Page - 1)">‹ Prev</button>
+                <span style="padding:6px 10px;font-weight:700;color:var(--navy)">@(page.Page) / @pages</span>
+                <button class="btn btn-ghost btn-sm" disabled="@(filter.Page >= pages || busy)" @onclick="() => GoTo(filter.Page + 1)">Next ›</button>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .el-trim{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .el-status{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;padding:4px 10px;border-radius:999px}
+    .el-status--ok{background:#DCFCE7;color:#15803D}
+    .el-status--warn{background:#FEF3C7;color:#B45309}
+    .el-status--err{background:#FEE2E2;color:#B91C1C}
+    .el-status--mute{background:var(--gray-100);color:var(--gray-500)}
+</style>
+
+@code {
+    private EmailLogFilter filter = new() { PageSize = 25, Page = 1 };
+    private EmailLogPage? page;
+    private bool busy;
+    private DateTime? fromDate;
+    private DateTime? toDate;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        busy = true;
+        // Translate date-only pickers into UTC start-of-day / end-of-day.
+        filter.From = fromDate?.Date;
+        filter.To   = toDate?.Date.AddDays(1).AddTicks(-1);
+        page = await LogSvc.ListAsync(filter);
+        busy = false;
+    }
+
+    private async Task GoTo(int p)
+    {
+        filter.Page = p;
+        await Reload();
+    }
+
+    private async Task ClearFilter()
+    {
+        filter = new() { PageSize = 25, Page = 1 };
+        fromDate = null; toDate = null;
+        await Reload();
+    }
+
+    private void OpenDetail(Guid id) => Nav.NavigateTo($"/admin/email-logs/{id}");
+
+    private async Task ExportCsv()
+    {
+        busy = true;
+        var bytes = await LogSvc.ExportCsvAsync(WithDateRange(filter));
+        await Download(bytes, $"email-logs-{DateTime.Now:yyyyMMdd-HHmm}.csv", "text/csv");
+        busy = false;
+    }
+
+    private async Task ExportXlsx()
+    {
+        busy = true;
+        var bytes = await LogSvc.ExportXlsxAsync(WithDateRange(filter));
+        await Download(bytes, $"email-logs-{DateTime.Now:yyyyMMdd-HHmm}.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        busy = false;
+    }
+
+    private EmailLogFilter WithDateRange(EmailLogFilter f)
+    {
+        f.From = fromDate?.Date;
+        f.To   = toDate?.Date.AddDays(1).AddTicks(-1);
+        return f;
+    }
+
+    private async Task Download(byte[] bytes, string fileName, string contentType)
+    {
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("eval",
+            $"(function(){{var a=document.createElement('a');a.href='data:{contentType};base64,{b64}';a.download='{fileName}';document.body.appendChild(a);a.click();a.remove();}})()");
+    }
+
+    private static string StatusClass(string status) => status switch
+    {
+        "Sent" or "Delivered" or "Resent"    => "el-status el-status--ok",
+        "Queued" or "Sending" or "Retry Pending" => "el-status el-status--warn",
+        "Failed" or "Rejected"               => "el-status el-status--err",
+        _                                     => "el-status el-status--mute"
+    };
+}

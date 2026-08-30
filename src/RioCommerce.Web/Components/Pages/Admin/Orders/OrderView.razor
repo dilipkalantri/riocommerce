@@ -1,0 +1,1718 @@
+@page "/admin/orders/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,faculty,franchise_admin,backend_user")]
+@inject IOrderAdminService Svc
+@inject IRefundService Refunds
+@inject IPaymentTransactionService Txns
+@inject INoteAttachmentService Attachments
+@using RioCommerce.Core.DTOs.SerialKeys
+@inject ISerialKeyService SerialKeys
+@inject ToastService Toast
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+<PageTitle>Order @o?.OrderNumber — RioCommerce Admin</PageTitle>
+
+<style>
+    .od-bar{position:sticky;top:52px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;background:rgba(255,255,255,.82);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border:1px solid var(--gray-200);border-radius:14px;padding:9px 14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 24px -16px rgba(15,23,42,.35)}
+    .od-bar__title{display:flex;align-items:center;gap:10px;min-width:0}
+    .od-bar__title h1{font-size:clamp(16px,1.9vw,20px);font-weight:800;letter-spacing:-.2px;color:var(--navy);white-space:nowrap}
+    .od-bar__back{color:var(--gray-400);font-size:13px;white-space:nowrap}
+    .od-bar__actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .od-menu-wrap{position:relative}
+    .od-menu{position:absolute;right:0;top:38px;background:#fff;border:1px solid var(--gray-200);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.16);z-index:40;min-width:190px;padding:6px;animation:modal-in .14s ease}
+    .od-menu button{display:flex;width:100%;align-items:center;gap:8px;padding:8px 10px;border:0;background:none;text-align:left;font-size:13.5px;color:var(--gray-700);border-radius:7px;cursor:pointer}
+    .od-menu button:hover{background:var(--gray-50)}
+    .od-menu__sep{height:1px;background:var(--gray-100);margin:5px 0}
+
+    .od-layout{display:grid;grid-template-columns:minmax(0,1fr) clamp(290px,26vw,340px);gap:clamp(14px,1.6vw,20px);align-items:start}
+    .od-sidebar{position:sticky;top:122px;display:flex;flex-direction:column;gap:14px}
+
+    .od-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .od-card__head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;cursor:pointer;font-weight:700;color:var(--navy);font-size:13.5px;letter-spacing:.1px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,var(--gray-50));transition:background .15s}
+    .od-card__head:hover{background:var(--gray-50)}
+    .od-card__head .chev{color:var(--gray-400);font-size:11px;transition:transform .18s}
+    .od-card.is-collapsed .od-card__head{border-bottom:0}
+    .od-card.is-collapsed .chev{transform:rotate(-90deg)}
+    .od-card__body{padding:clamp(13px,1.5vw,18px)}
+    .od-card.is-collapsed .od-card__body{display:none}
+
+    /* compact KPI tiles + student profile */
+    .od-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px}
+    .od-kpi{background:linear-gradient(180deg,var(--gray-50),#fff);border:1px solid var(--gray-200);border-radius:11px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;transition:border-color .15s,box-shadow .15s}
+    .od-kpi:hover{border-color:var(--gray-300);box-shadow:var(--shadow-sm)}
+    .od-kpi .k{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-400);font-weight:700}
+    .od-kpi .v{font-size:14px;color:var(--navy);font-weight:700;line-height:1.3;word-break:break-word}
+    .od-avatar{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--navy),var(--navy-light));color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:var(--shadow-sm)}
+    .od-profile{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--gray-200);border-radius:12px;background:#fff;margin-top:12px;min-width:0}
+    .od-profile__name{font-weight:700;color:var(--navy);font-size:15px;line-height:1.2}
+    .od-profile__sub{font-size:12.5px;color:var(--gray-500);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .od-badge-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed var(--gray-200)}
+    .od-badge-row__lbl{font-size:11px;color:var(--gray-400);font-weight:600}
+    .od-badge-row__lbl:not(:first-child){margin-left:6px}
+
+    /* finance tiles (accent-bar) */
+    .od-fingrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+    .od-fintile{border:1px solid var(--gray-200);border-radius:12px;padding:10px 12px;background:linear-gradient(180deg,var(--gray-50),#fff);position:relative;overflow:hidden}
+    .od-fintile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--fin,var(--gray-300))}
+    .od-fintile .k{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);font-weight:700}
+    .od-fintile .v{font-size:17px;font-weight:800;color:var(--navy);margin-top:2px}
+    .od-fintile--green{--fin:var(--green)}.od-fintile--red{--fin:var(--error)}.od-fintile--blue{--fin:#2563EB}.od-fintile--amber{--fin:var(--warning)}
+
+    .od-amounts{max-width:440px;margin-left:auto}
+    .od-amt{display:flex;justify-content:space-between;padding:6px 2px;font-size:13.5px}
+    .od-amt .lbl{color:var(--gray-500)}
+    .od-amt .v{font-weight:600;color:var(--navy)}
+    .od-amt--sub{font-size:12px;color:var(--gray-400);padding:2px 2px 2px 16px}
+    .od-amt--total{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding:13px 15px;font-weight:800;font-size:18px;color:var(--navy);background:linear-gradient(90deg,rgba(232,114,42,.10),rgba(232,114,42,.02));border:1px solid #FCD9BF;border-radius:12px}
+    .od-amt--total .v{color:var(--orange-dark);font-size:20px}
+    .od-amt--green .v{color:var(--green)}
+    .od-chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+    .od-chip{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:8px 12px;font-size:13px}
+    .od-chip .k{display:block;font-size:11px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.3px}
+    .od-chip .v{font-weight:700;color:var(--navy)}
+
+    /* Three boxes now (billing / shipping / contact) — auto-fit so they wrap instead of squashing. */
+    .od-addr{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+
+    /* Inline address editor. Address only — nothing here touches items, totals or status. */
+    .od-addr-form__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+    .od-addr-form__col{display:flex;flex-direction:column;gap:8px;min-width:0}
+    .od-addr-form__title{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;
+                         text-transform:uppercase;letter-spacing:.4px;font-weight:800;color:var(--gray-500)}
+    .od-addr-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--gray-600)}
+    .od-addr-form__row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .od-addr-form__hint{font-size:11.5px;color:var(--gray-500);line-height:1.5}
+    .od-addr-form__actions{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--gray-100)}
+    .od-addr-note{background:#FFFBEB;border:1px solid #FDE68A;color:#92400E;border-radius:8px;
+                  padding:10px 12px;font-size:12.5px;line-height:1.55;margin-bottom:14px}
+    .od-addr__box{border:1px solid var(--gray-200);border-radius:10px;overflow:hidden}
+    .od-addr__title{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--gray-50);padding:9px 13px;font-weight:700;font-size:13px;color:var(--navy);border-bottom:1px solid var(--gray-100)}
+    .od-addr__body{padding:12px 13px;font-size:13.5px;line-height:1.7;color:var(--gray-700)}
+    .od-addr__body .muted{color:var(--gray-400)}
+    .od-linkbtn{background:none;border:0;color:var(--orange);font-size:12px;cursor:pointer;padding:0;font-weight:600}
+    .od-item{display:flex;gap:11px;align-items:flex-start;min-width:0}
+    .od-thumb{width:46px;height:46px;border-radius:8px;object-fit:cover;background:var(--gray-100);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--gray-400);border:1px solid var(--gray-200)}
+    .od-item__title{font-weight:600;color:var(--navy);line-height:1.3}
+    .od-item__meta{font-size:11.5px;color:var(--gray-500);margin-top:2px}
+    .od-item__sku{font-size:11px;color:var(--gray-400);margin-top:1px}
+    .od-pick{display:flex;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--gray-200);border-radius:9px;margin-bottom:8px;cursor:pointer}
+    .od-pick:hover{background:var(--gray-50);border-color:var(--gray-300)}
+    .od-pick.is-sel{border-color:var(--orange);background:#FFF7ED}
+    .od-pick__price{margin-left:auto;font-weight:700;color:var(--navy);white-space:nowrap}
+    .od-line-preview{background:var(--gray-50);border:1px solid var(--gray-100);border-radius:8px;padding:10px 12px;font-size:13px;display:flex;justify-content:space-between;margin-top:12px}
+    .od-refbal{display:flex;gap:10px;flex-wrap:wrap}
+    .od-refbal>div{flex:1;min-width:110px;background:linear-gradient(180deg,var(--gray-50),#fff);border:1px solid var(--gray-200);border-radius:12px;padding:11px 13px}
+    .od-refbal .k{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);font-weight:700}
+    .od-refbal .v{font-weight:800;font-size:17px;color:var(--navy)}
+    .od-txn-tag{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:.3px}
+    .od-txn-tag--pay{background:#DBEAFE;color:#2563EB}.od-txn-tag--refund{background:#FEE2E2;color:#DC2626}
+    /* attachments */
+    .att-drop{display:flex;flex-direction:column;align-items:center;gap:6px;border:1.5px dashed var(--gray-300);border-radius:10px;padding:18px;text-align:center;color:var(--gray-500);font-size:13px;position:relative}
+    .att-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+    .att-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+    .att-chip{display:flex;align-items:center;gap:8px;border:1px solid var(--gray-200);border-radius:9px;padding:6px 9px;background:#fff;max-width:280px}
+    .att-ico{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+    .att-ico--image{background:#E8F5E7}.att-ico--pdf{background:#FEE2E2}.att-ico--doc{background:#DBEAFE}.att-ico--sheet{background:#DCFCE7}.att-ico--archive{background:#FEF3C7}.att-ico--file{background:var(--gray-100)}
+    .att-name{font-size:12.5px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+    .att-size{font-size:11px;color:var(--gray-400)}
+    .att-actions{display:flex;gap:7px;margin-left:auto}
+    .att-actions a{cursor:pointer;color:var(--gray-500);font-size:13px}.att-actions a:hover{color:var(--navy)}
+    .lightbox-img{max-width:100%;max-height:72vh;border-radius:8px;display:block;margin:0 auto}
+    /* timeline filters + diff */
+    .tl-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;position:sticky;top:108px;background:#fff;padding:4px 0;z-index:5}
+    .tl-chip{font-size:12px;font-weight:600;padding:4px 11px;border-radius:999px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-500);cursor:pointer}
+    .tl-chip.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .tl-item{cursor:pointer}
+    .tl-item::before{background:var(--tl,var(--orange))}
+    .tl-cat{display:inline-flex;width:18px;height:18px;border-radius:5px;align-items:center;justify-content:center;font-size:10px;margin-right:6px;vertical-align:middle}
+    .tl-cat--amber{background:#FEF3C7}.tl-cat--purple{background:#EDE9FE}.tl-cat--blue{background:#DBEAFE}.tl-cat--red{background:#FEE2E2}.tl-cat--green{background:#DCFCE7}.tl-cat--gray{background:var(--gray-100)}.tl-cat--teal{background:#CCFBF1}
+    .tl-diff{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+    .tl-diff__box{border:1px solid var(--gray-100);border-radius:8px;padding:8px 10px;font-size:12px}
+    .tl-diff__box h6{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-400);margin-bottom:4px}
+    .tl-diff__old{background:#FEF2F2}.tl-diff__new{background:#F0FDF4}
+    @@media(max-width:560px){.tl-diff{grid-template-columns:1fr}.tl-filters{top:0}}
+
+    .od-side-title{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-400);margin:0 0 8px;display:flex;align-items:center;gap:6px}
+    .od-side-actions{display:flex;flex-direction:column;gap:7px}
+    .od-side-actions .btn{width:100%;justify-content:flex-start;font-size:12.5px;padding:9px 12px;border-radius:9px;transition:transform .12s,background .15s,box-shadow .15s}
+    .od-side-actions .btn:hover{transform:translateY(-1px)}
+    .od-side-sep{height:1px;background:var(--gray-100);margin:13px 0}
+    /* Recipient line under the resend button — the address is shown so the admin can see exactly
+       who is about to be mailed, rather than trusting the button. */
+    .od-side-hint{font-size:11px;color:var(--gray-500);word-break:break-all;line-height:1.4}
+    /* 'Locked' chip on a paid franchise order's Products card. Muted rather than alarming —
+       this is the normal end state of a franchise sale, not an error. */
+    .od-frozen{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--gray-500);background:var(--gray-100);border:1px solid var(--gray-200);border-radius:999px;padding:4px 10px;white-space:nowrap;cursor:help}
+    .od-danger-zone{border:1px solid #FECACA;background:#FEF2F2;border-radius:10px;padding:9px}
+    .od-danger-zone .btn{width:100%;justify-content:flex-start;color:var(--error);font-size:12.5px;padding:8px 11px}
+    .od-danger-zone .btn:hover{background:#FEE2E2}
+
+    /* products table — compact ERP: sticky header, zebra, hover */
+    .od-card .ag__table thead th{position:sticky;top:0;z-index:1;background:var(--gray-50);font-size:10.5px;letter-spacing:.4px}
+    .od-card .ag__table tbody tr{transition:background .12s}
+    .od-card .ag__table tbody tr:nth-child(even){background:#fcfcfd}
+    .od-card .ag__table tbody tr:hover{background:var(--gray-50)}
+    .od-thumb{transition:transform .15s}
+    .od-item:hover .od-thumb{transform:scale(1.04)}
+
+    /* contact quick actions */
+    .od-contact{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px dashed var(--gray-200)}
+    .od-contact a{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--gray-200);color:var(--gray-600);background:#fff;transition:transform .12s,background .15s,border-color .15s}
+    .od-contact a:hover{border-color:var(--gray-300);background:var(--gray-50);transform:translateY(-1px)}
+    .od-contact a.wa{color:#0F9D63;border-color:#A7F3D0;background:#F0FDF4}
+    .od-contact a.call{color:#2563EB;border-color:#BFDBFE;background:#EFF6FF}
+
+    @@media(max-width:1024px){
+        .od-layout{grid-template-columns:1fr}
+        .od-sidebar{position:static}
+    }
+    @@media(max-width:560px){
+        .od-addr{grid-template-columns:1fr}
+        .od-bar{top:0;border-radius:0;margin:-4px -4px 14px;border-left:0;border-right:0}
+        .od-bar__actions .btn{flex:1}
+        .od-card__body{padding:13px}
+    }
+
+    /* activity timeline + notes (kept) */
+    .od-tabs{display:flex;gap:4px;border-bottom:1px solid var(--gray-200);margin-bottom:14px}
+    .od-tab{padding:9px 14px;border:0;background:none;font-size:13.5px;font-weight:600;color:var(--gray-500);cursor:pointer;border-bottom:2px solid transparent}
+    .od-tab.active{color:var(--orange);border-bottom-color:var(--orange)}
+    .timeline{position:relative;padding-left:22px}
+    .timeline::before{content:"";position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:var(--gray-200)}
+    .tl-item{position:relative;padding:0 0 16px}
+    .tl-item::before{content:"";position:absolute;left:-22px;top:3px;width:10px;height:10px;border-radius:50%;background:var(--orange);border:2px solid #fff;box-shadow:0 0 0 2px var(--gray-200)}
+    .tl-action{font-weight:600;font-size:13.5px;color:var(--navy)}
+    .tl-meta{font-size:12px;color:var(--gray-400)}
+    .tl-details{font-size:12px;color:var(--gray-500);background:var(--gray-50);border:1px solid var(--gray-100);border-radius:6px;padding:6px 10px;margin-top:4px;word-break:break-word}
+    .note{border:1px solid var(--gray-200);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fff}
+    .note--pinned{border-color:#FED7AA;background:#FFFBF5}
+    .note__meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray-400);margin-top:6px;flex-wrap:wrap}
+    .note__tag{font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px}
+    .note__tag--internal{background:var(--gray-100);color:var(--gray-500)}.note__tag--public{background:#DBEAFE;color:#2563EB}
+</style>
+
+@if (notFound)
+{
+    <div class="od-card"><div class="od-card__body">Order not found. <a href="/admin/orders">Back to orders</a></div></div>
+}
+else if (o == null)
+{
+    <div class="od-card"><div class="od-card__body">
+        <div class="skel" style="height:20px;width:240px;margin-bottom:14px"></div>
+        @for (var i = 0; i < 5; i++) { <div class="skel" style="height:14px;width:@(70 - i * 8)%;margin-bottom:10px"></div> }
+    </div></div>
+}
+else
+{
+    var ob = OrderBadge(o.Status);
+    var pb = PaymentBadge(o.PaymentStatus);
+    var eb = EnrollmentBadge(o.Enrollment);
+
+    @* ── sticky action bar ── *@
+    <div class="od-bar">
+        <div class="od-bar__title">
+            <a href="/admin/orders" class="od-bar__back">← Orders</a>
+            <h1>Order #@o.OrderNumber</h1>
+            <StatusBadge Label="@ob.label" Variant="@ob.variant" />
+            @if (o.IsDeleted) { <StatusBadge Label="Deleted" Variant="danger" /> }
+        </div>
+        <div class="od-bar__actions">
+            <a href="/api/admin/orders/@o.Id/receipt.pdf" target="_blank" class="btn btn-outline btn-sm">📄 Receipt (PDF)</a>
+            @if (o.PaymentStatus == PaymentStatus.Success)
+            {
+                <a href="/admin/orders/@o.Id/invoice" target="_blank" class="btn btn-outline btn-sm">🧾 Invoice (PDF)</a>
+            }
+            else
+            {
+                <span class="btn btn-outline btn-sm" style="opacity:.5;cursor:not-allowed" title="Invoice is available only after payment is confirmed">🧾 Invoice (paid only)</span>
+            }
+            @if (!o.IsDeleted)
+            {
+                <div class="od-menu-wrap">
+                    <button class="btn btn-primary btn-sm" @onclick="() => statusMenu = !statusMenu">Change status ▾</button>
+                    @if (statusMenu)
+                    {
+                        <div class="od-menu">
+                            @* Cancelled is dropped from the list for non-super-admins — this menu is
+                               the other way to reach the same transition as the sidebar button. *@
+                            @foreach (var s in Enum.GetValues<OrderStatus>().Where(s => s != OrderStatus.Cancelled || isSuperAdmin))
+                            {
+                                <button @onclick="() => ChangeStatus(s)">@(s == o.Status ? "● " : "")@s</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            <div class="od-menu-wrap">
+                <button class="btn btn-ghost btn-sm" @onclick="() => moreMenu = !moreMenu">⋯ More</button>
+                @if (moreMenu)
+                {
+                    <div class="od-menu">
+                        <button @onclick="CopyOrderNo">📋 Copy order #</button>
+                        <button @onclick="ActivateEnrollment" disabled="@busy">🎓 Activate enrollment</button>
+                        @if (refundSummary?.CanRefund == true) { <button @onclick="OpenRefund">↩ Refund</button> }
+                        <button @onclick="OpenManualPayment">＋ Manual payment</button>
+                        @if (o.IsDeleted || isSuperAdmin)
+                        {
+                            <div class="od-menu__sep"></div>
+                            @if (o.IsDeleted) { <button @onclick="Restore">♻ Restore order</button> }
+                            else { <button style="color:var(--error)" @onclick="SoftDelete">🗑 Delete order</button> }
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="od-layout">
+        <div class="od-main">
+
+            @* ── Overview ── *@
+            <div class="od-card @(IsCollapsed("info") ? "is-collapsed" : "")">
+                <div class="od-card__head" @onclick='() => ToggleSection("info")'><span>ℹ️ Order overview</span><span class="chev">▾</span></div>
+                <div class="od-card__body">
+                    <div class="od-kpis">
+                        <div class="od-kpi"><span class="k">Order #</span><span class="v">@o.OrderNumber</span></div>
+                        <div class="od-kpi"><span class="k">Placed on</span><span class="v">@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</span></div>
+                        <div class="od-kpi"><span class="k">Source</span><span class="v">@o.Source</span></div>
+                        @* PaymentMode = the channel the customer was sent to; GatewayPaymentMode =
+                           what they actually paid with there, straight from the gateway response. *@
+                        <div class="od-kpi"><span class="k">@(IsGatewayMode(o.PaymentMode) ? "Payment gateway" : "Payment method")</span><span class="v">@(o.PaymentMode?.ToString() ?? "—")</span></div>
+                        <div class="od-kpi"><span class="k">Payment mode</span><span class="v">@(string.IsNullOrWhiteSpace(o.GatewayPaymentMode) ? "—" : o.GatewayPaymentMode)</span></div>
+                    </div>
+                    <div class="od-profile">
+                        <span class="od-avatar">@Initials(o.StudentName)</span>
+                        <div style="min-width:0">
+                            <div class="od-profile__name">@o.StudentName</div>
+                            <div class="od-profile__sub">📞 @o.StudentPhone@(string.IsNullOrEmpty(o.StudentEmail) ? "" : $" · {o.StudentEmail}")</div>
+                        </div>
+                    </div>
+                    <div class="od-badge-row">
+                        <span class="od-badge-row__lbl">Order</span><StatusBadge Label="@ob.label" Variant="@ob.variant" />
+                        <span class="od-badge-row__lbl">Payment</span><StatusBadge Label="@pb.label" Variant="@pb.variant" />
+                        <span class="od-badge-row__lbl">Enrollment</span><StatusBadge Label="@eb.label" Variant="@eb.variant" />
+                    </div>
+                </div>
+            </div>
+
+            @* ── Amounts ── *@
+            <div class="od-card @(IsCollapsed("amounts") ? "is-collapsed" : "")">
+                <div class="od-card__head" @onclick='() => ToggleSection("amounts")'><span>💰 Order totals</span><span class="chev">▾</span></div>
+                <div class="od-card__body">
+                    @if (o.IsFranchiseView)
+                    {
+                        @* Franchise order: the franchisee's share is shown as a discount and tax is
+                           recomputed on the NET amount (not the gross). *@
+                        <div class="od-amounts">
+                            <div class="od-amt"><span class="lbl">Subtotal</span><span class="v">₹@o.Subtotal.ToString("N2")</span></div>
+                            <div class="od-amt od-amt--green"><span class="lbl">Franchisee Discount</span><span class="v">− ₹@o.FranchiseDiscountTotal.ToString("N2")</span></div>
+                            <div class="od-amt"><span class="lbl">Net Amount</span><span class="v">₹@o.FranchiseNetAmount.ToString("N2")</span></div>
+                            <div class="od-amt"><span class="lbl">Tax (GST, incl.)</span><span class="v">₹@o.FranchiseGst.ToString("N2")</span></div>
+                            @if (o.FranchiseIgst > 0) { <div class="od-amt od-amt--sub"><span class="lbl">IGST</span><span>₹@o.FranchiseIgst.ToString("N2")</span></div> }
+                            else if (o.FranchiseCgst > 0 || o.FranchiseSgst > 0)
+                            {
+                                <div class="od-amt od-amt--sub"><span class="lbl">CGST</span><span>₹@o.FranchiseCgst.ToString("N2")</span></div>
+                                <div class="od-amt od-amt--sub"><span class="lbl">SGST</span><span>₹@o.FranchiseSgst.ToString("N2")</span></div>
+                            }
+                            <div class="od-amt od-amt--sub"><span class="lbl">Taxable amount</span><span>₹@o.FranchiseTaxable.ToString("N2")</span></div>
+                            <div class="od-amt od-amt--total"><span class="lbl">Grand total</span><span class="v">₹@o.FranchiseNetAmount.ToString("N2")</span></div>
+                        </div>
+                        @if (o.FranchiseName != null || o.FacultyCommission > 0)
+                        {
+                            <div class="od-chips">
+                                @if (o.FranchiseName != null) { <div class="od-chip"><span class="k">Franchisee</span><span class="v">@o.FranchiseName</span></div> }
+                                @if (o.FacultyCommission > 0) { <div class="od-chip"><span class="k">Faculty earnings</span><span class="v">₹@o.FacultyCommission.ToString("N0")</span></div> }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="od-amounts">
+                            <div class="od-amt"><span class="lbl">Subtotal</span><span class="v">₹@o.Subtotal.ToString("N2")</span></div>
+                            @if (o.DiscountAmount > 0) { <div class="od-amt od-amt--green"><span class="lbl">Discount @(o.CouponCode != null ? $"({o.CouponCode})" : "")</span><span class="v">− ₹@o.DiscountAmount.ToString("N2")</span></div> }
+                            <div class="od-amt"><span class="lbl">Tax (GST, incl.)</span><span class="v">₹@o.GstAmount.ToString("N2")</span></div>
+                            @if (o.IgstAmount > 0) { <div class="od-amt od-amt--sub"><span class="lbl">IGST</span><span>₹@o.IgstAmount.ToString("N2")</span></div> }
+                            else if (o.CgstAmount > 0 || o.SgstAmount > 0)
+                            {
+                                <div class="od-amt od-amt--sub"><span class="lbl">CGST</span><span>₹@o.CgstAmount.ToString("N2")</span></div>
+                                <div class="od-amt od-amt--sub"><span class="lbl">SGST</span><span>₹@o.SgstAmount.ToString("N2")</span></div>
+                            }
+                            <div class="od-amt od-amt--total"><span class="lbl">Grand total</span><span class="v">₹@o.TotalAmount.ToString("N2")</span></div>
+                        </div>
+                        @if (o.FranchiseName != null || o.FacultyCommission > 0)
+                        {
+                            <div class="od-chips">
+                                @if (o.FranchiseName != null) { <div class="od-chip"><span class="k">Franchise commission</span><span class="v">₹@o.FranchiseCommission.ToString("N0")</span><span style="font-size:11px;color:var(--gray-400)"> · @o.FranchiseName</span></div> }
+                                @if (o.FacultyCommission > 0) { <div class="od-chip"><span class="k">Faculty earnings</span><span class="v">₹@o.FacultyCommission.ToString("N0")</span></div> }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ── Installment plan (only renders when this order has one) ── *@
+            <OrderInstallmentPanel OrderId="o.Id" OnChanged="Reload" />
+
+            @* ── Billing & contact ── *@
+            <div class="od-card @(IsCollapsed("billing") ? "is-collapsed" : "")">
+                <div class="od-card__head" @onclick='() => ToggleSection("billing")'><span>🚚 Billing &amp; contact</span><span class="chev">▾</span></div>
+                <div class="od-card__body">
+                    @if (addrEdit != null)
+                    {
+                        @* Address only — items, totals, payment and status are all elsewhere. *@
+                        <div class="od-addr-form">
+                            @if (o.HasInvoice)
+                            {
+                                <div class="od-addr-note">
+                                    🧾 A tax invoice has been issued for this order. The billing <strong>state</strong> is
+                                    fixed (it sets CGST+SGST vs IGST, and the invoice already states one). Every other
+                                    field can still be corrected — the issued invoice keeps its own copy of the address.
+                                </div>
+                            }
+                            <div class="od-addr-form__grid">
+                                <div class="od-addr-form__col">
+                                    <div class="od-addr-form__title">Billing address</div>
+                                    <label>Name<input class="form-input" @bind="addrEdit.BillingName" placeholder="@o.StudentName" /></label>
+                                    <label>Address<textarea class="form-input" rows="2" @bind="addrEdit.BillingAddress"></textarea></label>
+                                    <div class="od-addr-form__row">
+                                        <label>City<input class="form-input" @bind="addrEdit.BillingCity" /></label>
+                                        <label>PIN<input class="form-input" @bind="addrEdit.BillingPincode" placeholder="6 digits" /></label>
+                                    </div>
+                                    <label>
+                                        State
+                                        <input class="form-input" @bind="addrEdit.BillingState" disabled="@o.HasInvoice" />
+                                    </label>
+                                </div>
+                                <div class="od-addr-form__col">
+                                    <div class="od-addr-form__title">
+                                        Shipping address
+                                        <button type="button" class="od-linkbtn" @onclick="CopyBillingToShipping">Same as billing</button>
+                                        <button type="button" class="od-linkbtn" @onclick="ClearShipping">Clear</button>
+                                    </div>
+                                    <label>Address<textarea class="form-input" rows="2" @bind="addrEdit.ShippingAddress"></textarea></label>
+                                    <div class="od-addr-form__row">
+                                        <label>City<input class="form-input" @bind="addrEdit.ShippingCity" /></label>
+                                        <label>PIN<input class="form-input" @bind="addrEdit.ShippingPincode" placeholder="6 digits" /></label>
+                                    </div>
+                                    <label>State<input class="form-input" @bind="addrEdit.ShippingState" /></label>
+                                    <div class="od-addr-form__hint">Leave every shipping field blank to deliver to the billing address.</div>
+                                </div>
+                            </div>
+                            <div class="od-addr-form__actions">
+                                <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="SaveAddresses">@(busy ? "Saving…" : "💾 Save address")</button>
+                                <button class="btn btn-ghost btn-sm" disabled="@busy" @onclick="() => addrEdit = null">Cancel</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                    <div class="od-addr">
+                        <div class="od-addr__box">
+                            <div class="od-addr__title">Billing address
+                                <span style="display:flex;gap:10px">
+                                    <button class="od-linkbtn" @onclick="OpenAddressEdit">Edit</button>
+                                    <button class="od-linkbtn" @onclick="CopyAddress">Copy</button>
+                                    @if (HasAddress) { <a class="od-linkbtn" href="@MapsUrl" target="_blank">Maps ↗</a> }
+                                </span>
+                            </div>
+                            <div class="od-addr__body">
+                                <strong>@(o.BillingName ?? o.StudentName)</strong><br />
+                                @if (HasAddress)
+                                {
+                                    @(string.Join(", ", new[] { o.BillingAddress, o.BillingCity, o.BillingState, o.BillingPincode }.Where(x => !string.IsNullOrWhiteSpace(x))))
+                                }
+                                else { <span class="muted">No billing address on file</span> }
+                                @if (!string.IsNullOrWhiteSpace(o.GstNumber)) { <br /><span class="muted">GSTIN: @o.GstNumber (@o.GstClassification)</span> }
+                            </div>
+                        </div>
+                        @* Shown always, so it is obvious whether the goods go somewhere else — this used
+                           to be stored but never displayed, so a separate delivery address was invisible
+                           to whoever was packing the parcel. *@
+                        <div class="od-addr__box">
+                            <div class="od-addr__title">Shipping address
+                                <span style="display:flex;gap:10px">
+                                    <button class="od-linkbtn" @onclick="OpenAddressEdit">Edit</button>
+                                </span>
+                            </div>
+                            <div class="od-addr__body">
+                                @if (!string.IsNullOrWhiteSpace(o.ShippingAddress))
+                                {
+                                    @(string.Join(", ", new[] { o.ShippingAddress, o.ShippingCity, o.ShippingState, o.ShippingPincode }.Where(x => !string.IsNullOrWhiteSpace(x))))
+                                }
+                                else { <span class="muted">Same as billing address</span> }
+                            </div>
+                        </div>
+                        <div class="od-addr__box">
+                            <div class="od-addr__title">Contact</div>
+                            <div class="od-addr__body">
+                                <strong>@o.StudentName</strong><br />
+                                📞 @o.StudentPhone<br />
+                                @if (!string.IsNullOrEmpty(o.StudentEmail)) { <text>✉ @o.StudentEmail<br /></text> }
+                                @if (!string.IsNullOrEmpty(o.StudentCity)) { <span class="muted">@o.StudentCity</span> }
+                                <div class="od-contact">
+                                    <a class="call" href="tel:@o.StudentPhone">📞 Call</a>
+                                    <a class="wa" href="@($"https://wa.me/{new string((o.StudentPhone ?? string.Empty).Where(char.IsDigit).ToArray())}")" target="_blank">WhatsApp</a>
+                                    @if (!string.IsNullOrEmpty(o.StudentEmail)) { <a href="mailto:@o.StudentEmail">✉ Email</a> }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Who raised this order ──
+               Only shown when there IS a staff member: a storefront order has no counsellor, and an
+               empty "Placed by —" row would read as missing data rather than as a self-service sale.
+               Orders created before CreatedById was captured also fall in that gap. *@
+            @if (!string.IsNullOrWhiteSpace(o.CreatedByName))
+            {
+                <div class="od-card">
+                    <div class="od-card__body">
+                        <div class="od-kpis">
+                            <div class="od-kpi">
+                                <span class="k">🧑‍💼 Placed by</span>
+                                <span class="v">@o.CreatedByName</span>
+                            </div>
+                            <div class="od-kpi">
+                                <span class="k">Channel</span>
+                                <span class="v">@o.Source</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── Dispatch / shipment ──
+               Read-only view of THIS order's consignment (OrderDetail.Shipment*, matched on OrderId).
+               The dispatch screen keeps sole ownership of the Dispatch/Delivered actions and the
+               courier + tracking form; this card only surfaces the state and links straight to it. *@
+            <div class="od-card @(IsCollapsed("dispatch") ? "is-collapsed" : "")">
+                <div class="od-card__head" @onclick='() => ToggleSection("dispatch")'>
+                    <span>🚚 Dispatch / Shipment</span><span class="chev">▾</span>
+                </div>
+                <div class="od-card__body">
+                    <div class="od-kpis">
+                        <div class="od-kpi">
+                            <span class="k">Status</span>
+                            <span class="v">
+                                <span class="status @ShipClass(o.ShipmentStatus)"><span class="dot"></span>@o.ShipmentStatus</span>
+                            </span>
+                        </div>
+                        <div class="od-kpi">
+                            <span class="k">Courier</span>
+                            <span class="v">@(string.IsNullOrWhiteSpace(o.ShipmentCourier) ? "—" : o.ShipmentCourier)</span>
+                        </div>
+                        @* Whether a number is expected at all is Couriers' decision, not this view's —
+                           PCMC has no consignment number, so it reads "—" instead of looking unfinished. *@
+                        <div class="od-kpi">
+                            <span class="k">Tracking Number</span>
+                            <span class="v">
+                                @if (!Couriers.RequiresTracking(o.ShipmentCourier) && !string.IsNullOrWhiteSpace(o.ShipmentCourier))
+                                {
+                                    <span style="color:var(--gray-400)">— not applicable</span>
+                                }
+                                else
+                                {
+                                    @(string.IsNullOrWhiteSpace(o.ShipmentTrackingNumber) ? "—" : o.ShipmentTrackingNumber)
+                                }
+                            </span>
+                        </div>
+                        @if (o.DispatchedAt is { } dAt)
+                        {
+                            <div class="od-kpi"><span class="k">Dispatched On</span><span class="v">@dAt.ToString("dd MMM yyyy, h:mm tt")</span></div>
+                        }
+                        @if (o.DeliveredAt is { } vAt)
+                        {
+                            <div class="od-kpi"><span class="k">Delivered On</span><span class="v">@vAt.ToString("dd MMM yyyy, h:mm tt")</span></div>
+                        }
+                    </div>
+
+                    @* The tracking page comes from the shared courier list, so no URL mapping is
+                       duplicated here. Shown only when there is actually a number to look up. *@
+                    @if (Couriers.TrackingUrl(o.ShipmentCourier) is { } trackUrl && !string.IsNullOrWhiteSpace(o.ShipmentTrackingNumber))
+                    {
+                        <div style="margin-top:10px">
+                            <a href="@trackUrl" target="_blank" rel="noopener"
+                               style="font-size:13px;color:var(--navy);font-weight:600">Track Shipment →</a>
+                        </div>
+                    }
+
+                    <div class="form-actions" style="margin-top:14px">
+                        <a class="btn btn-primary btn-sm" href="/admin/dispatch?orderId=@o.Id">
+                            @(o.HasShipment ? "View Dispatch →" : "Go to Dispatch →")
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Referred By (snapshot from checkout — never re-computed) ── *@
+            @if (!string.IsNullOrEmpty(o.ReferredByName) || o.ReferralType.HasValue)
+            {
+                <div class="od-card @(IsCollapsed("referral") ? "is-collapsed" : "")">
+                    <div class="od-card__head" @onclick='() => ToggleSection("referral")'>
+                        <span>📣 Referral</span><span class="chev">▾</span>
+                    </div>
+                    <div class="od-card__body">
+                        <div class="od-kpis">
+                            <div class="od-kpi"><span class="k">Referred by</span><span class="v">@(o.ReferredByName ?? "—")</span></div>
+                            <div class="od-kpi"><span class="k">Type</span><span class="v">@(o.ReferralType?.ToString() ?? "—")</span></div>
+                            @if (!string.IsNullOrEmpty(o.ReferralCustomText))
+                            {
+                                <div class="od-kpi" style="grid-column:span 2"><span class="k">Customer specified</span><span class="v">@o.ReferralCustomText</span></div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── Items ── *@
+            <div class="od-card @(IsCollapsed("items") ? "is-collapsed" : "")">
+                <div class="od-card__head" @onclick='() => ToggleSection("items")'>
+                    <span>📦 Products (@o.Items.Count)</span>
+                    <span style="display:flex;align-items:center;gap:10px">
+                        @if (IsFrozen)
+                        {
+                            <span class="od-frozen" title="@FrozenReason">🔒 Locked</span>
+                        }
+                        else if (!o.IsDeleted)
+                        {
+                            <button class="btn btn-primary btn-sm" @onclick:stopPropagation="true" @onclick="OpenAddItem">➕ Add product</button>
+                        }
+                        <span class="chev">▾</span>
+                    </span>
+                </div>
+                <div class="od-card__body" style="padding:0">
+                    <div class="ag__wrap">
+                        <table class="ag__table" style="min-width:660px">
+                            <thead><tr><th>Product</th><th class="ag-center">Qty</th><th class="ag-right">Unit</th><th class="ag-right">Discount</th><th class="ag-right">Total</th>@if (!o.IsDeleted && !IsFrozen) { <th class="ag-right">Actions</th> }</tr></thead>
+                            <tbody>
+                                @foreach (var i in o.Items)
+                                {
+                                    <tr>
+                                        <td data-label="Product">
+                                            <div class="od-item">
+                                                @if (!string.IsNullOrEmpty(i.ImageUrl)) { <img class="od-thumb" src="@i.ImageUrl" alt="" /> } else { <span class="od-thumb">📦</span> }
+                                                <div style="min-width:0">
+                                                    <div class="od-item__title">@i.ProductTitle</div>
+                                                    <div class="od-item__meta">@(string.Join(" · ", new[] { i.ModeName, i.FacultyName, i.BatchType, i.Duration }.Where(x => !string.IsNullOrWhiteSpace(x))))</div>
+                                                    <div class="od-item__sku">SKU: @(string.IsNullOrEmpty(i.Sku) ? "—" : i.Sku)</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td data-label="Qty" class="ag-center">@i.Quantity</td>
+                                        <td data-label="Unit" class="ag-right">₹@i.UnitPrice.ToString("N0")</td>
+                                        @if (o.IsFranchiseView)
+                                        {
+                                            <td data-label="Discount" class="ag-right">@(i.FranchiseShare > 0 ? $"− ₹{i.FranchiseShare:N0}" : "—")</td>
+                                            <td data-label="Total" class="ag-right"><span class="ag-amount">₹@(((i.UnitPrice * i.Quantity) - i.FranchiseShare).ToString("N0"))</span></td>
+                                        }
+                                        else
+                                        {
+                                            <td data-label="Discount" class="ag-right">@(i.Discount > 0 ? $"− ₹{i.Discount:N0}" : "—")</td>
+                                            <td data-label="Total" class="ag-right"><span class="ag-amount">₹@i.LineTotal.ToString("N0")</span></td>
+                                        }
+                                        @if (!o.IsDeleted && !IsFrozen)
+                                        {
+                                            <td data-label="Actions" class="ag-right" style="white-space:nowrap">
+                                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditItem(i)">Edit</button>
+                                                <button class="btn btn-ghost btn-sm" style="color:var(--error)" @onclick="() => OpenRemoveItem(i)">Remove</button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Payment & transactions ── *@
+            <div class="od-card @(IsCollapsed("payment") ? "is-collapsed" : "")">
+                <div class="od-card__head" @onclick='() => ToggleSection("payment")'>
+                    <span>💳 Payment &amp; transactions</span>
+                    <span style="display:flex;align-items:center;gap:8px">
+                        @if (!o.IsDeleted)
+                        {
+                            <button class="btn btn-outline btn-sm" @onclick:stopPropagation="true" @onclick="OpenManualPayment">＋ Manual payment</button>
+                            @if (refundSummary?.CanRefund == true) { <button class="btn btn-danger btn-sm" @onclick:stopPropagation="true" @onclick="OpenRefund">↩ Refund</button> }
+                        }
+                        <span class="chev">▾</span>
+                    </span>
+                </div>
+                <div class="od-card__body">
+                    @if (refundSummary != null && refundSummary.PaidAmount > 0)
+                    {
+                        <div class="od-fingrid" style="margin-bottom:14px">
+                            <div class="od-fintile od-fintile--green"><span class="k">Paid</span><span class="v">₹@refundSummary.PaidAmount.ToString("N0")</span></div>
+                            <div class="od-fintile od-fintile--red"><span class="k">Refunded</span><span class="v">₹@refundSummary.RefundedAmount.ToString("N0")</span></div>
+                            <div class="od-fintile od-fintile--blue"><span class="k">Refundable</span><span class="v">₹@refundSummary.RemainingRefundable.ToString("N0")</span></div>
+                        </div>
+                    }
+                    @if (txns == null) { <div class="skel" style="height:40px"></div> }
+                    else if (txns.Count == 0)
+                    {
+                        <p style="color:var(--gray-400);font-size:13px;margin:0">No transactions yet. Method: <strong>@(o.PaymentMode?.ToString() ?? "—")</strong> · <StatusBadge Label="@pb.label" Variant="@pb.variant" /></p>
+                    }
+                    else
+                    {
+                        <div class="ag__wrap" style="margin:0 -16px -16px">
+                            <table class="ag__table" style="min-width:600px">
+                                <thead><tr><th>Type</th><th class="ag-right">Amount</th><th>Method</th><th>Status</th><th>Reference</th><th>Date</th></tr></thead>
+                                <tbody>
+                                    @foreach (var t in txns)
+                                    {
+                                        var tpb = PaymentBadge(t.Status);
+                                        <tr>
+                                            <td data-label="Type"><span class="od-txn-tag @(t.IsRefund ? "od-txn-tag--refund" : "od-txn-tag--pay")">@(t.IsRefund ? "Refund" : "Payment")</span></td>
+                                            <td data-label="Amount" class="ag-right"><span class="ag-amount" style="@(t.IsRefund ? "color:var(--error)" : "")">@(t.IsRefund ? "− " : "")₹@t.Amount.ToString("N0")</span></td>
+                                            <td data-label="Method">@(string.IsNullOrWhiteSpace(t.GatewayMode) ? t.Method.ToString() : t.GatewayMode)<div class="ag-sub">@t.Gateway</div></td>
+                                            <td data-label="Status"><StatusBadge Label="@tpb.label" Variant="@tpb.variant" /></td>
+                                            <td data-label="Reference">@(t.Reference ?? t.GatewayTransactionId ?? "—")</td>
+                                            <td data-label="Date">@t.CreatedAt.ToLocalTime().ToString("dd MMM, hh:mm tt")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ── Activity: notes + history ── *@
+            <div class="od-card @(IsCollapsed("activity") ? "is-collapsed" : "")">
+                <div class="od-card__head" @onclick='() => ToggleSection("activity")'><span>🕑 Activity</span><span class="chev">▾</span></div>
+                <div class="od-card__body">
+                    <div class="od-tabs">
+                        <button class="od-tab @(tab == "notes" ? "active" : "")" @onclick='() => tab = "notes"'>Notes @(notes?.Count > 0 ? $"({notes.Count})" : "")</button>
+                        <button class="od-tab @(tab == "history" ? "active" : "")" @onclick='() => tab = "history"'>History @(history?.Count > 0 ? $"({history.Count})" : "")</button>
+                        @* Serial keys live on their own admin screen, but the question "did this order's
+                           key come through?" is asked while looking at the ORDER — so the same records,
+                           filtered to this order, are surfaced here too. *@
+                        <button class="od-tab @(tab == "keys" ? "active" : "")" @onclick='() => tab = "keys"'>🔑 Serial Keys @(serialKeys?.Count > 0 ? $"({serialKeys.Count})" : "")</button>
+                    </div>
+
+                    @if (tab == "notes")
+                    {
+                        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+                            <button class="btn btn-primary btn-sm" @onclick="OpenNoteModal">➕ Add Note</button>
+                        </div>
+                        @if (notes == null) { <p style="color:var(--gray-400)">Loading…</p> }
+                        else if (notes.Count == 0) { <AdminGridEmptyState Text="No notes yet." Icon="📝" /> }
+                        else
+                        {
+                            @foreach (var n in notes)
+                            {
+                                var atts = AttachmentsFor(n.Id);
+                                <div class="note @(n.IsPinned ? "note--pinned" : "")">
+                                    <div style="white-space:pre-wrap">@n.Body</div>
+                                    @if (atts.Count > 0)
+                                    {
+                                        <div class="att-list">
+                                            @foreach (var a in atts)
+                                            {
+                                                <div class="att-chip">
+                                                    <span class="att-ico att-ico--@a.Kind">@AttIcon(a.Kind)</span>
+                                                    <span class="att-name" title="@a.OriginalFileName">@a.OriginalFileName</span>
+                                                    <span class="att-size">@FmtSize(a.FileSize)</span>
+                                                    <span class="att-actions">
+                                                        @if (a.Kind == "image") { <a @onclick="() => OpenLightbox(a)" title="Preview">👁</a> }
+                                                        else { <a href="/admin/orders/attachments/@a.Id" target="_blank" title="Open">👁</a> }
+                                                        <a href="/admin/orders/attachments/@a.Id?download=1" title="Download">⬇</a>
+                                                        @if (!o.IsDeleted) { <a style="color:var(--error)" @onclick="() => DeleteAttachment(a.Id)" title="Remove">✕</a> }
+                                                    </span>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                    <div class="note__meta">
+                                        <span class="note__tag @(n.IsCustomerVisible ? "note__tag--public" : "note__tag--internal")">@(n.IsCustomerVisible ? "Customer-visible" : "Internal")</span>
+                                        @if (n.IsPinned) { <span>📌 Pinned</span> }
+                                        <span>· @n.CreatedByName</span>
+                                        <span>· @n.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</span>
+                                        <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
+                                            @if (!o.IsDeleted)
+                                            {
+                                                <label style="position:relative;cursor:pointer;color:var(--orange)" title="Attach files">📎
+                                                    <InputFile OnChange="e => OnAttachToNote(n.Id, e)" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer" />
+                                                </label>
+                                            }
+                                            <a href="#" @onclick:preventDefault @onclick="() => TogglePin(n.Id)">@(n.IsPinned ? "Unpin" : "Pin")</a>
+                                            <a href="#" style="color:var(--error)" @onclick:preventDefault @onclick="() => DeleteNote(n.Id)">Delete</a>
+                                        </span>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        @if (history == null) { <p style="color:var(--gray-400)">Loading…</p> }
+                        else if (history.Count == 0) { <AdminGridEmptyState Text="No recorded activity yet." Icon="🕑" /> }
+                        else
+                        {
+                            <div class="tl-filters">
+                                @foreach (var f in TimelineFilters)
+                                {
+                                    <button class="tl-chip @(timelineFilter == f.key ? "active" : "")" @onclick="() => timelineFilter = f.key">@f.label</button>
+                                }
+                            </div>
+                            var rows = FilteredHistory();
+                            @if (rows.Count == 0) { <AdminGridEmptyState Text="No activity in this category." Icon="🔍" /> }
+                            else
+                            {
+                                <div class="timeline">
+                                    @foreach (var h in rows)
+                                    {
+                                        var meta = TimelineMeta(h.Action);
+                                        var open = timelineOpen.Contains(h.Id);
+                                        var diff = ParseDiff(h.Details);
+                                        <div class="tl-item" style="--tl:@meta.dot" @onclick="() => ToggleTl(h.Id)">
+                                            <div class="tl-action"><span class="tl-cat tl-cat--@meta.color">@meta.icon</span>@HumanizeAction(h.Action)</div>
+                                            <div class="tl-meta">@h.ActorName · @Ago(h.CreatedAt)@(string.IsNullOrEmpty(h.Details) ? "" : (open ? " · ▲" : " · ▼"))</div>
+                                            @if (open && !string.IsNullOrEmpty(h.Details))
+                                            {
+                                                @if (diff != null)
+                                                {
+                                                    <div class="tl-diff">
+                                                        <div class="tl-diff__box tl-diff__old"><h6>Before</h6>@foreach (var kv in diff.Value.before) { <div>@kv.Key: <strong>@kv.Value</strong></div> }</div>
+                                                        <div class="tl-diff__box tl-diff__new"><h6>After</h6>@foreach (var kv in diff.Value.after) { <div>@kv.Key: <strong>@kv.Value</strong></div> }</div>
+                                                    </div>
+                                                }
+                                                else { <div class="tl-details">@PrettyDetails(h.Details)</div> }
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+
+                    @* ── Serial keys for THIS order ── *@
+                    @if (tab == "keys")
+                    {
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px">
+                            <span style="color:var(--gray-400);font-size:12.5px">
+                                One row per course that issues a key. Keys are dispatched after payment.
+                            </span>
+                            <a class="btn btn-ghost btn-sm" href="/admin/serial-keys?q=@o.OrderNumber">Open Serial Keys →</a>
+                        </div>
+
+                        @if (serialKeys == null) { <p style="color:var(--gray-400)">Loading…</p> }
+                        else if (serialKeys.Count == 0)
+                        {
+                            @* Absence is meaningful here: no row means no course on this order is configured
+                               to issue a key, NOT that dispatch failed. Say so, or admins chase a non-problem. *@
+                            <AdminGridEmptyState Icon="🔑"
+                                Text="No serial keys for this order — none of its courses are set up to issue one." />
+                        }
+                        else
+                        {
+                            <div class="table-wrap"><table>
+                                <thead><tr><th>Product</th><th>Provider</th><th>Serial Key</th><th>Status</th><th>Tries</th><th>Created</th></tr></thead>
+                                <tbody>
+                                    @foreach (var k in serialKeys)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div>@k.ProductTitle</div>
+                                                @if (!string.IsNullOrWhiteSpace(k.ModeName))
+                                                {
+                                                    <div style="font-size:11.5px;color:var(--orange)">@k.ModeName</div>
+                                                }
+                                            </td>
+                                            <td>@k.ProviderKey</td>
+                                            <td>
+                                                @if (string.IsNullOrWhiteSpace(k.SerialKey)) { <span style="color:var(--gray-400)">— not yet —</span> }
+                                                else { <code style="font-size:12px">@k.SerialKey</code> }
+                                            </td>
+                                            <td>
+                                                <span class="status @KeyStatusClass(k.Status)"><span class="dot"></span>@KeyStatusLabel(k.Status)</span>
+                                                @if (!string.IsNullOrWhiteSpace(k.ErrorMessage))
+                                                {
+                                                    <div style="font-size:11.5px;color:var(--error);margin-top:3px">@k.ErrorMessage</div>
+                                                }
+                                            </td>
+                                            <td>@k.AttemptCount</td>
+                                            <td style="white-space:nowrap">@k.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table></div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── sticky action sidebar ── *@
+        <aside class="od-sidebar">
+            <div class="od-card" style="margin:0">
+                <div class="od-card__head" style="cursor:default">⚡ Quick actions</div>
+                <div class="od-card__body">
+                    @if (!o.IsDeleted)
+                    {
+                        <div class="od-side-title">🔄 Status</div>
+                        <div class="od-side-actions">
+                            <button class="btn btn-success btn-sm" disabled="@busy" @onclick="() => ChangeStatus(OrderStatus.Confirmed)">✓ Confirm order</button>
+                            <button class="btn btn-outline btn-sm" disabled="@busy" @onclick="() => ChangeStatus(OrderStatus.Processing)">⏳ Mark processing</button>
+                            @if (isSuperAdmin)
+                            {
+                                <button class="btn btn-danger btn-sm" disabled="@busy" @onclick="() => ChangeStatus(OrderStatus.Cancelled)">✕ Cancel order</button>
+                            }
+                        </div>
+                        <div class="od-side-sep"></div>
+                        <div class="od-side-title">🎓 Enrollment</div>
+                        <div class="od-side-actions">
+                            <button class="btn btn-primary btn-sm" disabled="@busy" @onclick="ActivateEnrollment">🎓 Activate enrollment</button>
+                        </div>
+                        <div class="od-side-sep"></div>
+                        <div class="od-side-title">💳 Payment</div>
+                        <div class="od-side-actions">
+                            <button class="btn btn-outline btn-sm" @onclick="OpenManualPayment">＋ Manual payment</button>
+                            @if (refundSummary?.CanRefund == true) { <button class="btn btn-ghost btn-sm" style="color:var(--error)" @onclick="OpenRefund">↩ Process refund</button> }
+                        </div>
+                        @* Paid orders only. The confirmation mail states the order is confirmed and
+                           quotes the amount paid, so offering it on an unpaid order would invite the
+                           admin to tell the customer something untrue. The service refuses it too. *@
+                        @if (o.PaymentStatus == PaymentStatus.Success)
+                        {
+                            <div class="od-side-sep"></div>
+                            <div class="od-side-title">✉ Email</div>
+                            <div class="od-side-actions">
+                                <button class="btn btn-outline btn-sm" disabled="@(busy || string.IsNullOrWhiteSpace(o.StudentEmail))"
+                                        title="@(string.IsNullOrWhiteSpace(o.StudentEmail) ? "This order has no email address." : $"Send the order confirmation again to {o.StudentEmail}")"
+                                        @onclick="ResendOrderEmail">
+                                    @(busy ? "Sending…" : "↻ Resend order email")
+                                </button>
+                                @* Only offered once a key actually exists — before that there is
+                                   nothing to quote and the mail would arrive with a blank key. *@
+                                @if (HasIssuedKey)
+                                {
+                                    <button class="btn btn-outline btn-sm" disabled="@(busy || string.IsNullOrWhiteSpace(o.StudentEmail))"
+                                            title="@(string.IsNullOrWhiteSpace(o.StudentEmail) ? "This order has no email address." : $"Send the serial key again to {o.StudentEmail}")"
+                                            @onclick="ResendKeyEmail">
+                                        @(busy ? "Sending…" : "🔑 Resend serial key email")
+                                    </button>
+                                }
+                                @* The address is shown, not just implied — the admin is about to mail
+                                   a real customer and may have just corrected this field. *@
+                                @if (!string.IsNullOrWhiteSpace(o.StudentEmail))
+                                {
+                                    <div class="od-side-hint">to @o.StudentEmail</div>
+                                }
+                                else
+                                {
+                                    <div class="od-side-hint">No email address on this order.</div>
+                                }
+                            </div>
+                        }
+                        @* Whole danger zone disappears for everyone but a super admin — an empty
+                           red box would only invite the question of what belongs in it. *@
+                        @if (isSuperAdmin)
+                        {
+                            <div class="od-side-sep"></div>
+                            <div class="od-side-title" style="color:var(--error)">⚠ Danger zone</div>
+                            <div class="od-danger-zone">
+                                <button class="btn btn-ghost btn-sm" @onclick="SoftDelete">🗑 Delete order</button>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p style="font-size:13px;color:var(--gray-500);margin-bottom:10px">This order is in the recycle bin.</p>
+                        <button class="btn btn-success btn-sm" style="width:100%" @onclick="Restore">♻ Restore order</button>
+                    }
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    @* ── Refund modal ── *@
+    <Modal @bind-Visible="showRefund" Title="Process refund" Size="md">
+        <ChildContent>
+            @if (refundSummary != null)
+            {
+                <div class="od-refbal" style="margin-bottom:14px">
+                    <div><span class="k">Paid</span><span class="v">₹@refundSummary.PaidAmount.ToString("N0")</span></div>
+                    <div><span class="k">Refunded</span><span class="v" style="color:var(--error)">₹@refundSummary.RefundedAmount.ToString("N0")</span></div>
+                    <div><span class="k">Refundable</span><span class="v" style="color:var(--green)">₹@refundSummary.RemainingRefundable.ToString("N0")</span></div>
+                </div>
+                <div class="form-group form-group--full">
+                    <label class="form-label">Refund type</label>
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:14px">
+                        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="rt" checked="@(refundType == "Full")" @onchange='() => refundType = "Full"' /> Full</label>
+                        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="rt" checked="@(refundType == "Partial")" @onchange='() => refundType = "Partial"' /> Custom amount</label>
+                        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="rt" checked="@(refundType == "Item")" @onchange='() => refundType = "Item"' /> By item</label>
+                        <label style="display:flex;gap:6px;align-items:center;margin-left:auto"><input type="checkbox" @bind="refundOffline" /> Offline (no gateway)</label>
+                    </div>
+                </div>
+
+                @if (refundType == "Full")
+                {
+                    <div class="od-line-preview"><span>Refund amount</span><strong>₹@refundSummary.RemainingRefundable.ToString("N2")</strong></div>
+                }
+                else if (refundType == "Partial")
+                {
+                    <div class="form-group"><label class="form-label">Amount (₹)</label><input type="number" step="0.01" min="0" class="form-input" @bind="refundAmount" /></div>
+                }
+                else
+                {
+                    <div class="ag__wrap" style="max-height:220px;overflow:auto;border:1px solid var(--gray-100);border-radius:8px">
+                        <table class="ag__table" style="min-width:0">
+                            <thead><tr><th>Item</th><th class="ag-center">Refundable</th><th class="ag-center">Qty</th></tr></thead>
+                            <tbody>
+                                @foreach (var it in refundSummary.Items.Where(i => i.RefundableQuantity > 0))
+                                {
+                                    <tr>
+                                        <td>@it.ProductTitle<div class="ag-sub">₹@it.UnitPrice.ToString("N0") ea.</div></td>
+                                        <td class="ag-center">@it.RefundableQuantity</td>
+                                        <td class="ag-center"><input type="number" min="0" max="@it.RefundableQuantity" class="form-input" style="width:70px;padding:5px 8px" value="@RefundQty(it.OrderItemId)" @onchange="e => SetRefundQty(it.OrderItemId, e)" /></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="od-line-preview"><span>Estimated refund</span><strong>₹@ItemRefundEstimate.ToString("N2")</strong></div>
+                }
+
+                <div class="form-group form-group--full" style="margin-top:10px"><label class="form-label">Reason</label><textarea class="form-input" rows="2" @bind="refundReason" placeholder="Reason for refund (shown in history)…"></textarea></div>
+                @if (refundError != null) { <div class="inline-alert inline-alert--err">@refundError</div> }
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-ghost" @onclick="() => showRefund = false">Cancel</button>
+            <button class="btn btn-danger" disabled="@busy" @onclick="DoRefund">@(busy ? "Processing…" : "Process refund")</button>
+        </Footer>
+    </Modal>
+
+    @* ── Manual payment modal ── *@
+    <Modal @bind-Visible="showManualPay" Title="Record manual payment" Size="sm">
+        <ChildContent>
+            <div class="form-grid">
+                <div class="form-group"><label class="form-label">Amount (₹)</label><input type="number" step="0.01" min="0" class="form-input" @bind="manualPay.Amount" /></div>
+                <div class="form-group"><label class="form-label">Method</label>
+                    <select class="form-input" @bind="manualPay.Method">@foreach (var m in Enum.GetValues<PaymentMode>()) { <option value="@m">@m</option> }</select>
+                </div>
+                <div class="form-group form-group--full"><label class="form-label">Reference (UTR / cheque / bank ref)</label><input class="form-input" @bind="manualPay.Reference" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Notes</label><input class="form-input" @bind="manualPay.Notes" /></div>
+                <div class="form-group form-group--full"><label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" @bind="manualPay.MarkOrderPaid" /> Mark order as paid (if pending)</label></div>
+            </div>
+            @if (manualError != null) { <div class="inline-alert inline-alert--err">@manualError</div> }
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-ghost" @onclick="() => showManualPay = false">Cancel</button>
+            <button class="btn btn-primary" disabled="@busy" @onclick="DoManualPayment">Record payment</button>
+        </Footer>
+    </Modal>
+
+    @* ── Edit item modal ── *@
+    <Modal @bind-Visible="showEditItem" Title="Edit item" Size="sm">
+        <ChildContent>
+            @if (editItem != null)
+            {
+                <div style="font-weight:600;color:var(--navy);margin-bottom:12px">@editItem.ProductTitle</div>
+                <div class="form-grid form-grid--3col">
+                    <div class="form-group"><label class="form-label">Quantity</label><input type="number" min="1" class="form-input" @bind="editQty" /></div>
+                    <div class="form-group"><label class="form-label">Unit price (₹)</label><input type="number" step="0.01" class="form-input" @bind="editUnit" /></div>
+                    <div class="form-group"><label class="form-label">Discount (₹)</label><input type="number" step="0.01" class="form-input" @bind="editDisc" /></div>
+                </div>
+                <div class="od-line-preview"><span>Line total</span><strong>₹@(((editUnit * editQty) - editDisc).ToString("N2"))</strong></div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-ghost" @onclick="() => showEditItem = false">Cancel</button>
+            <button class="btn btn-primary" disabled="@busy" @onclick="SaveEditItem">Save</button>
+        </Footer>
+    </Modal>
+
+    @* ── Add product modal ── *@
+    <Modal @bind-Visible="showAddItem" Title="Add product to order" Size="lg">
+        <ChildContent>
+            <div style="display:flex;gap:8px">
+                <input class="form-input" placeholder="Search products by name or SKU…" @bind="productQuery" @bind:event="oninput" @onkeydown="OnProductSearchKey" />
+                <button class="btn btn-outline btn-sm" @onclick="SearchProducts">Search</button>
+            </div>
+            <div style="margin-top:12px;max-height:320px;overflow:auto">
+                @if (picks == null) { <p style="color:var(--gray-400);font-size:13px">Loading…</p> }
+                else if (picks.Count == 0) { <AdminGridEmptyState Text="No products found." Icon="🔍" /> }
+                else
+                {
+                    @foreach (var p in picks)
+                    {
+                        <div class="od-pick @(selectedPick?.Id == p.Id ? "is-sel" : "")" @onclick="() => SelectPick(p)">
+                            @if (!string.IsNullOrEmpty(p.ImageUrl)) { <img class="od-thumb" src="@p.ImageUrl" alt="" /> } else { <span class="od-thumb">📦</span> }
+                            <div style="min-width:0">
+                                <div class="od-item__title">@p.Title</div>
+                                <div class="od-item__sku">SKU: @(p.Sku ?? "—")@(p.FacultyName != null ? $" · {p.FacultyName}" : "")</div>
+                            </div>
+                            <span class="od-pick__price">₹@p.SellingPrice.ToString("N0")</span>
+                        </div>
+                    }
+                }
+            </div>
+            @if (selectedPick != null)
+            {
+                <div class="form-grid form-grid--3col" style="margin-top:12px">
+                    @if (selectedPick.Modes.Count > 0)
+                    {
+                        <div class="form-group"><label class="form-label">Mode</label>
+                            <select class="form-input" @bind="addModeIdStr">
+                                <option value="">Default — ₹@selectedPick.SellingPrice.ToString("N0")</option>
+                                @foreach (var m in selectedPick.Modes)
+                                {
+                                    // Mode is an ADD-ON — show effective (base + add-on).
+                                    var __eff = selectedPick.SellingPrice + m.Price;
+                                    <option value="@m.Id">@m.Name — ₹@__eff.ToString("N0")</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    <div class="form-group"><label class="form-label">Quantity</label><input type="number" min="1" class="form-input" @bind="addQty" /></div>
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-ghost" @onclick="() => showAddItem = false">Cancel</button>
+            <button class="btn btn-primary" disabled="@(busy || selectedPick == null)" @onclick="AddItem">Add to order</button>
+        </Footer>
+    </Modal>
+
+    @* ── Remove item confirm ── *@
+    <Modal @bind-Visible="showRemoveItem" Title="Remove item" Size="sm">
+        <ChildContent>
+            <p>Remove <strong>@removeItemTitle</strong> from this order? Totals will be recalculated automatically.</p>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-ghost" @onclick="() => showRemoveItem = false">Cancel</button>
+            <button class="btn btn-danger" disabled="@busy" @onclick="RemoveItemConfirm">Remove item</button>
+        </Footer>
+    </Modal>
+
+    @* ── Add-note modal ── *@
+    <Modal @bind-Visible="showNoteModal" Title="Add Note" Size="md">
+        <ChildContent>
+            <div class="form-group form-group--full">
+                <label class="form-label">Note</label>
+                <textarea class="form-input" rows="4" @bind="noteReq.Body" placeholder="Type a note for this order…"></textarea>
+            </div>
+            <div style="display:flex;gap:18px;margin-top:10px">
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="noteReq.IsCustomerVisible" /> Customer-visible</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="noteReq.IsPinned" /> 📌 Pin (sticky)</label>
+            </div>
+            <div class="att-drop" style="margin-top:12px">
+                <InputFile OnChange="OnPickFiles" multiple />
+                <span>📎 Drag &amp; drop or click to attach</span>
+                <span style="font-size:11px;color:var(--gray-400)">Images, PDF, Doc, Excel, ZIP · max 10 MB each</span>
+            </div>
+            @if (pendingFiles.Count > 0)
+            {
+                <div class="att-list">
+                    @foreach (var f in pendingFiles)
+                    {
+                        <div class="att-chip">
+                            <span class="att-ico att-ico--file">📄</span>
+                            <span class="att-name" title="@f.Name">@f.Name</span>
+                            <span class="att-size">@FmtSize(f.Size)</span>
+                            <span class="att-actions"><a style="color:var(--error)" @onclick="() => pendingFiles.Remove(f)">✕</a></span>
+                        </div>
+                    }
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-ghost" @onclick="() => showNoteModal = false">Cancel</button>
+            <button class="btn btn-primary" disabled="@busy" @onclick="AddNote">@(busy ? "Saving…" : "Save Note")</button>
+        </Footer>
+    </Modal>
+
+    @* ── Image lightbox ── *@
+    <Modal @bind-Visible="showLightbox" Title="@lightboxName" Size="lg">
+        <ChildContent>
+            @if (lightboxId != null) { <img class="lightbox-img" src="/admin/orders/attachments/@lightboxId" alt="@lightboxName" /> }
+        </ChildContent>
+        <Footer>
+            @if (lightboxId != null) { <a href="/admin/orders/attachments/@lightboxId?download=1" class="btn btn-outline">⬇ Download</a> }
+            <button class="btn btn-ghost" @onclick="() => showLightbox = false">Close</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private OrderDetail? o;
+    private List<OrderNoteItem>? notes;
+    private List<AuditLogItem>? history;
+    private List<SerialKeyListItem>? serialKeys;
+    private string tab = "notes";
+    private bool notFound, busy, showNoteModal, statusMenu, moreMenu;
+    private readonly HashSet<string> collapsed = new();
+    private AddOrderNoteRequest noteReq = new();
+
+    // ── item management state ──
+    private OrderItemLine? editItem;
+    private bool showEditItem, showAddItem, showRemoveItem;
+    private int editQty = 1; private decimal editUnit, editDisc;
+    private string productQuery = ""; private List<ProductPickItem>? picks; private ProductPickItem? selectedPick;
+    private string addModeIdStr = ""; private int addQty = 1;
+    private Guid removeItemId; private string removeItemTitle = "";
+
+    // ── attachments + timeline state ──
+    private List<NoteAttachmentDto>? attachments;
+    private readonly List<IBrowserFile> pendingFiles = new();
+    private bool showLightbox; private Guid? lightboxId; private string lightboxName = "";
+    private string timelineFilter = "all";
+    private readonly HashSet<Guid> timelineOpen = new();
+    private const long MaxUpload = 10 * 1024 * 1024;
+
+    private static readonly (string key, string label)[] TimelineFilters =
+    {
+        ("all", "All"), ("payments", "Payments"), ("refunds", "Refunds"), ("status", "Status"),
+        ("items", "Items"), ("enrollment", "Enrollment"), ("notes", "Notes"), ("attachments", "Attachments"), ("system", "System")
+    };
+
+    // ── payments + refunds state ──
+    private List<PaymentTransactionDto>? txns;
+    private RefundSummaryDto? refundSummary;
+    private bool showRefund, showManualPay;
+    private string refundType = "Full"; private bool refundOffline; private decimal refundAmount; private string refundReason = "";
+    private string? refundError, manualError;
+    private readonly Dictionary<Guid, int> refundItemQty = new();
+    private ManualPaymentRequest manualPay = new();
+
+    private int RefundQty(Guid itemId) => refundItemQty.TryGetValue(itemId, out var n) ? n : 0;
+    private void SetRefundQty(Guid itemId, ChangeEventArgs e) { refundItemQty[itemId] = int.TryParse(e.Value?.ToString(), out var n) && n > 0 ? n : 0; }
+    private decimal ItemRefundEstimate => refundSummary == null ? 0 :
+        refundSummary.Items.Where(i => RefundQty(i.OrderItemId) > 0)
+            .Sum(i => Math.Round((i.Quantity > 0 ? i.LineTotal / i.Quantity : 0) * RefundQty(i.OrderItemId), 2));
+    private Guid? actorId;
+    private string actorName = "admin";
+    private bool isSuperAdmin;
+    private bool isFranchiseUser;
+
+    private bool HasAddress => !string.IsNullOrWhiteSpace(o?.BillingAddress) || !string.IsNullOrWhiteSpace(o?.BillingCity);
+    private string MapsUrl => "https://www.google.com/maps/search/?api=1&query=" +
+        Uri.EscapeDataString(string.Join(", ", new[] { o?.BillingAddress, o?.BillingCity, o?.BillingState, o?.BillingPincode }.Where(x => !string.IsNullOrWhiteSpace(x))));
+
+    private void ToggleSection(string key) { if (!collapsed.Remove(key)) collapsed.Add(key); }
+
+    /// <summary>Badge class for a shipment status. Same three mappings the dispatch board uses, so
+    /// a consignment is the same colour on both screens.</summary>
+    private static string ShipClass(ShipmentStatus s) => s switch
+    {
+        ShipmentStatus.Delivered => "status--confirmed",
+        ShipmentStatus.Dispatched => "status--processing",
+        _ => "status--pending"
+    };
+    private bool IsCollapsed(string key) => collapsed.Contains(key);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        actorId = Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
+        actorName = state.User.Identity?.Name ?? "admin";
+        // Cancel and delete are super-admin only. This hides the affordances; the service enforces
+        // the same rule, so nothing is riding on the UI alone.
+        isSuperAdmin = state.User.IsInRole("super_admin");
+        // Staff roles win: a user who is admin or super admin is treated as staff even if they also
+        // carry a franchise role, so franchise access can never quietly remove admin rights.
+        isFranchiseUser = state.User.IsInRole("franchise_admin")
+                          && !state.User.IsInRole("super_admin")
+                          && !state.User.IsInRole("admin");
+    }
+
+    protected override async Task OnParametersSetAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        o = await Svc.GetDetailAsync(Id);
+        notFound = o == null;
+        if (o != null)
+        {
+            notes = await Svc.ListNotesAsync(Id);
+            history = await Svc.GetHistoryAsync(Id);
+            txns = await Txns.ListAsync(Id);
+            refundSummary = await Refunds.GetSummaryAsync(Id);
+            attachments = await Attachments.ListForOrderAsync(Id);
+            // Best-effort: a serial-key provider being unreachable must never stop the order page
+            // from rendering. An empty list reads as "nothing issued", which is the honest fallback.
+            try { serialKeys = (await SerialKeys.ListAsync(new SerialKeyListFilter { OrderId = Id, PageSize = 100 })) ?? new(); }
+            catch { serialKeys = new(); }
+        }
+    }
+
+    private List<NoteAttachmentDto> AttachmentsFor(Guid noteId) =>
+        attachments?.Where(a => a.OrderNoteId == noteId).ToList() ?? new();
+
+    // unified status change (used by sidebar buttons + topbar dropdown)
+    private async Task ChangeStatus(OrderStatus s)
+    {
+        statusMenu = false; moreMenu = false;
+        if (o != null && o.Status == s) return;
+        busy = true;
+        var (ok, error) = await Svc.UpdateStatusAsync(Id, s, actorId, actorName);
+        await Reload();
+        busy = false;
+        if (ok) Toast.Success($"Status updated to {s}.");
+        else Toast.Error(error ?? "Could not update the status.");
+    }
+
+    private async Task ActivateEnrollment()
+    {
+        moreMenu = false;
+        busy = true;
+        var n = await Svc.ActivateEnrollmentAsync(Id, actorId, actorName);
+        await Reload();
+        busy = false;
+        Toast.Success(n > 0 ? $"Enrollment activated — {n} access granted." : "Order items marked activated.");
+    }
+
+    /// <summary>
+    /// Locked for THIS viewer: a franchise user looking at their own paid order.
+    ///
+    /// <para>Payment already debited their wallet and wrote a ledger row for the exact amount, and
+    /// editing the basket recomputes neither. Staff are not locked out — admins fix mis-keyed orders
+    /// and can correct the ledger side too. Mirrors the service's rule, which refuses regardless, so
+    /// this only removes the affordance.</para>
+    /// </summary>
+    private bool IsFrozen => isFranchiseUser
+        && o is { Source: OrderSource.Franchisee, PaymentStatus: PaymentStatus.Success };
+
+    private const string FrozenReason =
+        "This order is paid — its wallet and ledger entries are already settled. Contact RioCommerce to correct it.";
+
+    /// <summary>True once at least one key on this order is issued and still valid. Mirrors the
+    /// service's own rule, so the button is not offered for a state the service would refuse —
+    /// pending, failed, and revoked records all have nothing sendable.</summary>
+    private bool HasIssuedKey => serialKeys?.Any(k =>
+        !string.IsNullOrWhiteSpace(k.SerialKey)
+        && k.Status is SerialKeyStatus.Generated or SerialKeyStatus.Activated) == true;
+
+    private async Task ResendKeyEmail()
+    {
+        moreMenu = false;
+        busy = true;
+        var (ok, error, sent, sentTo) = await SerialKeys.ResendKeyEmailAsync(Id, null, actorId);
+        await Reload();
+        busy = false;
+        if (ok) Toast.Success(sent == 1
+            ? $"Serial key sent again to {sentTo}."
+            : $"{sent} serial keys sent again to {sentTo}.");
+        else Toast.Error(error ?? "Could not resend the serial key email.");
+    }
+
+    private async Task ResendOrderEmail()
+    {
+        moreMenu = false;
+        busy = true;
+        var (ok, error, sentTo) = await Svc.ResendOrderEmailAsync(Id, actorId, actorName);
+        busy = false;
+        // Naming the recipient in the toast is the confirmation that matters — "sent" alone doesn't
+        // tell the admin whether it reached the address they meant.
+        if (ok) Toast.Success($"Order confirmation sent again to {sentTo}.");
+        else Toast.Error(error ?? "Could not resend the order email.");
+    }
+
+    private async Task SoftDelete()
+    {
+        moreMenu = false;
+        busy = true;
+        var (ok, error) = await Svc.SoftDeleteAsync(Id, actorId, actorName);
+        busy = false;
+        if (!ok)
+        {
+            // Stay on the order — navigating away would look like the delete succeeded.
+            Toast.Error(error ?? "Could not delete the order.");
+            return;
+        }
+        Toast.Info("Order moved to recycle bin.");
+        Nav.NavigateTo("/admin/orders");
+    }
+
+    private async Task Restore()
+    {
+        moreMenu = false;
+        busy = true;
+        await Svc.RestoreAsync(Id, actorId, actorName);
+        await Reload();
+        busy = false;
+        Toast.Success("Order restored.");
+    }
+
+    private async Task CopyOrderNo()
+    {
+        moreMenu = false;
+        if (o != null) { await JS.InvokeVoidAsync("hjc.copy", o.OrderNumber); Toast.Info("Order number copied."); }
+    }
+
+    // ── billing / shipping address ──
+    private OrderAddressEdit? addrEdit;
+
+    private void OpenAddressEdit()
+    {
+        if (o == null) return;
+        addrEdit = new OrderAddressEdit
+        {
+            OrderId = o.Id,
+            BillingName = o.BillingName, BillingAddress = o.BillingAddress,
+            BillingCity = o.BillingCity, BillingState = o.BillingState, BillingPincode = o.BillingPincode,
+            ShippingAddress = o.ShippingAddress, ShippingCity = o.ShippingCity,
+            ShippingState = o.ShippingState, ShippingPincode = o.ShippingPincode,
+        };
+    }
+
+    private void CopyBillingToShipping()
+    {
+        if (addrEdit == null) return;
+        addrEdit.ShippingAddress = addrEdit.BillingAddress;
+        addrEdit.ShippingCity = addrEdit.BillingCity;
+        addrEdit.ShippingState = addrEdit.BillingState;
+        addrEdit.ShippingPincode = addrEdit.BillingPincode;
+    }
+
+    /// <summary>Blank shipping means "deliver to the billing address" everywhere downstream.</summary>
+    private void ClearShipping()
+    {
+        if (addrEdit == null) return;
+        addrEdit.ShippingAddress = null;
+        addrEdit.ShippingCity = null;
+        addrEdit.ShippingState = null;
+        addrEdit.ShippingPincode = null;
+    }
+
+    private async Task SaveAddresses()
+    {
+        if (addrEdit == null) return;
+        busy = true;
+        try
+        {
+            var (ok, error) = await Svc.UpdateAddressesAsync(addrEdit, null);
+            if (!ok) { Toast.Error(error ?? "Could not save the address."); return; }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Could not save the address: {ex.Message}");
+            return;
+        }
+        finally { busy = false; }
+
+        addrEdit = null;
+        await Reload();
+        Toast.Success("Address updated.");
+    }
+
+    private async Task CopyAddress()
+    {
+        if (o == null) return;
+        var addr = string.Join(", ", new[] { o.BillingName ?? o.StudentName, o.BillingAddress, o.BillingCity, o.BillingState, o.BillingPincode }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        await JS.InvokeVoidAsync("hjc.copy", addr);
+        Toast.Info("Address copied.");
+    }
+
+    // ── refunds + manual payment ──
+    private void OpenRefund()
+    {
+        moreMenu = false; refundError = null; refundReason = ""; refundOffline = false; refundAmount = 0; refundItemQty.Clear();
+        refundType = "Full";
+        showRefund = true;
+    }
+
+    private async Task DoRefund()
+    {
+        refundError = null;
+        var req = new RefundRequest { Type = refundType, Reason = refundReason, IsOffline = refundOffline };
+        if (refundType == "Partial") req.Amount = refundAmount;
+        else if (refundType == "Item")
+            req.Items = refundItemQty.Where(kv => kv.Value > 0).Select(kv => new RefundItemRequest { OrderItemId = kv.Key, Quantity = kv.Value }).ToList();
+
+        busy = true;
+        var (ok, err, _, pending) = await Refunds.CreateRefundAsync(Id, req, actorId, actorName);
+        busy = false;
+        if (ok) { showRefund = false; await Reload(); Toast.Success(pending ? "Refund submitted for approval." : "Refund processed."); }
+        else { refundError = err; Toast.Error(err ?? "Refund failed."); }
+    }
+
+    private void OpenManualPayment()
+    {
+        moreMenu = false; manualError = null;
+        manualPay = new ManualPaymentRequest { Amount = o?.PaymentStatus == PaymentStatus.Pending ? (o?.TotalAmount ?? 0) : 0, Method = PaymentMode.Cash, MarkOrderPaid = true };
+        showManualPay = true;
+    }
+
+    private async Task DoManualPayment()
+    {
+        manualError = null;
+        busy = true;
+        var (ok, err) = await Txns.AddManualPaymentAsync(Id, manualPay, actorId, actorName);
+        busy = false;
+        if (ok) { showManualPay = false; await Reload(); Toast.Success("Payment recorded."); }
+        else { manualError = err; }
+    }
+
+    // ── item management ──
+    private void OpenEditItem(OrderItemLine i)
+    {
+        editItem = i; editQty = i.Quantity; editUnit = i.UnitPrice; editDisc = i.Discount; showEditItem = true;
+    }
+
+    private async Task SaveEditItem()
+    {
+        if (editItem == null) return;
+        busy = true;
+        var (ok, err) = await Svc.UpdateItemAsync(Id, new UpdateOrderItemRequest { ItemId = editItem.Id, Quantity = editQty, UnitPrice = editUnit, Discount = editDisc }, actorId, actorName);
+        busy = false;
+        if (ok) { showEditItem = false; await Reload(); Toast.Success("Item updated."); } else Toast.Error(err!);
+    }
+
+    private async Task OpenAddItem()
+    {
+        showAddItem = true; productQuery = ""; selectedPick = null; addModeIdStr = ""; addQty = 1;
+        picks = await Svc.SearchProductsAsync(null);
+    }
+
+    private async Task OnProductSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await SearchProducts(); }
+    private async Task SearchProducts() => picks = await Svc.SearchProductsAsync(productQuery);
+    private void SelectPick(ProductPickItem p) { selectedPick = p; addModeIdStr = ""; addQty = 1; }
+
+    private async Task AddItem()
+    {
+        if (selectedPick == null) return;
+        busy = true;
+        Guid? modeId = Guid.TryParse(addModeIdStr, out var g) ? g : null;
+        var (ok, err) = await Svc.AddItemAsync(Id, new AddOrderItemRequest { ProductId = selectedPick.Id, ModeId = modeId, Quantity = addQty < 1 ? 1 : addQty }, actorId, actorName);
+        busy = false;
+        if (ok) { showAddItem = false; await Reload(); Toast.Success("Product added to order."); } else Toast.Error(err!);
+    }
+
+    private void OpenRemoveItem(OrderItemLine i) { removeItemId = i.Id; removeItemTitle = i.ProductTitle; showRemoveItem = true; }
+
+    private async Task RemoveItemConfirm()
+    {
+        busy = true;
+        var (ok, err) = await Svc.RemoveItemAsync(Id, removeItemId, actorId, actorName);
+        busy = false;
+        if (ok) { showRemoveItem = false; await Reload(); Toast.Info("Item removed."); } else Toast.Error(err!);
+    }
+
+    private void OpenNoteModal() { noteReq = new AddOrderNoteRequest(); pendingFiles.Clear(); showNoteModal = true; }
+
+    private async Task AddNote()
+    {
+        if (string.IsNullOrWhiteSpace(noteReq.Body)) { Toast.Error("Note cannot be empty."); return; }
+        busy = true;
+        var noteId = await Svc.AddNoteAsync(Id, noteReq, actorId, actorName);
+        await UploadFilesAsync(noteId, pendingFiles);
+        pendingFiles.Clear();
+        notes = await Svc.ListNotesAsync(Id);
+        history = await Svc.GetHistoryAsync(Id);
+        attachments = await Attachments.ListForOrderAsync(Id);
+        busy = false;
+        showNoteModal = false;
+        Toast.Success("Note added.");
+    }
+
+    // ── attachments ──
+    private void OnPickFiles(InputFileChangeEventArgs e)
+    {
+        pendingFiles.Clear();
+        foreach (var f in e.GetMultipleFiles(10)) pendingFiles.Add(f);
+    }
+
+    private async Task UploadFilesAsync(Guid noteId, IEnumerable<IBrowserFile> files)
+    {
+        foreach (var f in files)
+        {
+            try
+            {
+                await using var s = f.OpenReadStream(MaxUpload);
+                var (ok, err, _) = await Attachments.AttachAsync(Id, noteId, f.Name, f.ContentType, f.Size, s, actorId, actorName);
+                if (!ok) Toast.Error($"{f.Name}: {err}");
+            }
+            catch (Exception ex) { Toast.Error($"{f.Name}: {ex.Message}"); }
+        }
+    }
+
+    private async Task OnAttachToNote(Guid noteId, InputFileChangeEventArgs e)
+    {
+        busy = true;
+        await UploadFilesAsync(noteId, e.GetMultipleFiles(10));
+        attachments = await Attachments.ListForOrderAsync(Id);
+        history = await Svc.GetHistoryAsync(Id);
+        busy = false;
+        Toast.Success("Attachment uploaded.");
+    }
+
+    private async Task DeleteAttachment(Guid attId)
+    {
+        await Attachments.DeleteAsync(attId, actorId, actorName);
+        attachments = await Attachments.ListForOrderAsync(Id);
+        history = await Svc.GetHistoryAsync(Id);
+        Toast.Info("Attachment removed.");
+    }
+
+    private void OpenLightbox(NoteAttachmentDto a) { lightboxId = a.Id; lightboxName = a.OriginalFileName; showLightbox = true; }
+
+    private static string FmtSize(long bytes) =>
+        bytes >= 1048576 ? $"{bytes / 1048576.0:0.#} MB" : bytes >= 1024 ? $"{bytes / 1024.0:0} KB" : $"{bytes} B";
+    private static string AttIcon(string kind) => kind switch
+    {
+        "image" => "🖼", "pdf" => "📕", "doc" => "📄", "sheet" => "📊", "archive" => "🗜", _ => "📎"
+    };
+
+    // ── timeline ──
+    private void ToggleTl(Guid id) { if (!timelineOpen.Remove(id)) timelineOpen.Add(id); }
+
+    private List<AuditLogItem> FilteredHistory()
+    {
+        if (history == null) return new();
+        return timelineFilter == "all" ? history : history.Where(h => TimelineMeta(h.Action).cat == timelineFilter).ToList();
+    }
+
+    private static (string cat, string icon, string color, string dot) TimelineMeta(string a)
+    {
+        if (a.StartsWith("OrderStatus") || a == "OrderBulkStatusChanged") return ("status", "🔄", "amber", "#D97706");
+        if (a.StartsWith("OrderItem")) return ("items", "📦", "purple", "#7c3aed");
+        if (a == "ManualPaymentRecorded") return ("payments", "💳", "blue", "#2563EB");
+        if (a.StartsWith("Refund")) return ("refunds", "↩", "red", "#DC2626");
+        if (a == "OrderEnrollmentActivated") return ("enrollment", "🎓", "green", "#16a34a");
+        if (a.StartsWith("OrderNote")) return ("notes", "📝", "gray", "#6B7280");
+        if (a.StartsWith("Attachment")) return ("attachments", "📎", "teal", "#0d9488");
+        return ("system", "🧾", "gray", "#6B7280");
+    }
+
+    private static (Dictionary<string, string> before, Dictionary<string, string> after)? ParseDiff(string? details)
+    {
+        if (string.IsNullOrEmpty(details)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(details);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return null;
+            if (root.TryGetProperty("Before", out var b) && root.TryGetProperty("After", out var af)
+                && b.ValueKind == System.Text.Json.JsonValueKind.Object && af.ValueKind == System.Text.Json.JsonValueKind.Object)
+                return (ToDict(b), ToDict(af));
+            return null;
+        }
+        catch { return null; }
+    }
+    private static Dictionary<string, string> ToDict(System.Text.Json.JsonElement el)
+    {
+        var d = new Dictionary<string, string>();
+        foreach (var p in el.EnumerateObject()) d[p.Name] = p.Value.ToString();
+        return d;
+    }
+    private static string PrettyDetails(string? details)
+    {
+        if (string.IsNullOrEmpty(details)) return "";
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(details);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return details;
+            return string.Join("   ·   ", doc.RootElement.EnumerateObject().Select(p => $"{p.Name}: {p.Value}"));
+        }
+        catch { return details; }
+    }
+    private static string Ago(DateTime utc)
+    {
+        var s = DateTime.UtcNow - utc;
+        if (s.TotalMinutes < 1) return "just now";
+        if (s.TotalMinutes < 60) return $"{(int)s.TotalMinutes}m ago";
+        if (s.TotalHours < 24) return $"{(int)s.TotalHours}h ago";
+        return utc.ToLocalTime().ToString("dd MMM yyyy, HH:mm");
+    }
+
+    private async Task DeleteNote(Guid noteId)
+    {
+        await Svc.DeleteNoteAsync(noteId, actorId, actorName);
+        notes = await Svc.ListNotesAsync(Id);
+        history = await Svc.GetHistoryAsync(Id);
+        Toast.Info("Note deleted.");
+    }
+
+    // Serial-key status → the shared admin status pill. The Serial Keys screen has its own
+    // sk-status--* classes but they are page-scoped, so the global status--* set is used here.
+    private static string KeyStatusClass(SerialKeyStatus s) => s switch
+    {
+        SerialKeyStatus.Activated => "status--confirmed",
+        SerialKeyStatus.Generated => "status--success",
+        SerialKeyStatus.Generating => "status--processing",
+        SerialKeyStatus.Pending => "status--pending",
+        SerialKeyStatus.Failed => "status--warning",
+        SerialKeyStatus.DeadLettered => "status--danger",
+        SerialKeyStatus.Revoked => "status--cancelled",
+        _ => "status--neutral",
+    };
+
+    // "DeadLettered" is accurate but opaque to a non-engineer reading an order — it means the
+    // retries are exhausted and it will not try again on its own.
+    private static string KeyStatusLabel(SerialKeyStatus s) => s switch
+    {
+        SerialKeyStatus.Activated => "Activated",
+        SerialKeyStatus.Generated => "Generated",
+        SerialKeyStatus.Generating => "Generating…",
+        SerialKeyStatus.Pending => "Waiting to dispatch",
+        SerialKeyStatus.Failed => "Failed — will retry",
+        SerialKeyStatus.DeadLettered => "Failed — retries exhausted",
+        SerialKeyStatus.Revoked => "Revoked",
+        _ => s.ToString(),
+    };
+
+    private async Task TogglePin(Guid noteId) { await Svc.ToggleNotePinAsync(noteId); notes = await Svc.ListNotesAsync(Id); }
+
+    // Online gateways are labelled "Payment gateway" (they pair with the captured Payment mode);
+    // counter modes like Cash / Cheque keep the plainer "Payment method".
+    private static bool IsGatewayMode(PaymentMode? m)
+        => m is PaymentMode.Razorpay or PaymentMode.Easebuzz or PaymentMode.Ccavenue or PaymentMode.RazorpayLink;
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "–";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name.Trim()[..Math.Min(2, name.Trim().Length)].ToUpper();
+    }
+
+    private static string HumanizeAction(string a) => a switch
+    {
+        "OrderStatusChanged" => "Status changed",
+        "OrderBulkStatusChanged" => "Bulk status change",
+        "OrderNoteAdded" => "Note added",
+        "OrderNoteDeleted" => "Note deleted",
+        "OrderDeleted" => "Order deleted",
+        "OrderRestored" => "Order restored",
+        "OrderEnrollmentActivated" => "Enrollment activated",
+        "InvoiceGenerated" => "Invoice generated",
+        "OrderItemUpdated" => "Item updated",
+        "OrderItemAdded" => "Item added",
+        "OrderItemRemoved" => "Item removed",
+        "ManualPaymentRecorded" => "Manual payment recorded",
+        "RefundCreated" => "Refund processed",
+        "RefundFailed" => "Refund failed",
+        _ => a
+    };
+
+    private static (string label, string variant) OrderBadge(OrderStatus s) => s switch
+    {
+        OrderStatus.Confirmed or OrderStatus.Activated or OrderStatus.Delivered => (s.ToString(), "confirmed"),
+        OrderStatus.Pending or OrderStatus.Draft => (s.ToString(), "pending"),
+        OrderStatus.Processing => (s.ToString(), "processing"),
+        OrderStatus.Cancelled => (s.ToString(), "danger"),
+        OrderStatus.Refunded => (s.ToString(), "refunded"),
+        _ => (s.ToString(), "neutral")
+    };
+    private static (string label, string variant) PaymentBadge(PaymentStatus s) => s switch
+    {
+        PaymentStatus.Success => ("Paid", "confirmed"),
+        PaymentStatus.Pending => ("Pending", "pending"),
+        PaymentStatus.Failed => ("Failed", "danger"),
+        PaymentStatus.Refunded => ("Refunded", "refunded"),
+        PaymentStatus.PartialRefund => ("Partial Refund", "refunded"),
+        _ => (s.ToString(), "neutral")
+    };
+    private static (string label, string variant) EnrollmentBadge(EnrollmentStatus s) => s switch
+    {
+        EnrollmentStatus.Active => ("Active", "confirmed"),
+        EnrollmentStatus.Expired => ("Expired", "danger"),
+        _ => ("Not Activated", "neutral")
+    };
+}

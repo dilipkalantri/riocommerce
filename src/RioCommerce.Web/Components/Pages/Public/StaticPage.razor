@@ -1,0 +1,45 @@
+@page "/page/{Slug}"
+@inject HttpClient Http
+
+@if (loading)
+{
+    <div style="text-align:center;padding:80px">Loading…</div>
+}
+else if (cms == null)
+{
+    <div style="text-align:center;padding:80px 20px">
+        <h1>Page Not Found</h1>
+        <a href="/" class="btn btn-primary" style="margin-top:16px">Back To Home</a>
+    </div>
+}
+else
+{
+    <SeoHead Seo="@(new SeoMetadata { Title = cms.SeoTitle ?? $"{cms.Title} — RioCommerce", Description = cms.SeoDescription ?? "" })" />
+    <div class="container cms-page">
+        <div class="breadcrumb"><a href="/">Home</a><span>›</span><span class="current">@cms.Title</span></div>
+        <h1 class="cms-page__title">@cms.Title</h1>
+        @* Unique per-page wrapper. All custom CSS is prefixed to [data-cms-page-id] server-side, so
+           this page's styles can never match elements outside this container. *@
+        <div class="hj-cms-page cms-page__body" data-cms-page-id="@cms.Id" data-cms-slug="@cms.Slug">
+            @if (!string.IsNullOrEmpty(cms.ScopedCss))
+            {
+                @((MarkupString)($"<style>{cms.ScopedCss}</style>"))
+            }
+            @((MarkupString)cms.Body)
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+    private CmsPageView? cms;
+    private bool loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        try { var r = await Http.GetFromJsonAsync<ApiResponse<CmsPageView>>($"/api/content/page/{Slug}"); cms = r?.Data; }
+        catch { cms = null; }
+        loading = false;
+    }
+}

@@ -1,0 +1,24 @@
+@page "/access-denied"
+@layout AdminLayout
+<PageTitle>Access Restricted — RioCommerce</PageTitle>
+
+<style>
+    .ad-wrap{min-height:60vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .ad-card{max-width:480px;width:100%;background:#fff;border-radius:20px;padding:40px 32px;text-align:center;box-shadow:0 24px 60px -28px rgba(15,23,42,.45);border:1px solid var(--gray-200);animation:ad-in .35s ease-out both}
+    @@keyframes ad-in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+    .ad-card__ico{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#FEE2E2,#FECACA);color:#DC2626;font-size:32px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 12px 28px -16px rgba(220,38,38,.4)}
+    .ad-card h1{font-size:22px;font-weight:800;color:var(--navy);margin:0 0 8px}
+    .ad-card p{color:var(--gray-600);font-size:14px;line-height:1.55;margin:0 0 4px}
+    .ad-card .muted{color:var(--gray-400);font-size:12.5px;margin-top:14px}
+    .ad-card a.btn{margin-top:22px;font-weight:800;padding:12px 22px;border-radius:12px}
+</style>
+
+<div class="ad-wrap">
+    <div class="ad-card">
+        <span class="ad-card__ico">🔒</span>
+        <h1>Access Restricted</h1>
+        <p>You do not have permission to access this module.</p>
+        <p class="muted">Please contact your Super Admin if you believe this is a mistake.</p>
+        <a href="/admin" class="btn btn-primary">Go to Dashboard</a>
+    </div>
+</div>

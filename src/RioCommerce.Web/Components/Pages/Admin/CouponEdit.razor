@@ -1,0 +1,216 @@
+@page "/admin/coupons/new"
+@page "/admin/coupons/{Id:guid}"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ICouponAdminService Svc
+@inject ToastService Toast
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+<PageTitle>@(IsNew ? "Add" : "Edit") discount — RioCommerce Admin</PageTitle>
+
+<style>
+    .pe-bar{position:sticky;top:52px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border:1px solid var(--gray-200);border-radius:14px;padding:10px 14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 24px -16px rgba(15,23,42,.35)}
+    .pe-bar__title{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .pe-bar__title h1{font-size:clamp(15px,1.8vw,19px);font-weight:800;color:var(--navy);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw}
+    .pe-bar__title a{font-size:12px;color:var(--orange);font-weight:600}
+    .pe-bar__actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+    .pe-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;margin-bottom:14px;overflow:hidden;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .pe-card__head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;cursor:pointer;font-weight:700;color:var(--navy);font-size:14px;border-bottom:1px solid var(--gray-100);background:linear-gradient(180deg,#fff,var(--gray-50))}
+    .pe-card__head .chev{color:var(--gray-400);font-size:11px;transition:transform .18s}
+    .pe-card.is-collapsed .pe-card__head{border-bottom:0}
+    .pe-card.is-collapsed .chev{transform:rotate(-90deg)}
+    .pe-card__body{padding:clamp(14px,1.6vw,20px)}
+    .pe-card.is-collapsed .pe-card__body{display:none}
+    .pe-chk{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--gray-700);cursor:pointer}
+    .cpn-url{display:flex;align-items:center;gap:8px;font-size:13px}
+    .cpn-url a{color:var(--orange);word-break:break-all}
+    @@media(max-width:560px){.pe-bar{top:0;border-radius:0;margin:-4px -4px 14px}.pe-bar__title h1{max-width:70vw}.pe-bar__actions .btn{flex:1}}
+</style>
+
+@if (notFound)
+{
+    <div class="pe-card"><div class="pe-card__body">Discount not found. <a href="/admin/coupons">Back to discounts</a></div></div>
+}
+else if (model == null)
+{
+    <div class="pe-card"><div class="pe-card__body"><div class="skel" style="height:18px;width:220px;margin-bottom:14px"></div>@for (var i = 0; i < 5; i++) { <div class="skel" style="height:14px;width:@(70 - i * 8)%;margin-bottom:10px"></div> }</div></div>
+}
+else
+{
+    <div class="pe-bar">
+        <div class="pe-bar__title">
+            <h1>@(IsNew ? "Add a new discount" : $"Edit discount — {(string.IsNullOrWhiteSpace(model.Name) ? model.Code : model.Name)}")</h1>
+            <a href="/admin/coupons">← back to discount list</a>
+        </div>
+        <div class="pe-bar__actions">
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "💾 Save")</button>
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="SaveContinue">Save &amp; continue edit</button>
+            @if (!IsNew) { <button class="btn btn-danger btn-sm" @onclick="Delete">🗑 Delete</button> }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error)) { <div class="inline-alert inline-alert--err" style="margin-bottom:14px">@error</div> }
+
+    @* ── Discount info ── *@
+    <div class="pe-card @(IsCollapsed("info") ? "is-collapsed" : "")">
+        <div class="pe-card__head" @onclick='() => Toggle("info")'><span>ℹ️ Discount info</span><span class="chev">▾</span></div>
+        <div class="pe-card__body">
+            <div class="form-grid">
+                <div class="form-group form-group--full"><label class="form-label">Name <span class="required">*</span></label><input class="form-input" @bind="model.Name" placeholder="e.g. 500rs off" /></div>
+                <div class="form-group"><label class="form-label">Coupon code <span class="required">*</span></label><input class="form-input" @bind="model.Code" placeholder="e.g. DISC500" style="text-transform:uppercase" /></div>
+                <div class="form-group"><label class="form-label">Discount amount @(UsePercentage ? "(%)" : "(₹)")</label><input type="number" step="0.01" class="form-input" @bind="model.Value" /></div>
+                @if (UsePercentage)
+                {
+                    <div class="form-group"><label class="form-label">Maximum discount cap (₹)</label><input type="number" step="0.01" class="form-input" @bind="model.MaxDiscount" placeholder="optional" /></div>
+                }
+                <div class="form-group"><label class="form-label">Minimum order value (₹)</label><input type="number" step="0.01" class="form-input" @bind="model.MinOrder" /></div>
+                <div class="form-group"><label class="form-label">Start date</label><input type="date" class="form-input" @bind="model.StartsAt" /></div>
+                <div class="form-group"><label class="form-label">End date</label><input type="date" class="form-input" @bind="model.ExpiresAt" /></div>
+                <div class="form-group"><label class="form-label">Total usage limit</label><input type="number" class="form-input" @bind="model.TotalLimit" placeholder="blank = unlimited" /></div>
+                <div class="form-group"><label class="form-label">Per-customer limit</label><input type="number" class="form-input" @bind="model.PerUserLimit" /></div>
+                <div class="form-group form-group--full"><label class="form-label">Affiliate-exclusive</label>
+                    <select class="form-input" @onchange="OnAffiliate" disabled="@model.IsFranchiseApplicable">
+                        <option value="">General — available to everyone</option>
+                        @if (affiliates != null) { @foreach (var a in affiliates) { <option value="@a.Id" selected="@(a.Id == model.AffiliateId)">@a.Name (@a.Code)</option> } }
+                    </select>
+                    <div class="form-hint">
+                        When linked to an affiliate, this discount only auto-applies for buyers arriving via that affiliate's referral link.
+                        @if (model.IsFranchiseApplicable) { <text>Not available for franchise discounts — there is no referral link into the Franchise Portal.</text> }
+                    </div>
+                </div>
+                @* Who may redeem the code. Both off is rejected on save. *@
+                <div class="form-group form-group--full"><label class="form-label">Who can use this discount <span class="required">*</span></label>
+                    <div style="display:flex;gap:24px;flex-wrap:wrap">
+                        <label class="pe-chk"><input type="checkbox" @bind="model.IsCustomerApplicable" /> 🛒 Customers — website checkout</label>
+                        <label class="pe-chk"><input type="checkbox" @bind="FranchiseApplicable" /> 🏢 Franchisees — Franchise Portal</label>
+                    </div>
+                    <div class="form-hint">
+                        A franchise discount comes off the order total <strong>in addition to</strong> the franchisee's own share —
+                        the share is calculated from product pricing and is never reduced by a coupon. Usage limits below apply
+                        per franchise.
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:8px">
+                <label class="pe-chk"><input type="checkbox" @bind="UsePercentage" /> Use percentage</label>
+                <label class="pe-chk"><input type="checkbox" @bind="model.IsActive" /> Active</label>
+            </div>
+            @if (!IsNew && !string.IsNullOrWhiteSpace(model.Code))
+            {
+                <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--gray-200)">
+                    <div class="form-label" style="margin-bottom:4px">URL with coupon code</div>
+                    <div class="cpn-url">
+                        <a href="@CouponUrl" target="_blank">@CouponUrl</a>
+                        <button type="button" class="btn btn-ghost btn-sm" @onclick="CopyUrl">📋 Copy</button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Usage history ── *@
+    @if (!IsNew)
+    {
+        <div class="pe-card @(IsCollapsed("usage") ? "is-collapsed" : "")">
+            <div class="pe-card__head" @onclick='() => Toggle("usage")'><span>🕘 Usage history @(usage?.Count > 0 ? $"({usage.Count})" : "")</span><span class="chev">▾</span></div>
+            <div class="pe-card__body" style="padding:0">
+                <div class="ag__wrap"><table class="ag__table" style="min-width:560px">
+                    <thead><tr><th>Used</th><th>Order #</th><th class="ag-right">Order total</th><th></th></tr></thead>
+                    <tbody>
+                        @if (usage == null) { <tr><td colspan="4"><div class="skel" style="height:30px;margin:10px"></div></td></tr> }
+                        else if (usage.Count == 0) { <tr><td colspan="4" style="text-align:center;color:var(--gray-400);padding:18px">This discount hasn't been used yet.</td></tr> }
+                        else
+                        {
+                            @foreach (var u in usage)
+                            {
+                                <tr>
+                                    <td data-label="Used">@u.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, hh:mm tt")</td>
+                                    <td data-label="Order #"><strong>#@u.OrderNumber</strong></td>
+                                    <td data-label="Order total" class="ag-right">₹@u.OrderTotal.ToString("N2")</td>
+                                    <td data-label="" class="ag-right"><a href="/admin/orders/@u.OrderId" class="btn btn-ghost btn-sm">View</a></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private bool IsNew => Id == Guid.Empty;
+
+    private CouponEditModel? model;
+    private List<AffiliateOption>? affiliates;
+    private List<CouponUsageRow>? usage;
+    private bool notFound, saving;
+    private string? error;
+    private readonly HashSet<string> collapsed = new();
+
+    private bool UsePercentage
+    {
+        get => model?.CouponType == SharingType.Percentage;
+        set { if (model != null) model.CouponType = value ? SharingType.Percentage : SharingType.FixedAmount; }
+    }
+
+    // Turning on the franchise audience clears any affiliate link: affiliate coupons ride in on a
+    // referral URL, and the Franchise Portal has none. Save rejects the combination too.
+    private bool FranchiseApplicable
+    {
+        get => model?.IsFranchiseApplicable == true;
+        set
+        {
+            if (model == null) return;
+            model.IsFranchiseApplicable = value;
+            if (value) model.AffiliateId = null;
+        }
+    }
+
+    private string CouponUrl => $"{Nav.BaseUri.TrimEnd('/')}/?discountcoupon={model?.Code}";
+
+    private void Toggle(string k) { if (!collapsed.Remove(k)) collapsed.Add(k); }
+    private bool IsCollapsed(string k) => collapsed.Contains(k);
+
+    protected override async Task OnInitializedAsync() => affiliates = await Svc.AffiliateOptionsAsync();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        usage = null;
+        if (IsNew) { model = new CouponEditModel { IsActive = true, CouponType = SharingType.Percentage, PerUserLimit = 1 }; notFound = false; }
+        else
+        {
+            model = await Svc.GetAsync(Id);
+            notFound = model == null;
+            if (model != null) usage = await Svc.UsageHistoryAsync(Id);
+        }
+    }
+
+    private void OnAffiliate(ChangeEventArgs e) { if (model != null) model.AffiliateId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; }
+
+    private Task Save() => DoSave(false);
+    private Task SaveContinue() => DoSave(true);
+
+    private async Task DoSave(bool stay)
+    {
+        if (model == null) return;
+        error = null; saving = true;
+        var (ok, err, newId) = await Svc.SaveAsync(model);
+        saving = false;
+        if (!ok) { error = err; Toast.Error(err ?? "Save failed."); return; }
+        Toast.Success("Discount saved.");
+        if (!stay) Nav.NavigateTo("/admin/coupons");
+        else if (IsNew) Nav.NavigateTo($"/admin/coupons/{newId}");
+        else model = await Svc.GetAsync(Id);
+    }
+
+    private async Task Delete()
+    {
+        var (ok, err) = await Svc.DeleteAsync(Id);
+        if (ok) { Toast.Info("Discount deleted."); Nav.NavigateTo("/admin/coupons"); }
+        else Toast.Error(err ?? "Could not delete.");
+    }
+
+    private async Task CopyUrl() { await JS.InvokeVoidAsync("hjc.copy", CouponUrl); Toast.Info("URL copied."); }
+}

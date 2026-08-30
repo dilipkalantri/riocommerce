@@ -1,0 +1,889 @@
+@using RioCommerce.Core.DTOs.SerialKeys
+@using RioCommerce.Core.DTOs.Products
+@using RioCommerce.Core.Enums
+@*
+    Per-product Serial Key configuration. Drops into ProductEdit.razor as one more
+    pe-card section. Loads + saves independently of the main product Save button —
+    its own state, its own Save, its own toast feedback.
+
+    All Rio API parameters mirror the API documentation field-for-field. Grouped
+    into logical sections so the form isn't a wall of inputs.
+*@
+
+@inject ISerialKeyService Svc
+@inject IRioPlayTenantService TenantSvc
+@inject IValencePackService ValenceSvc
+@inject ToastService Toast
+
+<style>
+    .skp-empty { padding:30px 16px; text-align:center; color:var(--gray-400); font-size:13px; background:var(--gray-50); border-radius:10px }
+    .skp-status { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px; display:flex; align-items:center; gap:10px }
+    .skp-status--saved { background:#D1FAE5; color:#065F46; border:1px solid #A7F3D0 }
+    .skp-status--new   { background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE }
+    .skp-status__ico { font-size:16px }
+    .skp-optional{font-size:11.5px;font-weight:600;color:var(--gray-500)}
+
+    /* Pack missing on a saved Valence config — key generation is blocked, so this reads as a
+       blocker, not a hint. Matches the amber weight of the other skp-status pills. */
+    .skp-warn { padding:12px 14px; border-radius:8px; font-size:13px; margin-bottom:14px;
+                background:#FEF3C7; color:#92400E; border:1px solid #FDE68A; line-height:1.5 }
+    .skp-warn strong { display:block; margin-bottom:2px }
+    .skp-section { margin-top:14px; padding-top:14px; border-top:1px dashed var(--gray-200) }
+    .skp-section:first-of-type { margin-top:0; padding-top:0; border-top:0 }
+    .skp-section__title { font-size:11.5px; text-transform:uppercase; letter-spacing:.5px; color:var(--gray-500); font-weight:700; margin-bottom:10px }
+    .skp-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px 16px }
+    .skp-grid .form-group { margin:0 }
+    .skp-checks { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px 16px; margin-top:6px }
+    .skp-chk { display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--gray-700); cursor:pointer; padding:6px 10px; border-radius:8px }
+    .skp-chk:hover { background:var(--gray-50) }
+    .skp-mode-tile { display:flex; align-items:center; gap:10px; padding:10px 14px; border:1.5px solid var(--gray-200); border-radius:10px; cursor:pointer; background:#fff; transition:all .15s }
+    .skp-mode-tile:hover { border-color:var(--gray-300); background:var(--gray-50) }
+    .skp-mode-tile.is-on { border-color:var(--orange); background:#FFF7ED }
+    .skp-mode-tile__label { font-weight:600; color:var(--navy); font-size:13.5px }
+    .skp-mode-tile__sub   { color:var(--gray-500); font-size:11.5px; margin-top:2px }
+    .skp-mode-tile__col { display:flex; flex-direction:column; line-height:1.3 }
+    .skp-actions { margin-top:18px; padding-top:14px; border-top:1px solid var(--gray-100); display:flex; gap:8px; justify-content:flex-end; align-items:center }
+    .skp-actions__hint { margin-right:auto; font-size:12.5px; color:var(--gray-500) }
+    .skp-scopes { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px }
+    .skp-scope { display:flex; flex-direction:column; gap:2px; padding:9px 14px; border:1.5px solid var(--gray-200); border-radius:10px; cursor:pointer; background:#fff; transition:all .15s; min-width:150px }
+    .skp-scope:hover { border-color:var(--gray-300); background:var(--gray-50) }
+    .skp-scope.is-active { border-color:var(--orange); background:#FFF7ED }
+    .skp-scope__name { font-weight:600; color:var(--navy); font-size:13px }
+    .skp-scope__badge { font-size:11px; font-weight:600 }
+    .skp-scope__badge--own { color:#065F46 }
+    .skp-scope__badge--inherit { color:var(--gray-400) }
+    .form-input.is-invalid { border-color:var(--red); background:#FEF2F2 }
+</style>
+
+@if (loading)
+{
+    <p style="color:var(--gray-400); padding:14px 0">Loading config…</p>
+}
+else if (loadError != null)
+{
+    <div class="skp-empty" style="color:var(--red)">
+        <strong>Couldn't load serial-key config.</strong><br />
+        <span style="font-size:12.5px">@loadError</span><br />
+        <span style="font-size:12px; color:var(--gray-500)">If this mentions a missing column, the per-mode migration (0013) may not have been applied yet — restart the app so it runs, or apply it in pgAdmin.</span>
+    </div>
+}
+else if (providers == null || providers.Count == 0)
+{
+    <div class="skp-empty">No serial-key providers are registered. Check DI in Program.cs.</div>
+}
+else
+{
+    @if (model == null) { model = new ProductSerialKeyConfigItem { ProductId = ProductId, AutoActivate = true, IsActive = true }; }
+
+    @* ── Scope selector: product default + one per lecture mode ── *@
+    @if (scopes is { Count: > 1 })
+    {
+        <div class="skp-section__title">Configure serial keys for…</div>
+        <div class="skp-scopes">
+            @foreach (var s in scopes)
+            {
+                var active = s.ProductModeId == selectedModeId;
+                <div class="skp-scope @(active ? "is-active" : "")" @onclick="() => SwitchScope(s.ProductModeId)">
+                    <span class="skp-scope__name">@s.Label</span>
+                    @if (s.HasOwnConfig)
+                    {
+                        <span class="skp-scope__badge skp-scope__badge--own">● Own config@(string.IsNullOrEmpty(s.ProviderKey) ? "" : $" ({s.ProviderKey})")</span>
+                    }
+                    else if (s.ProductModeId == null)
+                    {
+                        <span class="skp-scope__badge skp-scope__badge--inherit">Fallback for all modes</span>
+                    }
+                    else
+                    {
+                        <span class="skp-scope__badge skp-scope__badge--inherit">Inherits product default</span>
+                    }
+                </div>
+            }
+        </div>
+        <div class="form-hint" style="margin-bottom:14px">
+            @if (selectedModeId == null)
+            {
+                <span>Editing the <strong>product default</strong> — used for any mode that doesn't have its own config below, and for products without modes.</span>
+            }
+            else
+            {
+                <span>Editing an <strong>override</strong> for “@(scopes.FirstOrDefault(x => x.ProductModeId == selectedModeId)?.Label)”. When a customer buys this mode, the key is generated with these settings instead of the product default. Remove this config to fall back to the product default.</span>
+            }
+        </div>
+    }
+
+    @* ── Saved-state indicator ── *@
+    @if (existingId.HasValue)
+    {
+        <div class="skp-status skp-status--saved">
+            <span class="skp-status__ico">✓</span>
+            <span><strong>@(selectedModeId == null ? "Product default saved." : "Mode override saved.")</strong> Edit the fields below and click Save to update.</span>
+        </div>
+    }
+    else
+    {
+        <div class="skp-status skp-status--new">
+            <span class="skp-status__ico">ℹ️</span>
+            <span>
+                @if (selectedModeId == null)
+                {
+                    <text><strong>No product-level config yet.</strong> Pick a provider and fill the required fields to start generating keys.</text>
+                }
+                else
+                {
+                    <text><strong>This mode has no override.</strong> It currently inherits the product default. Pick a provider and save to give it its own settings.</text>
+                }
+            </span>
+        </div>
+    }
+
+    @* ── Provider + tenant + product code ── *@
+    <div class="skp-section">
+        <div class="skp-section__title">Provider routing</div>
+        <div class="skp-grid">
+            <div class="form-group">
+                <label class="form-label">Provider</label>
+                <select class="form-select" @bind="model.ProviderKey">
+                    <option value="">— No serial-key generation —</option>
+                    @foreach (var p in providers)
+                    {
+                        <option value="@p.Key">@p.DisplayName</option>
+                    }
+                </select>
+                <div class="form-hint">Pick the vendor that will issue keys for this product.</div>
+            </div>
+
+            @if (model.ProviderKey == "rioplay")
+            {
+                <div class="form-group">
+                    <label class="form-label">RioPlay Tenant</label>
+                    <select class="form-select" @bind="tenantIdStr">
+                        <option value="">— Default tenant —</option>
+                        @if (rioTenants != null)
+                        {
+                            @foreach (var t in rioTenants)
+                            {
+                                <option value="@t.Id">@t.Name @(t.IsDefault ? "(default)" : "")</option>
+                            }
+                        }
+                    </select>
+                    <div class="form-hint">
+                        @if (rioTenants == null || rioTenants.Count == 0)
+                        {
+                            <span style="color:var(--red)">No tenants configured. <a href="/admin/settings/serial-keys">Add one</a>.</span>
+                        }
+                        else
+                        {
+                            <span>Leave blank to use the default tenant.</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Provider Product Code <span style="color:var(--red)">*</span></label>
+                    <input class="form-input @(ProviderCodeInvalid ? "is-invalid" : "")" @bind="model.ProviderProductCode" @bind:event="oninput" placeholder="5813" />
+                    <div class="form-hint">
+                        Rio's numeric product id (sent as <code>Product</code> in the request body). Required for RioPlay.
+                        For multiple keys per purchase, comma-separate ids (e.g. <code>5813,5814</code>).
+                        @if (ProviderCodeInvalid)
+                        {
+                            <span style="display:block; color:var(--red); margin-top:4px">Enter Rio's numeric product id — not the product GUID.</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (model.ProviderKey == "rioplay")
+    {
+
+        @* ── Lifecycle toggles ── *@
+        <div class="skp-section">
+            <div class="skp-section__title">Lifecycle</div>
+            <div class="skp-checks">
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.IsActive" />
+                    <span><strong>Config active</strong> &nbsp;<span style="color:var(--gray-500); font-size:12px">— uncheck to stop generating new keys</span></span>
+                </label>
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.AutoActivate" />
+                    <span><strong>Auto-activate</strong> &nbsp;<span style="color:var(--gray-500); font-size:12px">— create + activate in one call</span></span>
+                </label>
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.IsLiveClassIncluded" />
+                    Live class included
+                </label>
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.IsTrial" />
+                    Trial key
+                </label>
+            </div>
+        </div>
+
+        @* ── Validity ── *@
+        <div class="skp-section">
+            <div class="skp-section__title">Validity</div>
+            <div class="skp-grid">
+                <div class="form-group">
+                    <label class="form-label">EValidity *</label>
+                    <input type="number" class="form-input" @bind="model.EValidity" />
+                    <div class="form-hint">Validity quantity. Combined with type below.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">EValidityType *</label>
+                    <input type="number" class="form-input" @bind="model.EValidityType" />
+                    <div class="form-hint">1 = days · 2 = months · 3 = years · 4 = fixed date</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Valid Till (UTC)</label>
+                    <input type="datetime-local" class="form-input" @bind="model.ValidTill" />
+                    <div class="form-hint">Used only when <code>EValidityType=4</code>.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Update frequency (days)</label>
+                    <input type="number" class="form-input" @bind="model.UpdateFrequencyInDays" />
+                    <div class="form-hint">How often the device should re-validate.</div>
+                </div>
+            </div>
+        </div>
+
+        @* ── Views & watch time ── *@
+        <div class="skp-section">
+            <div class="skp-section__title">Views &amp; watch time</div>
+            <div class="skp-grid">
+                <div class="form-group">
+                    <label class="form-label">EOpens *</label>
+                    <input type="number" class="form-input" @bind="model.EOpens" />
+                    <div class="form-hint">Max opens per content unit.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">EWatchTime *</label>
+                    <input type="number" class="form-input" @bind="model.EWatchTime" />
+                    <div class="form-hint">Watch time quota (in units of EWatchTimeType).</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">EWatchTimeType</label>
+                    <input type="number" class="form-input" @bind="model.EWatchTimeType" />
+                    <div class="form-hint">1 = seconds · 2 = minutes · 3 = hours</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Total allowed duration</label>
+                    <input type="number" class="form-input" @bind="model.TotalAllowedDuration" />
+                    <div class="form-hint">Hard cap across the whole key lifetime.</div>
+                </div>
+            </div>
+        </div>
+
+        @* ── Devices ── *@
+        <div class="skp-section">
+            <div class="skp-section__title">Devices</div>
+            <div class="skp-grid">
+                <div class="form-group">
+                    <label class="form-label">Allowed devices *</label>
+                    <input class="form-input" @bind="model.AllowedDevices" placeholder="1" />
+                    <div class="form-hint">Comma-separated device codes. Default <code>1</code>.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Within device count</label>
+                    <input type="number" class="form-input" @bind="model.WithinDeviceCount" />
+                    <div class="form-hint">Max concurrent devices.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Device locking type</label>
+                    <input type="number" class="form-input" @bind="model.EDeviceLockingType" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Screen resolution limit</label>
+                    <input type="number" class="form-input" @bind="model.EScreenResolution" />
+                </div>
+            </div>
+            <div class="skp-checks" style="margin-top:10px">
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.AllowSecondScreen" />
+                    Allow second screen
+                </label>
+            </div>
+        </div>
+
+        @* ── Device switching ── *@
+        <div class="skp-section">
+            <div class="skp-section__title">Device switching</div>
+            <div class="skp-grid">
+                <div class="form-group">
+                    <label class="form-label">Switching device behaviour</label>
+                    <input type="number" class="form-input" @bind="model.SwitichingDevice" />
+                    <div class="form-hint">Rio's field <code>SwitichingDevice</code> (sic).</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Switch count</label>
+                    <input type="number" class="form-input" @bind="model.SwitchCount" />
+                    <div class="form-hint">Max device switches allowed.</div>
+                </div>
+            </div>
+        </div>
+
+        @* ── Analytics & watermark ── *@
+        <div class="skp-section">
+            <div class="skp-section__title">Analytics &amp; watermark</div>
+            <div class="skp-checks">
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.AnalyticsRequired" />
+                    Analytics required
+                </label>
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.WaterMarkRequired" />
+                    Watermark required
+                </label>
+            </div>
+            <div class="skp-grid" style="margin-top:10px">
+                <div class="form-group">
+                    <label class="form-label">Watermark text code</label>
+                    <input type="number" class="form-input" @bind="model.WaterMarkText" />
+                    <div class="form-hint">Rio's preset code for the watermark string.</div>
+                </div>
+            </div>
+        </div>
+
+        @* ── Advanced ── *@
+        <div class="skp-section">
+            <div class="skp-section__title">Advanced</div>
+            <div class="skp-grid">
+                <div class="form-group">
+                    <label class="form-label">Tenant ID (Int32)</label>
+                    <input type="number" class="form-input" @bind="model.TenantIdInt" />
+                    <div class="form-hint">Rio's internal numeric tenant id (sent in body, distinct from the header).</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Access status</label>
+                    <input type="number" class="form-input" @bind="model.AccessStatus" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Template Serial Key ID</label>
+                    <input type="number" class="form-input" @bind="model.TemplateSerialKeyId" />
+                    <div class="form-hint">Use an existing Rio template instead of full per-field config.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">IsActive (Rio)</label>
+                    <input type="number" class="form-input" @bind="model.IsRioActive" />
+                    <div class="form-hint">Per Rio's API: <code>1</code> = active, <code>0</code> = inactive.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="skp-actions">
+            <span class="skp-actions__hint">
+                @if (existingId.HasValue)
+                {
+                    <span>✓ Config exists — saved keys for past orders are unaffected by edits here.</span>
+                }
+                else
+                {
+                    <span>No config yet — fill in the required fields above and save.</span>
+                }
+            </span>
+            @if (existingId.HasValue)
+            {
+                <button class="btn btn-ghost btn-sm" style="color:var(--red)" disabled="@saving" @onclick="ClearConfig">Remove config</button>
+            }
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save Serial Key Config")</button>
+        </div>
+    }
+    else if (model.ProviderKey == "valence")
+    {
+        @* ── Valence (Edubees) config ── *@
+        @* A saved Valence config with no pack cannot tie a key to a subject, so key generation is
+           blocked for it. Say so here rather than letting it look configured — this is the state that
+           previously produced wrong-subject keys silently. *@
+        @if (existingId.HasValue && model.ValencePackId is not > 0
+             && string.IsNullOrWhiteSpace(model.ValencePackIdsCsv))
+        {
+            <div class="skp-warn">
+                <strong>⚠ Pack Not Configured</strong>
+                <div>
+                    No Valence pack is selected, so serial-key generation for this product is
+                    <strong>blocked</strong> — no key will be issued until a pack is chosen below.
+                    This prevents a key for the wrong subject being sent to a customer.
+                </div>
+            </div>
+        }
+        <div class="skp-section">
+            <div class="skp-section__title">Valence connection</div>
+            <div class="skp-grid">
+                <div class="form-group">
+                    <label class="form-label">Base URL *</label>
+                    <input class="form-input" @bind="model.ValenceBaseUrl" placeholder="https://edubeessecurelms.com/edubeessecurelms" />
+                    <div class="form-hint">Root app URL, no trailing slash. Don't include <code>/index.php</code> — it's added automatically (a trailing <code>/index.php</code> is stripped if present).</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Path segment *</label>
+                    <input class="form-input" @bind="model.ValencePathSegment" placeholder="ajsfkjsfdjsf" />
+                    <div class="form-hint">The obfuscated controller segment (secret).</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="skp-section">
+            <div class="skp-section__title">Pack &amp; registration</div>
+            <div class="skp-grid">
+                <div class="form-group">
+                    <label class="form-label">Pack *</label>
+                    @if (valencePacks == null)
+                    {
+                        <select class="form-select" disabled><option>Loading packs…</option></select>
+                    }
+                    else if (valencePacks.Count == 0)
+                    {
+                        <select class="form-select" disabled><option>No packs synced</option></select>
+                        <div class="form-hint">
+                            <span style="color:var(--red)">No packs cached.</span>
+                            <a href="/admin/settings/serial-keys">Sync packs</a> first, then reload this page.
+                        </div>
+                    }
+                    else
+                    {
+                        <select class="form-select" @bind="model.ValencePackId">
+                            <option value="">— Select a pack —</option>
+                            @foreach (var p in valencePacks)
+                            {
+                                <option value="@p.ExternalId">@p.PackName (#@p.ExternalId)</option>
+                            }
+                        </select>
+                        <div class="form-hint">On save, this product is registered to the pack on Valence (<code>save_product_pack</code>). Refresh the list from <a href="/admin/settings/serial-keys">serial-key settings</a>.</div>
+                    }
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Combo: Pack IDs (comma-separated)</label>
+                    <input class="form-input" @bind="model.ValencePackIdsCsv" placeholder="e.g. 574,575" />
+                    <div class="form-hint">Leave blank for a single-pack product. For a COMBO product, list all pack ids separated by commas — a purchase generates one key per pack (mirrors Rio's comma-separated Product Code).</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Class ID</label>
+                    <input class="form-input" @bind="model.ValenceClassId" placeholder="5702" />
+                    <div class="form-hint">Valence <code>class_id</code> form field.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Key views</label>
+                    <input type="number" class="form-input" @bind="model.ValenceKeyViews" placeholder="2" min="1" />
+                    <div class="form-hint">Valence <code>key_views</code> — defaults to 1.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="skp-section">
+            <div class="skp-section__title">Lifecycle</div>
+            <div class="skp-checks">
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.IsActive" />
+                    <span><strong>Config active</strong> &nbsp;<span style="color:var(--gray-500); font-size:12px">— uncheck to stop generating new keys</span></span>
+                </label>
+            </div>
+        </div>
+
+        <div class="skp-actions">
+            <span class="skp-actions__hint">
+                @if (existingId.HasValue && model.ValencePackId is not > 0
+                     && string.IsNullOrWhiteSpace(model.ValencePackIdsCsv))
+                {
+                    <span style="color:#92400E">⚠ Pack Not Configured — key generation is blocked for this product.</span>
+                }
+                else if (existingId.HasValue)
+                {
+                    <span>✓ Config exists — saved keys for past orders are unaffected by edits here.</span>
+                }
+                else
+                {
+                    <span>Pick a pack and fill the connection fields, then save.</span>
+                }
+            </span>
+            @if (existingId.HasValue)
+            {
+                <button class="btn btn-ghost btn-sm" style="color:var(--red)" disabled="@saving" @onclick="ClearConfig">Remove config</button>
+                @* Repair action for the one failure this integration cannot self-diagnose: the pack
+                   looks correctly set here, but Valence never received the product↔pack mapping, so
+                   key generation keeps failing with "No pack found for this course". Saving now
+                   re-sends it too — this exists so the mapping can be re-sent, and its result seen,
+                   without editing a config that is already correct. *@
+                <button class="btn btn-outline btn-sm" disabled="@(saving || remapping)" @onclick="RemapValence"
+                        title="Re-send this product's pack registration to Valence. Safe to repeat.">
+                    @(remapping ? "Registering…" : "↻ Re-register with Valence")
+                </button>
+            }
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save Serial Key Config")</button>
+        </div>
+    }
+    else if (model.ProviderKey == "superclass")
+    {
+        @* ── Superclass (registration API) config ── *@
+        <div class="skp-section">
+            <div class="skp-section__title">Course mapping</div>
+
+            @* /api/register grants through a course id OR a combo id — never both. Picking the mode
+               first means only the ids that apply are asked for, and the same number is never typed
+               into two fields. The mode is not stored: it is derived from whichever ids are saved. *@
+            <div class="form-group" style="margin-bottom:14px">
+                <label class="form-label">Mapping type <span style="color:var(--red)">*</span></label>
+                <div style="display:flex;gap:18px;flex-wrap:wrap;padding:6px 0">
+                    @foreach (var opt in SuperclassModes)
+                    {
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px">
+                            <input type="radio" name="scMappingMode"
+                                   checked="@(ScMode == opt.Mode)"
+                                   @onchange="() => SetSuperclassMode(opt.Mode)" />
+                            <span>@opt.Label</span>
+                        </label>
+                    }
+                </div>
+                <div class="form-hint">@SuperclassModeHint</div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(model.SuperclassMappingWarning))
+            {
+                <div class="inline-alert inline-alert--err" style="margin-bottom:12px">@model.SuperclassMappingWarning</div>
+            }
+
+            <div class="skp-grid">
+                @if (ScMode == SuperclassMappingMode.SingleCourse)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Course ID <span style="color:var(--red)">*</span></label>
+                        <input type="number" class="form-input" @bind="model.SuperclassCourseId" placeholder="2403" />
+                        <div class="form-hint">Enter the Superclass course ID (sent as <code>course_id</code>).</div>
+                    </div>
+                }
+                else if (ScMode == SuperclassMappingMode.MultipleCourses)
+                {
+                    @* Text input, not number: a number input physically cannot hold "2722, 2723". *@
+                    <div class="form-group">
+                        <label class="form-label">Course IDs <span style="color:var(--red)">*</span></label>
+                        <input class="form-input" @bind="model.SuperclassCourseIdsCsv" placeholder="e.g. 2722, 2723" />
+                        <div class="form-hint">Enter multiple Superclass course IDs separated by commas. One registration will be created for each course.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="form-group">
+                        <label class="form-label">Combo ID <span style="color:var(--red)">*</span></label>
+                        <input type="number" class="form-input" @bind="model.SuperclassComboId" placeholder="464" />
+                        <div class="form-hint">Enter the Superclass combo package ID (sent as <code>combo_id</code>). Course ID is not required for a combo.</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Multiple Combo IDs <span class="skp-optional">(optional)</span></label>
+                        <input class="form-input" @bind="model.SuperclassComboIdsCsv" placeholder="e.g. 464, 465" />
+                        <div class="form-hint">For a product granting several combo packages — one registration per id. Leave blank to use the single Combo ID above.</div>
+                    </div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Class ID override</label>
+                    <input type="number" class="form-input" @bind="model.SuperclassClassIdOverride" placeholder="(uses global default)" />
+                    <div class="form-hint">Optional — overrides the global Class ID (default 318) set in <a href="/admin/settings/superclass">Superclass settings</a>.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Purchase option</label>
+                    <input class="form-input" @bind="model.SuperclassPurchaseOption" placeholder="e.g. Annual" />
+                    <div class="form-hint">Optional plan/label kept for mapping &amp; audit.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="skp-section">
+            <div class="skp-section__title">Access &amp; validity</div>
+            <div class="skp-grid">
+                <div class="form-group">
+                    <label class="form-label">View type <span style="color:var(--red)">*</span></label>
+                    <select class="form-select" @bind="model.SuperclassViewType">
+                        <option value="1">View based (count of views)</option>
+                        <option value="2">Time based (minutes)</option>
+                    </select>
+                    <div class="form-hint">Superclass <code>view_type</code>.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Value <span style="color:var(--red)">*</span></label>
+                    <input type="number" class="form-input" @bind="model.SuperclassValue" min="1" />
+                    <div class="form-hint">Number of allowed views (view based) or minutes (time based).</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Validity type <span style="color:var(--red)">*</span></label>
+                    <select class="form-select" @bind="model.SuperclassValidityType">
+                        <option value="1">Days</option>
+                        <option value="2">Fixed expiry date</option>
+                    </select>
+                    <div class="form-hint">Superclass <code>validity_type</code>.</div>
+                </div>
+                @if (model.SuperclassValidityType != 2)
+                {
+                    <div class="form-group">
+                        <label class="form-label">Validity days <span style="color:var(--red)">*</span></label>
+                        <input type="number" class="form-input" @bind="model.SuperclassValidityDays" min="1" placeholder="365" />
+                        <div class="form-hint">Days of access from activation.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="form-group">
+                        <label class="form-label">Expiry date <span style="color:var(--red)">*</span></label>
+                        <input type="date" class="form-input" @bind="model.SuperclassExpiryDate" />
+                        <div class="form-hint">Fixed access expiry (sent as <code>yyyy-MM-dd</code>).</div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="skp-section">
+            <div class="skp-section__title">Lifecycle</div>
+            <div class="skp-checks">
+                <label class="skp-chk">
+                    <input type="checkbox" @bind="model.IsActive" />
+                    <span><strong>Config active</strong> &nbsp;<span style="color:var(--gray-500); font-size:12px">— uncheck to stop provisioning new orders</span></span>
+                </label>
+            </div>
+            <div class="form-hint" style="margin-top:8px">Global API credentials (Base URL, API key, environment, retry) live in <a href="/admin/settings/superclass">Superclass settings</a>. On a paid order this product's buyer is registered/looked-up on Superclass and the course is assigned automatically.</div>
+        </div>
+
+        <div class="skp-actions">
+            <span class="skp-actions__hint">
+                @if (existingId.HasValue)
+                {
+                    <span>✓ Config exists — access provisioned for past orders is unaffected by edits here.</span>
+                }
+                else
+                {
+                    <span>Fill in the course + validity fields, then save.</span>
+                }
+            </span>
+            @if (existingId.HasValue)
+            {
+                <button class="btn btn-ghost btn-sm" style="color:var(--red)" disabled="@saving" @onclick="ClearConfig">Remove config</button>
+            }
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save Serial Key Config")</button>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(model.ProviderKey))
+    {
+        <div class="skp-empty">
+            <strong>@(providers.FirstOrDefault(p => p.Key == model.ProviderKey)?.DisplayName ?? model.ProviderKey)</strong>
+            doesn't have a config editor yet. Pick RioPlay above, or wait for the provider's UI to land.
+        </div>
+        <div class="skp-actions">
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save")</button>
+        </div>
+    }
+    else
+    {
+        <div class="skp-empty">
+            Pick a provider above to start generating serial keys for this product on every paid order.
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid ProductId { get; set; }
+
+    /// <summary>Lecture-mode list passed in by ProductEdit.razor — drives the mode-filter checkboxes.
+    /// When null/empty (product has no modes configured) the mode filter section is hidden and keys
+    /// generate for every paid order item that matches this product.</summary>
+    [Parameter] public List<ProductModeEdit>? AvailableModes { get; set; }
+
+    private ProductSerialKeyConfigItem? model;
+    private List<ProviderInfo>? providers;
+    private List<RioPlayTenantItem>? rioTenants;
+    private List<ValencePackItem>? valencePacks;
+    private List<SerialKeyConfigScope>? scopes;
+
+    /// <summary>Which scope is being edited: null = product-level default, else a specific ProductMode.</summary>
+    private Guid? selectedModeId;
+
+    private bool loading = true;
+    private bool saving;
+    private Guid? existingId;
+    private string tenantIdStr = "";
+    private string? loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ProductId == Guid.Empty) { loading = false; return; }
+
+        try
+        {
+            providers = await Svc.ListProvidersAsync();
+            rioTenants = await TenantSvc.ListAsync();
+            valencePacks = await ValenceSvc.ListAsync(activeOnly: true);
+            scopes = await Svc.ListConfigScopesAsync(ProductId);
+            await LoadScopeAsync(null);   // start on the product-level default
+        }
+        catch (Exception ex)
+        {
+            // Surface the failure in-panel rather than tearing down the whole Blazor circuit.
+            loadError = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    /// <summary>Loads the config for the given scope into the editor.</summary>
+    private async Task LoadScopeAsync(Guid? modeId)
+    {
+        selectedModeId = modeId;
+        model = await Svc.GetProductConfigAsync(ProductId, modeId);
+        existingId = model.Id;
+        tenantIdStr = model.TenantId?.ToString() ?? "";
+    }
+
+    private async Task SwitchScope(Guid? modeId)
+    {
+        if (saving || modeId == selectedModeId) return;
+        await LoadScopeAsync(modeId);
+    }
+
+    /// <summary>True when the RioPlay Provider Product Code is missing or not a numeric id (or CSV of
+    /// numeric ids). Drives the inline validation cue. Only meaningful when the provider is RioPlay.</summary>
+    // ── Superclass mapping type ─────────────────────────────────────────────────────────────────
+    // The three shapes /api/register supports. A product is granted through a course id or through a
+    // combo package id, never both, so exactly one branch of id fields is ever shown.
+
+    private static readonly (SuperclassMappingMode Mode, string Label)[] SuperclassModes =
+    {
+        (SuperclassMappingMode.SingleCourse,    "Single Course"),
+        (SuperclassMappingMode.MultipleCourses, "Multiple Courses"),
+        (SuperclassMappingMode.ComboPackages,   "Combo Package(s)"),
+    };
+
+    /// <summary>The mode in force for rendering. A brand-new config has none yet, and a single
+    /// course is the ordinary case, so that is what the editor opens on.</summary>
+    private SuperclassMappingMode ScMode => model?.SuperclassMappingMode ?? SuperclassMappingMode.SingleCourse;
+
+    private string SuperclassModeHint => model?.SuperclassMappingMode switch
+    {
+        SuperclassMappingMode.MultipleCourses => "One registration is sent per course id. Combo ID is not used.",
+        SuperclassMappingMode.ComboPackages   => "Sent as combo_id, with an empty course_id. Course ID is not required for a combo.",
+        _                                     => "One registration, sent as course_id with an empty combo_id.",
+    };
+
+    /// <summary>Switches mode without discarding anything the admin already typed — the ids for the
+    /// other modes stay in the model and reappear if they switch back. The server keeps only the ids
+    /// belonging to the mode that is actually saved.</summary>
+    private void SetSuperclassMode(SuperclassMappingMode mode)
+    {
+        if (model != null) model.SuperclassMappingMode = mode;
+    }
+
+    private bool ProviderCodeInvalid
+    {
+        get
+        {
+            if (model == null || model.ProviderKey != "rioplay") return false;
+            var raw = model.ProviderProductCode?.Trim();
+            if (string.IsNullOrWhiteSpace(raw)) return true;
+            var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return parts.Length == 0 || !parts.All(p => int.TryParse(p, out var n) && n > 0);
+        }
+    }
+
+    private async Task Save()
+    {
+        if (model == null) return;
+        model.ProductId = ProductId;
+        model.ProductModeId = selectedModeId;   // scope the save to the selected mode (or product-level)
+        model.TenantId = Guid.TryParse(tenantIdStr, out var g) ? g : null;
+
+        // Empty provider = treat as "remove config" — keeps the UI consistent with the dropdown.
+        if (string.IsNullOrWhiteSpace(model.ProviderKey))
+        {
+            await ClearConfig();
+            return;
+        }
+
+        // Client-side guard: RioPlay needs a numeric Rio product id — block early with a clear message
+        // rather than round-tripping to the server (which also validates).
+        if (model.ProviderKey == "rioplay" && ProviderCodeInvalid)
+        {
+            Toast.Error("Provider Product Code is required for RioPlay and must be Rio's numeric product id (e.g. 5813) — not the product GUID.");
+            return;
+        }
+
+        // Superclass: only the ids belonging to the CHOSEN mapping type are required. A combo is
+        // never asked for a course id, and a single course is never asked for a combo id.
+        if (model.ProviderKey == "superclass")
+        {
+            switch (ScMode)
+            {
+                case SuperclassMappingMode.ComboPackages
+                    when model.SuperclassComboId is not > 0 && string.IsNullOrWhiteSpace(model.SuperclassComboIdsCsv):
+                    Toast.Error("Combo ID is required — enter the Superclass combo package id (e.g. 464), or list several in Multiple Combo IDs.");
+                    return;
+
+                case SuperclassMappingMode.MultipleCourses
+                    when string.IsNullOrWhiteSpace(model.SuperclassCourseIdsCsv):
+                    Toast.Error("Course IDs are required — list the Superclass course ids separated by commas (e.g. 2722, 2723).");
+                    return;
+
+                case SuperclassMappingMode.SingleCourse when model.SuperclassCourseId is not > 0:
+                    Toast.Error("Course ID is required for Superclass — enter the numeric course id (e.g. 2403).");
+                    return;
+            }
+
+            // Send the mode the radios are actually showing. Without this a config the admin never
+            // re-clicked would save with a null mode and be re-inferred server-side, so what came
+            // back after a reload could differ from what was on screen when they pressed Save.
+            model.SuperclassMappingMode = ScMode;
+        }
+
+        saving = true;
+        try
+        {
+            var (ok, err) = await Svc.SaveProductConfigAsync(model, null);
+            if (!ok) { Toast.Error(err ?? "Save failed."); return; }
+            Toast.Success(selectedModeId == null ? "Product default saved." : "Mode override saved.");
+
+            // Refresh scope badges + reload the current scope to confirm the round-trip.
+            scopes = await Svc.ListConfigScopesAsync(ProductId);
+            await LoadScopeAsync(selectedModeId);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"Save failed: {ex.Message}");
+        }
+        finally { saving = false; }
+    }
+
+    private bool remapping;
+
+    /// <summary>
+    /// Re-sends the product↔pack registration to Valence for the scope currently being edited.
+    /// Idempotent on Valence's side, so it is safe to press repeatedly — and the outcome is reported
+    /// either way, which is the point: a missing mapping is otherwise invisible until an order fails.
+    /// </summary>
+    private async Task RemapValence()
+    {
+        remapping = true;
+        try
+        {
+            var (ok, err) = await Svc.RemapValencePackAsync(ProductId, selectedModeId);
+            if (ok) Toast.Success("All packs registered with Valence. Retry the failed serial keys for this product.");
+            else Toast.Error(err ?? "Valence rejected the registration.");
+        }
+        catch (Exception ex)
+        {
+            // Network/provider trouble must not take the product page down with it.
+            Toast.Error($"Could not reach Valence: {ex.Message}");
+        }
+        finally { remapping = false; }
+    }
+
+    private async Task ClearConfig()
+    {
+        saving = true;
+        try
+        {
+            await Svc.ClearProductConfigAsync(ProductId, null, selectedModeId);
+            Toast.Success(selectedModeId == null
+                ? "Product default config removed."
+                : "Mode override removed — this mode now inherits the product default.");
+            scopes = await Svc.ListConfigScopesAsync(ProductId);
+            await LoadScopeAsync(selectedModeId);
+        }
+        finally { saving = false; }
+    }
+}

@@ -1,0 +1,56 @@
+@inject IPermissionService Perms
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+
+@*
+    Per-page permission guard. Wrap any admin-page content with:
+        <PermissionGate Permission="sales.orders.view">
+            ... actual page content ...
+        </PermissionGate>
+
+    Behaviour:
+      - Legacy staff (super_admin / admin / operations / faculty / franchise_admin) → renders directly.
+      - backend_user-only customer with the permission → renders.
+      - Anyone else → 🔒 Access Restricted panel, no leaked content.
+
+    The check runs in OnInitializedAsync, so a direct-URL access (e.g. typing /admin/orders
+    when the user wasn't granted Orders) shows the restricted panel instead of the actual page.
+*@
+
+@if (_state == GateState.Checking)
+{
+    <div style="padding:48px;text-align:center;color:var(--gray-400);font-size:14px">Checking access…</div>
+}
+else if (_state == GateState.Allowed)
+{
+    @ChildContent
+}
+else
+{
+    <div style="min-height:50vh;display:flex;align-items:center;justify-content:center;padding:24px">
+        <div style="max-width:460px;width:100%;background:#fff;border-radius:20px;padding:36px 28px;text-align:center;box-shadow:0 24px 60px -28px rgba(15,23,42,.45);border:1px solid var(--gray-200);animation:gate-in .35s ease-out both">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#FEE2E2,#FECACA);color:#DC2626;font-size:30px;margin-bottom:14px;box-shadow:0 12px 28px -16px rgba(220,38,38,.4)">🔒</span>
+            <h2 style="font-size:21px;font-weight:800;color:var(--navy);margin:0 0 8px">Access Restricted</h2>
+            <p style="color:var(--gray-600);font-size:14px;line-height:1.55;margin:0 0 4px">You do not have permission to access this module.</p>
+            <p style="color:var(--gray-400);font-size:12.5px;margin:6px 0 0">Please contact your Super Admin if you believe this is a mistake.</p>
+            <a href="/admin/dashboard" class="btn btn-primary" style="margin-top:20px;font-weight:800;padding:11px 22px;border-radius:12px">Go to Dashboard</a>
+        </div>
+    </div>
+    <style>@@keyframes gate-in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}</style>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Permission { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private enum GateState { Checking, Allowed, Denied }
+    private GateState _state = GateState.Checking;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var idStr = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(idStr, out var uid)) { _state = GateState.Denied; return; }
+        _state = await Perms.CanAccessAsync(uid, Permission) ? GateState.Allowed : GateState.Denied;
+    }
+}

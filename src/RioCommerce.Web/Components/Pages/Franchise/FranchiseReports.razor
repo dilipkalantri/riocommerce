@@ -1,0 +1,52 @@
+@page "/franchise/reports"
+@attribute [Authorize(Roles = "franchise_admin")]
+<PageTitle>Reports — Franchise Portal</PageTitle>
+<SeoHead Seo="@(new SeoMetadata { Title = "Reports — Franchise Portal" })" />
+
+<div class="container account-page">
+    <h1 class="account-page__title">Franchise Portal</h1>
+    <FranchiseNav />
+
+    <div class="form-card" style="margin-bottom:20px">
+        <div class="form-card__title">Date Range</div>
+        <div class="form-grid">
+            <div class="form-group"><label class="form-label">From</label><input type="date" class="form-input" @bind="from" /></div>
+            <div class="form-group"><label class="form-label">To</label><input type="date" class="form-input" @bind="to" /></div>
+        </div>
+        <div class="form-hint">All downloads are scoped to your franchise.</div>
+    </div>
+
+    <div class="account-grid">
+        @foreach (var r in Reports)
+        {
+            <div class="form-card">
+                <div class="form-card__title">@r.Title</div>
+                <p style="font-size:13px;color:var(--gray-600);margin-bottom:14px">@r.Description</p>
+                <div class="form-actions">
+                    <a class="btn btn-primary btn-sm" target="_blank" href="@Url(r.Type, "xlsx")">⬇ Excel</a>
+                    <a class="btn btn-outline btn-sm" target="_blank" href="@Url(r.Type, "pdf")">⬇ PDF</a>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private record ReportDef(string Type, string Title, string Description);
+    private static readonly List<ReportDef> Reports = new()
+    {
+        new("orders",     "Orders",        "Every order you placed in the date range."),
+        new("commission", "Commission",    "Commission earned per order item."),
+        new("wallet",     "Wallet",        "All credits and debits — top-ups, orders, refunds."),
+        new("customers",  "Customers",     "Distinct customers you've served with totals."),
+        new("b2b",        "GST — B2B",     "Your registered (GSTIN) buyers, with CGST / SGST / IGST."),
+        new("b2c",        "GST — B2C",     "Your unregistered buyers, with CGST / SGST / IGST."),
+        new("gst",        "Tax / GST",     "B2B and B2C together with GST collected."),
+    };
+
+    private DateTime? from = DateTime.UtcNow.AddMonths(-1).Date;
+    private DateTime? to = DateTime.UtcNow.Date;
+
+    private string Url(string type, string fmt)
+        => $"/api/franchise/reports/{type}.{fmt}?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+}

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- The dispatch tests exercise OperationsService/CheckoutService end to end, so they need a
+         real DbContext and stand-ins for the collaborators those services take. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.8" />
+    <PackageReference Include="Moq" Version="4.20.72" />
+    <!-- The product-export tests open the produced workbook and read real cells. -->
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RioCommerce.Core\RioCommerce.Core.csproj" />
+    <ProjectReference Include="..\RioCommerce.Infrastructure\RioCommerce.Infrastructure.csproj" />
+    <!-- For plain web-layer services such as AdminScreenState. Components themselves are not
+         rendered here — there is no bUnit — only the logic behind them. -->
+    <ProjectReference Include="..\RioCommerce.Web\RioCommerce.Web.csproj" />
+  </ItemGroup>
+
+</Project>
