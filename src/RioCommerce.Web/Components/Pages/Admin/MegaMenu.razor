@@ -132,7 +132,7 @@
                     @if (open == "link")
                     {
                         <div class="mm-acc__body">
-                            <input class="form-input" placeholder="Label (e.g. CA Foundation)" @bind="customTitle" style="margin-bottom:8px" />
+                            <input class="form-input" placeholder="Label (e.g. Beginner)" @bind="customTitle" style="margin-bottom:8px" />
                             <input class="form-input" placeholder="URL (e.g. /courses/ca-foundation or https://…)" @bind="customUrl" />
                             <button class="btn btn-primary btn-sm mm-add" disabled="@busy" @onclick="AddCustom">Add to menu →</button>
                         </div>
@@ -240,7 +240,7 @@
         {
             _jsInit = true;
             _ref = DotNetObjectReference.Create(this);
-            try { await JS.InvokeVoidAsync("hjc.menuTree.init", treeRoot, _ref); } catch { }
+            try { await JS.InvokeVoidAsync("rc.menuTree.init", treeRoot, _ref); } catch { }
         }
     }
 
@@ -482,7 +482,7 @@
     {
         if (_ref != null)
         {
-            try { JS.InvokeVoidAsync("hjc.menuTree.dispose", treeRoot); } catch { }
+            try { JS.InvokeVoidAsync("rc.menuTree.dispose", treeRoot); } catch { }
             _ref.Dispose();
         }
     }

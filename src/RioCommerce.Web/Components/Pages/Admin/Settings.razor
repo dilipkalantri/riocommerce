@@ -101,6 +101,52 @@ else
             <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="model.FomoEnabled" /> Enable FOMO popups</label></div>
         </div>
     </div>
+    <div class="account-grid" style="margin-top:14px">
+        <div class="form-card">
+            <div class="form-card__title">Theme</div>
+            <div class="form-hint" style="margin-bottom:10px">Override the storefront colour scheme and font. Leave empty to use the defaults from <code>theme.css</code>.</div>
+            <div class="form-group">
+                <label class="form-label">Primary Colour</label>
+                <div style="display:flex;align-items:center;gap:10px">
+                    <input type="color" @bind="model.ThemePrimaryColor" style="width:42px;height:34px;padding:2px;border:1px solid var(--gray-300);border-radius:6px;cursor:pointer" />
+                    <input class="form-input" style="max-width:140px" @bind="model.ThemePrimaryColor" placeholder="#0B45AB" />
+                    @if (!string.IsNullOrWhiteSpace(model.ThemePrimaryColor)) { <button type="button" class="btn btn-ghost btn-sm" @onclick="() => model.ThemePrimaryColor = null">Clear</button> }
+                </div>
+                <div class="form-hint">Headers, buttons, footer background, links.</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Accent Colour</label>
+                <div style="display:flex;align-items:center;gap:10px">
+                    <input type="color" @bind="model.ThemeAccentColor" style="width:42px;height:34px;padding:2px;border:1px solid var(--gray-300);border-radius:6px;cursor:pointer" />
+                    <input class="form-input" style="max-width:140px" @bind="model.ThemeAccentColor" placeholder="#0AC7E5" />
+                    @if (!string.IsNullOrWhiteSpace(model.ThemeAccentColor)) { <button type="button" class="btn btn-ghost btn-sm" @onclick="() => model.ThemeAccentColor = null">Clear</button> }
+                </div>
+                <div class="form-hint">Focus rings, hover accents, chips.</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Font Family</label>
+                <select class="form-input" style="max-width:260px" @bind="fontBind">
+                    <option value="">Default (Jost)</option>
+                    <option value="&quot;Inter&quot;, sans-serif">Inter</option>
+                    <option value="&quot;Poppins&quot;, sans-serif">Poppins</option>
+                    <option value="&quot;Nunito&quot;, sans-serif">Nunito</option>
+                    <option value="&quot;Roboto&quot;, sans-serif">Roboto</option>
+                    <option value="&quot;Open Sans&quot;, sans-serif">Open Sans</option>
+                    <option value="&quot;Lato&quot;, sans-serif">Lato</option>
+                    <option value="&quot;Montserrat&quot;, sans-serif">Montserrat</option>
+                </select>
+                <div class="form-hint">Applies to the public storefront. The Google Font must be added to App.razor if not already loaded.</div>
+            </div>
+        </div>
+    </div>
+    <div class="account-grid" style="margin-top:14px">
+        <div class="form-card">
+            <div class="form-card__title">Feature Modules</div>
+            <div class="form-hint" style="margin-bottom:10px">Toggle optional platform features on or off. Disabled features hide their menu items, pages, and admin sections.</div>
+            <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="model.FranchiseEnabled" /> Enable Franchise Module</label><div class="form-hint">Franchise management, franchise portal, franchise orders, commission tracking.</div></div>
+            <div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" @bind="model.SerialKeysEnabled" /> Enable Serial Key Integration</label><div class="form-hint">RioPlay, Valence, and Superclass serial key generation for digital products.</div></div>
+        </div>
+    </div>
     <div class="form-actions" style="margin-top:4px">
         <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save Settings")</button>
     </div>
@@ -113,6 +159,12 @@ else
     // Logo upload state
     private bool logoUploading, logoOk;
     private string? logoMsg;
+
+    private string fontBind
+    {
+        get => model?.ThemeFontFamily ?? "";
+        set { if (model != null) model.ThemeFontFamily = string.IsNullOrWhiteSpace(value) ? null : value; }
+    }
 
     protected override async Task OnInitializedAsync() => model = await Svc.GetAsync();
 

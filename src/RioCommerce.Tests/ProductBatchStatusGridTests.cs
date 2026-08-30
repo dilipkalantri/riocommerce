@@ -35,7 +35,7 @@ public class ProductBatchStatusGridTests
     {
         Id = Guid.NewGuid(), Title = title, Slug = $"p-{Guid.NewGuid():N}",
         BatchStatus = batch, DisplayOrder = order,
-        Level = CourseLevel.CaIntermediate, SellingPrice = 5000m, Status = ProductStatus.Active
+        Level = CourseLevel.Intermediate, SellingPrice = 5000m, Status = ProductStatus.Active
     };
 
     /// <summary>One product per state, so a projection that ignores the column cannot pass.</summary>
@@ -126,14 +126,14 @@ public class ProductBatchStatusGridTests
         using var db = NewDb();
         await SeedAsync(db);
         var extra = P("Foundation Ongoing", BatchStatus.Ongoing, 6);
-        extra.Level = CourseLevel.CaFoundation;
+        extra.Level = CourseLevel.Beginner;
         db.Products.Add(extra);
         await db.SaveChangesAsync();
 
         var svc = Products(db);
         var both = await svc.ListAsync(new ProductFilterRequest
         {
-            BatchStatus = BatchStatus.Ongoing, Level = CourseLevel.CaFoundation, Page = 1, PageSize = 50
+            BatchStatus = BatchStatus.Ongoing, Level = CourseLevel.Beginner, Page = 1, PageSize = 50
         });
 
         Assert.Single(both.Items);

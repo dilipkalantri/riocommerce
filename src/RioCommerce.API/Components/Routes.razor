@@ -1,5 +1,7 @@
-@* All routable pages live in the RioCommerce.Web RCL — scan that assembly for @page routes. *@
-<Router AppAssembly="typeof(MainLayout).Assembly">
+@* Admin/Auth/Franchise pages live in RioCommerce.Web; public storefront pages live in
+   RioCommerce.Web.Storefront. Both assemblies are scanned for @page routes. *@
+<Router AppAssembly="typeof(MainLayout).Assembly"
+        AdditionalAssemblies="new[] { typeof(RioCommerce.Web.Storefront.Components.Pages.Public.Home).Assembly }">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
             <NotAuthorized>

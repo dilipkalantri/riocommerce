@@ -31,7 +31,7 @@ public record CustomerSuggestion(
     string? Email,
     string? Phone,
     string? PrimaryRole,             // friendly display name of the most prominent active role
-    string? CourseInterest,          // CA Foundation / CA Intermediate / null
+    string? CourseInterest,          // Beginner / Intermediate / null
     int CourseCount,                 // # of enrolments (drives the "Active Student" copy)
     bool IsActive,
     DateTime JoinedDate);

@@ -33,4 +33,13 @@ public class SiteSettings
     // ── Widgets ──
     public string? AnnouncementText { get; set; }
     public bool FomoEnabled { get; set; } = true;
+
+    // ── Feature Flags ──
+    public bool FranchiseEnabled { get; set; } = true;
+    public bool SerialKeysEnabled { get; set; } = true;
+
+    // ── Theme ──
+    public string? ThemePrimaryColor { get; set; }
+    public string? ThemeAccentColor { get; set; }
+    public string? ThemeFontFamily { get; set; }
 }

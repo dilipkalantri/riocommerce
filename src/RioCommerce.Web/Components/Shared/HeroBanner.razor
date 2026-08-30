@@ -28,8 +28,8 @@
     @* Wrapper matches the site content container (max-width 1280px) so the
        carousel lines up with the page grid; its horizontal padding is the gutter
        the desktop arrows overlap into. *@
-    <div class="hjc-banner-wrap">
-        <section class="hjc-banner @(single ? "hjc-banner--single" : "")"
+    <div class="rc-banner-wrap">
+        <section class="rc-banner @(single ? "rc-banner--single" : "")"
                  data-autoplay="@((view.Autoplay && !single).ToString().ToLower())"
                  data-interval="@view.AutoplayIntervalMs"
                  data-pause-hover="@view.PauseOnHover.ToString().ToLower()"
@@ -37,8 +37,8 @@
 
             @* The viewport clips the track horizontally; vertical padding + matching
                negative margin keep the active card's shadow from being cut off. *@
-            <div class="hjc-banner__viewport">
-                <div class="hjc-banner__track" role="list">
+            <div class="rc-banner__viewport">
+                <div class="rc-banner__track" role="list">
                     @if (!single)
                     {
                         @SlideCell(slides[^1], null, false, true)
@@ -56,20 +56,20 @@
 
             @if (view.ShowArrows && !single)
             {
-                <button type="button" class="hjc-banner__arrow hjc-banner__arrow--prev" data-dir="prev" aria-label="Previous banner">
+                <button type="button" class="rc-banner__arrow rc-banner__arrow--prev" data-dir="prev" aria-label="Previous banner">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
-                <button type="button" class="hjc-banner__arrow hjc-banner__arrow--next" data-dir="next" aria-label="Next banner">
+                <button type="button" class="rc-banner__arrow rc-banner__arrow--next" data-dir="next" aria-label="Next banner">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
                 </button>
             }
 
             @if (view.ShowDots && !single)
             {
-                <div class="hjc-banner__dots" role="tablist" aria-label="Choose banner">
+                <div class="rc-banner__dots" role="tablist" aria-label="Choose banner">
                     @for (var i = 0; i < slides.Count; i++)
                     {
-                        <button type="button" class="hjc-banner__dot @(i == 0 ? "is-active" : "")"
+                        <button type="button" class="rc-banner__dot @(i == 0 ? "is-active" : "")"
                                 data-go="@i" role="tab" aria-label="@($"Go to banner {i + 1}")"></button>
                     }
                 </div>
@@ -117,7 +117,7 @@
     // from assistive tech and never lazy-eager, and marked so the JS can count the
     // real slides (cells - 2).
     private RenderFragment SlideCell(BannerSlide s, string? label, bool eager, bool clone) => @<div
-        class="hjc-banner__slide @(eager ? "is-active" : "") @(clone ? "hjc-banner__slide--clone" : "")"
+        class="rc-banner__slide @(eager ? "is-active" : "") @(clone ? "rc-banner__slide--clone" : "")"
         role="@(clone ? null : "listitem")"
         aria-hidden="@(clone ? "true" : null)"
         aria-label="@label"
@@ -128,7 +128,7 @@
         }
         @if (hasLink)
         {
-            <a class="hjc-banner__link" href="@s.LinkUrl" aria-label="@(s.Title ?? "Open banner")" tabindex="@(clone ? "-1" : null)">
+            <a class="rc-banner__link" href="@s.LinkUrl" aria-label="@(s.Title ?? "Open banner")" tabindex="@(clone ? "-1" : null)">
                 @SlidePicture(s, eager)
                 @SlideOverlay(s)
             </a>
@@ -144,7 +144,7 @@
         @* Mobile artwork below 768px, desktop above. The <img> is the desktop source. *@
         <source media="(max-width: 767.98px)" srcset="@s.MobileImageUrl" />
         <source media="(min-width: 768px)" srcset="@s.DesktopImageUrl" />
-        <img class="hjc-banner__img" src="@s.DesktopImageUrl"
+        <img class="rc-banner__img" src="@s.DesktopImageUrl"
              alt="@(s.Title ?? "Banner")"
              loading="@(eager ? "eager" : "lazy")"
              fetchpriority="@(eager ? "high" : "low")"
@@ -154,13 +154,13 @@
     private RenderFragment SlideOverlay(BannerSlide s) => @<text>
         @if (!string.IsNullOrWhiteSpace(s.Title) || !string.IsNullOrWhiteSpace(s.Description) || !string.IsNullOrWhiteSpace(s.ButtonText))
         {
-            <div class="hjc-banner__overlay">
-                <div class="hjc-banner__content">
-                    @if (!string.IsNullOrWhiteSpace(s.Title)) { <h2 class="hjc-banner__title">@s.Title</h2> }
-                    @if (!string.IsNullOrWhiteSpace(s.Description)) { <p class="hjc-banner__desc">@s.Description</p> }
+            <div class="rc-banner__overlay">
+                <div class="rc-banner__content">
+                    @if (!string.IsNullOrWhiteSpace(s.Title)) { <h2 class="rc-banner__title">@s.Title</h2> }
+                    @if (!string.IsNullOrWhiteSpace(s.Description)) { <p class="rc-banner__desc">@s.Description</p> }
                     @if (!string.IsNullOrWhiteSpace(s.ButtonText))
                     {
-                        <span class="hjc-banner__btn">@s.ButtonText</span>
+                        <span class="rc-banner__btn">@s.ButtonText</span>
                     }
                 </div>
             </div>

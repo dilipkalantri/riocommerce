@@ -46,7 +46,7 @@ public class ProductExportTests
             new Product
             {
                 Id = f.CoTaught, Title = "CA Inter Audit & FMSM COMBO", Slug = "combo",
-                Sku = "0012345", Level = CourseLevel.CaIntermediate, CourseType = CourseType.Combo,
+                Sku = "0012345", Level = CourseLevel.Intermediate, CourseType = CourseType.Combo,
                 SubjectId = f.Subject, CategoryId = f.Category, PrimaryFacultyId = f.Harshad,
                 Mrp = 15500m, SellingPrice = 14500m, GstRate = 18m, Status = ProductStatus.Active,
                 BatchStatus = BatchStatus.Upcoming, TotalLectures = "120 Lectures", Language = "Hinglish",
@@ -55,8 +55,8 @@ public class ProductExportTests
             },
             new Product
             {
-                Id = f.Solo, Title = "CA Final SCMPE", Slug = "final-scmpe",
-                Level = CourseLevel.CaFinal, SellingPrice = 9000m,
+                Id = f.Solo, Title = "Advanced SCMPE", Slug = "final-scmpe",
+                Level = CourseLevel.Advanced, SellingPrice = 9000m,
                 Status = ProductStatus.Draft, DisplayOrder = 2,
             });
 
@@ -139,7 +139,7 @@ public class ProductExportTests
         var ws = Sheet(await Svc(db).ExportExcelAsync(new ProductFilterRequest()));
         var r = RowOf(ws, "CA Inter Audit & FMSM COMBO");
 
-        Assert.Equal("CA Intermediate", Cell(ws, r, "Level"));
+        Assert.Equal("Intermediate", Cell(ws, r, "Level"));
         Assert.Equal("Combo", Cell(ws, r, "Course Type"));
         Assert.Equal("CA Inter", Cell(ws, r, "Category"));
         Assert.Equal("Audit", Cell(ws, r, "Subject"));
@@ -197,14 +197,14 @@ public class ProductExportTests
     }
 
     [Fact]
-    public async Task CaFinalExportsWithItsProperLabel()
+    public async Task AdvancedExportsWithItsProperLabel()
     {
         using var db = NewDb();
         await SeedAsync(db);
 
         var ws = Sheet(await Svc(db).ExportExcelAsync(new ProductFilterRequest()));
 
-        Assert.Equal("CA Final", Cell(ws, RowOf(ws, "CA Final SCMPE"), "Level"));
+        Assert.Equal("Advanced", Cell(ws, RowOf(ws, "Advanced SCMPE"), "Level"));
     }
 
     // ── It matches the grid ─────────────────────────────────────────────────────────────────────
@@ -215,14 +215,14 @@ public class ProductExportTests
         using var db = NewDb();
         await SeedAsync(db);
         var svc = Svc(db);
-        var filter = new ProductFilterRequest { Level = CourseLevel.CaFinal };
+        var filter = new ProductFilterRequest { Level = CourseLevel.Advanced };
 
         var grid = await svc.ListAsync(filter);
         var ws = Sheet(await svc.ExportExcelAsync(filter));
 
         Assert.Equal(1, grid.TotalCount);
-        Assert.Equal(2, ws.LastRowUsed()!.RowNumber());   // header + the one CA Final product
-        Assert.Equal("CA Final SCMPE", ws.Cell(2, ColumnOf(ws, "Title")).GetString());
+        Assert.Equal(2, ws.LastRowUsed()!.RowNumber());   // header + the one Advanced product
+        Assert.Equal("Advanced SCMPE", ws.Cell(2, ColumnOf(ws, "Title")).GetString());
     }
 
     [Fact]
@@ -246,7 +246,7 @@ public class ProductExportTests
 
         var ws = Sheet(await Svc(db).ExportExcelAsync(new ProductFilterRequest()));
 
-        Assert.Equal("Draft", Cell(ws, RowOf(ws, "CA Final SCMPE"), "Status"));
+        Assert.Equal("Draft", Cell(ws, RowOf(ws, "Advanced SCMPE"), "Status"));
     }
 
     [Fact]

@@ -972,7 +972,7 @@
         if (!firstRender || !authed) return;
         try
         {
-            var refCode = await JS.InvokeAsync<string>("hjc.getCookie", "rc_ref");
+            var refCode = await JS.InvokeAsync<string>("rc.getCookie", "rc_ref");
             if (!string.IsNullOrWhiteSpace(refCode) && refCode != affiliateCode)
             {
                 affiliateCode = refCode;
@@ -1128,7 +1128,7 @@
 
     // ──────────────────────────────────────────────────────────────────────
     // Razorpay flow (REST-driven). The Blazor page just builds the CheckoutRequest
-    // and hands it to window.hjc.payRazorpay. JS handles create-order, popup, verify,
+    // and hands it to window.rc.payRazorpay. JS handles create-order, popup, verify,
     // and the terminal redirect — the SignalR circuit isn't on the hot path.
     // ──────────────────────────────────────────────────────────────────────
     private bool _popupOpen;                          // disable Pay button while popup is up
@@ -1183,13 +1183,13 @@
             if (selectedGateway == "easebuzz")
             {
                 req.PaymentMode = PaymentMode.Easebuzz;
-                await JS.InvokeVoidAsync("hjc.payEasebuzz", req);
+                await JS.InvokeVoidAsync("rc.payEasebuzz", req);
             }
             else
             {
                 req.PaymentMode = PaymentMode.Razorpay;
                 var prefill = new { name = billing.Name, email = billing.Email, contact = billing.Phone };
-                await JS.InvokeVoidAsync("hjc.payRazorpay", req, prefill);
+                await JS.InvokeVoidAsync("rc.payRazorpay", req, prefill);
             }
         }
         catch (Exception ex)
@@ -1203,7 +1203,7 @@
     private async Task<CheckoutRequest> BuildCheckoutRequestAsync()
     {
         string? refCode = null;
-        try { refCode = await JS.InvokeAsync<string>("hjc.getCookie", "rc_ref"); } catch { }
+        try { refCode = await JS.InvokeAsync<string>("rc.getCookie", "rc_ref"); } catch { }
 
         return new CheckoutRequest
         {

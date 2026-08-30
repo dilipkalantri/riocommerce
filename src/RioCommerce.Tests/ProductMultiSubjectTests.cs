@@ -68,7 +68,7 @@ public class ProductMultiSubjectTests
     private static Product Product(Guid id, string title, Guid? subjectId) => new()
     {
         Id = id, Title = title, Slug = $"p-{id:N}", SubjectId = subjectId,
-        Level = CourseLevel.CaIntermediate, SellingPrice = 5000m, Status = ProductStatus.Active
+        Level = CourseLevel.Intermediate, SellingPrice = 5000m, Status = ProductStatus.Active
     };
 
     private static ProductSubject Link(Guid productId, Guid subjectId, bool primary) => new()
@@ -202,16 +202,16 @@ public class ProductMultiSubjectTests
     {
         using var db = NewDb();
         var fx = await SeedAsync(db);
-        db.Products.First(p => p.Id == fx.Combo).Level = CourseLevel.CaFinal;
+        db.Products.First(p => p.Id == fx.Combo).Level = CourseLevel.Advanced;
         await db.SaveChangesAsync();
 
         var inter = await MatchingAsync(db, new CatalogCascade.Selection
         {
             SubjectIds = new[] { fx.Costing },
-            Levels = new[] { CourseLevel.CaIntermediate }
+            Levels = new[] { CourseLevel.Intermediate }
         });
 
-        // Costing ∩ CaIntermediate — the combo covers Costing but is now CaFinal, so it drops out.
+        // Costing ∩ Intermediate — the combo covers Costing but is now Advanced, so it drops out.
         Assert.Equal(new[] { fx.Other }, inter);
     }
 

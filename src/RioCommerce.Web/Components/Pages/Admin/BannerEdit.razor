@@ -161,7 +161,7 @@ else
     {
         try
         {
-            var size = await JS.InvokeAsync<ImageSize?>("hjc.readImageSize", inputId);
+            var size = await JS.InvokeAsync<ImageSize?>("rc.readImageSize", inputId);
             if (size is null || size.Width == 0) return;
             var wantRatio = (double)recW / recH;
             var gotRatio = (double)size.Width / size.Height;

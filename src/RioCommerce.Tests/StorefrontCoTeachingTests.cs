@@ -13,7 +13,7 @@ namespace RioCommerce.Tests;
 /// appears for every teacher mapped to it.
 ///
 /// <para>It used to match <c>Product.PrimaryFacultyId</c> only, which hid co-taught courses from
-/// every teacher except the headline one — the CA Foundation All Subjects batch is mapped to ten
+/// every teacher except the headline one — the Beginner All Subjects batch is mapped to ten
 /// faculty in production and answered for exactly one of them. Reports, Orders and the Products
 /// admin already matched through the mapping table; this brings the public pages in line.</para>
 ///
@@ -76,7 +76,7 @@ public class StorefrontCoTeachingTests
         static Product New(Guid id, string title, Guid subject, Guid primary) => new()
         {
             Id = id, Title = title, Slug = $"p-{id:N}", SubjectId = subject,
-            PrimaryFacultyId = primary, Status = ProductStatus.Active, Level = CourseLevel.CaIntermediate,
+            PrimaryFacultyId = primary, Status = ProductStatus.Active, Level = CourseLevel.Intermediate,
         };
     }
 

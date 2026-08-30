@@ -212,5 +212,5 @@ else
         else Toast.Error(err ?? "Could not delete.");
     }
 
-    private async Task CopyUrl() { await JS.InvokeVoidAsync("hjc.copy", CouponUrl); Toast.Info("URL copied."); }
+    private async Task CopyUrl() { await JS.InvokeVoidAsync("rc.copy", CouponUrl); Toast.Info("URL copied."); }
 }

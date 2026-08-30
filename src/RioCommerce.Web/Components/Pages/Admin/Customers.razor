@@ -465,10 +465,10 @@
         switch (e.Key)
         {
             case "ArrowDown":
-                if (n > 0) { activeIndex = (activeIndex + 1) % n; await JS.InvokeVoidAsync("hjcAdmin.scrollIntoCenter", ddListEl, activeIndex); }
+                if (n > 0) { activeIndex = (activeIndex + 1) % n; await JS.InvokeVoidAsync("rcAdmin.scrollIntoCenter", ddListEl, activeIndex); }
                 break;
             case "ArrowUp":
-                if (n > 0) { activeIndex = (activeIndex - 1 + n) % n; await JS.InvokeVoidAsync("hjcAdmin.scrollIntoCenter", ddListEl, activeIndex); }
+                if (n > 0) { activeIndex = (activeIndex - 1 + n) % n; await JS.InvokeVoidAsync("rcAdmin.scrollIntoCenter", ddListEl, activeIndex); }
                 break;
             case "Enter":
             case "Tab":

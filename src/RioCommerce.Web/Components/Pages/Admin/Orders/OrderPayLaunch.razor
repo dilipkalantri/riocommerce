@@ -80,9 +80,9 @@
         try
         {
             if (Gateway == "easebuzz")
-                await JS.InvokeVoidAsync("hjc.adminPayEasebuzz", OrderNumber);
+                await JS.InvokeVoidAsync("rc.adminPayEasebuzz", OrderNumber);
             else
-                await JS.InvokeVoidAsync("hjc.adminPayRazorpay", OrderNumber,
+                await JS.InvokeVoidAsync("rc.adminPayRazorpay", OrderNumber,
                     new { name = CustName, email = CustEmail, contact = CustPhone });
         }
         catch (Exception ex)

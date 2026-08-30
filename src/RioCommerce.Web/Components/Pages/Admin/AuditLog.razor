@@ -305,12 +305,12 @@
     private async Task ExportCsv()
     {
         var csv = await Svc.ExportCsvAsync(filter);
-        await JS.InvokeVoidAsync("hjc.downloadCsv", $"audit-{DateTime.Now:yyyyMMdd}.csv", csv);
+        await JS.InvokeVoidAsync("rc.downloadCsv", $"audit-{DateTime.Now:yyyyMMdd}.csv", csv);
     }
     private async Task ExportExcel()
     {
         var csv = await Svc.ExportCsvAsync(filter);
-        await JS.InvokeVoidAsync("hjc.downloadCsv", $"audit-{DateTime.Now:yyyyMMdd}.xls", csv);
+        await JS.InvokeVoidAsync("rc.downloadCsv", $"audit-{DateTime.Now:yyyyMMdd}.xls", csv);
     }
     private async Task Print() => await JS.InvokeVoidAsync("window.print");
 

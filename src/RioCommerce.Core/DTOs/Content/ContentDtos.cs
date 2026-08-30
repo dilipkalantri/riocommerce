@@ -75,9 +75,9 @@ public class BlogCourseCardEdit
     /// </summary>
     public static List<BlogCourseCardEdit> DefaultSet() => new()
     {
-        new() { Title = "CA Foundation",    SubText = "View Courses →", Url = "/ca-foundation",    Enabled = true },
-        new() { Title = "CA Intermediate",  SubText = "View Courses →", Url = "/ca-intermediate",  Enabled = true },
-        new() { Title = "CA Final",         SubText = "View Courses →", Url = "/ca-final",         Enabled = true },
+        new() { Title = "Beginner",    SubText = "View Courses →", Url = "/ca-foundation",    Enabled = true },
+        new() { Title = "Intermediate",  SubText = "View Courses →", Url = "/ca-intermediate",  Enabled = true },
+        new() { Title = "Advanced",         SubText = "View Courses →", Url = "/ca-final",         Enabled = true },
         new() { Title = "Our Books",        SubText = "View Courses →", Url = "/books",            Enabled = true },
     };
 }

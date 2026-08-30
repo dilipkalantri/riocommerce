@@ -173,11 +173,11 @@
             if (open)
             {
                 selfRef ??= DotNetObjectReference.Create(this);
-                await JS.InvokeVoidAsync("hjc.dismiss.on", root, selfRef, nameof(CloseFromOutside));
+                await JS.InvokeVoidAsync("rc.dismiss.on", root, selfRef, nameof(CloseFromOutside));
             }
             else
             {
-                await JS.InvokeVoidAsync("hjc.dismiss.off", root);
+                await JS.InvokeVoidAsync("rc.dismiss.off", root);
             }
             listening = open;
         }
@@ -199,7 +199,7 @@
     {
         // The listener lives on document, so leaving it behind would keep calling into a component
         // that no longer exists.
-        try { if (listening) await JS.InvokeVoidAsync("hjc.dismiss.off", root); }
+        try { if (listening) await JS.InvokeVoidAsync("rc.dismiss.off", root); }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         selfRef?.Dispose();

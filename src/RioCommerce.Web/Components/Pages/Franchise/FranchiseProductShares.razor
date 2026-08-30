@@ -140,13 +140,5 @@
         rows = await Portal.ProductSharesAsync(franchiseId.Value, onlyWithShare);
     }
 
-    private static string LevelLabel(CourseLevel level) => level switch
-    {
-        CourseLevel.CaFoundation => "CA Foundation",
-        CourseLevel.CaIntermediate => "CA Intermediate",
-        CourseLevel.CaFinal => "CA Final",
-        CourseLevel.Books => "Books",
-        CourseLevel.TestSeries => "Test Series",
-        _ => level.ToString()
-    };
+    private static string LevelLabel(CourseLevel level) => level.Label();
 }

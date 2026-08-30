@@ -61,7 +61,7 @@ public class OrderListItem
     public decimal TaxableAmount { get; set; }
     /// <summary>Extracted GST portion — Net × 18 / 118 (spec formula).</summary>
     public decimal GstAmount { get; set; }
-    /// <summary>Friendly course-level label for the Product cell subtitle (e.g. "CA Foundation").</summary>
+    /// <summary>Friendly course-level label for the Product cell subtitle (e.g. "Beginner").</summary>
     public string? CourseLevel { get; set; }
     /// <summary>True when an affiliate is attributed to the order (drives the "Affiliate" source badge).</summary>
     public bool HasAffiliate { get; set; }

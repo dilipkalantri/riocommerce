@@ -253,7 +253,7 @@
     {
         var file = await Svc.ExportBatchCsvAsync(id);
         if (file == null) { Toast.Error("Nothing to export."); return; }
-        await JS.InvokeVoidAsync("hjc.downloadCsv", file.Value.fileName, file.Value.csv);
+        await JS.InvokeVoidAsync("rc.downloadCsv", file.Value.fileName, file.Value.csv);
     }
 
     private static string Variant(SettlementStatus s) => s switch

@@ -31,9 +31,9 @@
                 <label class="form-label">Course level</label>
                 <select class="form-input" @bind="LevelValue">
                     <option value="">— None —</option>
-                    <option value="@nameof(CourseLevel.CaFoundation)">CA Foundation</option>
-                    <option value="@nameof(CourseLevel.CaIntermediate)">CA Intermediate</option>
-                    <option value="@nameof(CourseLevel.CaFinal)">CA Final</option>
+                    <option value="@nameof(CourseLevel.Beginner)">Beginner</option>
+                    <option value="@nameof(CourseLevel.Intermediate)">Intermediate</option>
+                    <option value="@nameof(CourseLevel.Advanced)">Advanced</option>
                     <option value="@nameof(CourseLevel.Books)">Books</option>
                     <option value="@nameof(CourseLevel.TestSeries)">Test Series</option>
                 </select>
@@ -109,15 +109,7 @@
         }
     }
 
-    private static string LevelLabel(CourseLevel? l) => l switch
-    {
-        CourseLevel.CaFoundation => "CA Foundation",
-        CourseLevel.CaIntermediate => "CA Intermediate",
-        CourseLevel.CaFinal => "CA Final",
-        CourseLevel.Books => "Books",
-        CourseLevel.TestSeries => "Test Series",
-        _ => "—"
-    };
+    private static string LevelLabel(CourseLevel? l) => l?.Label() ?? "—";
 
     private async Task OpenEditor(Guid? id)
     {

@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "RioCommerce",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/RioCommerce.API/RioCommerce.API.csproj"],
+      "port": 5001,
+      "url": "https://localhost:5001"
+    }
+  ]
+}

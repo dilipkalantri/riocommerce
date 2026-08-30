@@ -8,7 +8,7 @@ public class ProductEditModel
     public string Slug { get; set; } = string.Empty;
     public string? ShortDesc { get; set; }
     public string? FullDesc { get; set; }
-    public CourseLevel Level { get; set; } = CourseLevel.CaFoundation;
+    public CourseLevel Level { get; set; } = CourseLevel.Beginner;
     public CourseType CourseType { get; set; } = CourseType.Regular;
     public Guid? CategoryId { get; set; }
     public Guid? SubjectId { get; set; }

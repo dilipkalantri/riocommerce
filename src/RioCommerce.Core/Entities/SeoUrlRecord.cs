@@ -9,7 +9,7 @@ namespace RioCommerce.Core.Entities;
 /// </summary>
 public class SeoUrlRecord : BaseEntity
 {
-    /// <summary>The display slug as entered (already cleaned): e.g. "ca-foundation".</summary>
+    /// <summary>The display slug as entered (already cleaned): e.g. "beginner".</summary>
     public string Slug { get; set; } = string.Empty;
 
     /// <summary>The canonical comparison key: lower-cased, trimmed, single-hyphen, no slashes.

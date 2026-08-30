@@ -357,10 +357,10 @@ else
 
     private string LevelSlugFromCourses => f?.Courses.FirstOrDefault()?.Level switch
     {
-        CourseLevel.CaIntermediate => "ca-intermediate",
-        CourseLevel.CaFinal => "ca-final",
+        CourseLevel.Intermediate => "intermediate",
+        CourseLevel.Advanced => "advanced",
         CourseLevel.Books => "books",
-        _ => "ca-foundation"
+        _ => "beginner"
     };
 
     protected override async Task OnParametersSetAsync()
@@ -392,36 +392,11 @@ else
         return parts.Length > 0 ? parts[0] + " Sir" : "Sir";
     }
 
-    private static string LevelLabel(CourseLevel l) => l switch
-    {
-        CourseLevel.CaFoundation => "CA Foundation",
-        CourseLevel.CaIntermediate => "CA Intermediate",
-        CourseLevel.CaFinal => "CA Final",
-        CourseLevel.Books => "Books",
-        CourseLevel.TestSeries => "Test Series",
-        _ => l.ToString()
-    };
+    private static string LevelLabel(CourseLevel l) => l.Label();
 
-    // Thumb label — \n becomes a line break via CSS white-space: pre-line.
-    private static string LevelShort(CourseLevel l) => l switch
-    {
-        CourseLevel.CaFoundation => "CA\nFOUNDATION",
-        CourseLevel.CaIntermediate => "CA\nINTER",
-        CourseLevel.CaFinal => "CA\nFINAL",
-        CourseLevel.Books => "BOOKS",
-        CourseLevel.TestSeries => "TEST\nSERIES",
-        _ => l.ToString().ToUpper()
-    };
+    private static string LevelShort(CourseLevel l) => l.Label().ToUpper();
 
-    private static string LevelClass(CourseLevel l) => l switch
-    {
-        CourseLevel.CaFoundation => "ca-foundation",
-        CourseLevel.CaIntermediate => "ca-intermediate",
-        CourseLevel.CaFinal => "ca-final",
-        CourseLevel.Books => "books",
-        CourseLevel.TestSeries => "test-series",
-        _ => "default"
-    };
+    private static string LevelClass(CourseLevel l) => l.CssClass();
 
     private static string CourseTypeLabel(CourseType t) => t switch
     {

@@ -24,8 +24,11 @@
     <div class="footer__inner">
         <div class="footer__col">
             <img src="@LogoSrc" alt="@(cfg?.CompanyName ?? "Logo")" class="footer__logo" />
-            <p>Are you a coaching center?</p>
-            <a href="/franchisee/register" class="footer__franchisee">Apply to become a franchisee partner →</a>
+            @if (cfg?.FranchiseEnabled != false)
+            {
+                <p>Are you a coaching center?</p>
+                <a href="/franchisee/register" class="footer__franchisee">Apply to become a franchisee partner →</a>
+            }
         </div>
         <div class="footer__col"><h4>Quick Links</h4><a href="/courses">Courses</a><a href="/faculty">Faculty</a><a href="/blog">Blog</a><a href="/contact">Contact</a></div>
         <div class="footer__col"><h4>Information</h4><a href="/page/terms-and-conditions">Terms & Conditions</a><a href="/page/privacy-policy">Privacy Policy</a><a href="/page/refund-policy">Refund Policy</a></div>

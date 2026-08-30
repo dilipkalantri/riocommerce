@@ -69,7 +69,7 @@
             unread++;
             StateHasChanged();
             Toast.Info(n.Title);
-            try { await JS.InvokeVoidAsync("hjc.beep"); } catch { }
+            try { await JS.InvokeVoidAsync("rc.beep"); } catch { }
         });
     }
 

@@ -421,7 +421,7 @@ public class FranchiseCustomerBackfillTests
         using var db = NewDb();
         SeedStudentRole(db);
         var order = Order(db, "FRN-1017", "Saurabh Shejol", "9623486839", "saurabhshejol12@gmail.com");
-        order.Items.Add(new OrderItem { Id = Guid.NewGuid(), ProductId = Guid.NewGuid(), ProductTitle = "CA Final FR", Quantity = 1, UnitPrice = 5000m, LineTotal = 5000m });
+        order.Items.Add(new OrderItem { Id = Guid.NewGuid(), ProductId = Guid.NewGuid(), ProductTitle = "Advanced FR", Quantity = 1, UnitPrice = 5000m, LineTotal = 5000m });
         await db.SaveChangesAsync();
 
         await Service(db).RunAsync(dryRun: false);

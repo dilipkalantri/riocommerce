@@ -81,8 +81,8 @@ public class ProductAdminService : IProductAdminService
     public async Task<AdminProductStats> StatsAsync() => new(
         await _db.Products.CountAsync(),
         await _db.Products.CountAsync(p => p.Status == ProductStatus.Active),
-        await _db.Products.CountAsync(p => p.Level == CourseLevel.CaFoundation),
-        await _db.Products.CountAsync(p => p.Level == CourseLevel.CaIntermediate));
+        await _db.Products.CountAsync(p => p.Level == CourseLevel.Beginner),
+        await _db.Products.CountAsync(p => p.Level == CourseLevel.Intermediate));
 
     public async Task<byte[]> ExportExcelAsync(ProductFilterRequest filter, CancellationToken ct = default)
     {
@@ -253,16 +253,7 @@ public class ProductAdminService : IProductAdminService
     private static readonly TimeZoneInfo Ist =
         TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "India Standard Time" : "Asia/Kolkata");
 
-    /// <summary>Matches the label the admin grid shows, so the export reads the same as the screen.</summary>
-    private static string LevelLabel(CourseLevel l) => l switch
-    {
-        CourseLevel.CaFoundation => "CA Foundation",
-        CourseLevel.CaIntermediate => "CA Intermediate",
-        CourseLevel.CaFinal => "CA Final",
-        CourseLevel.Books => "Books",
-        CourseLevel.TestSeries => "Test Series",
-        _ => l.ToString(),
-    };
+    private static string LevelLabel(CourseLevel l) => l.Label();
 
     public async Task<ProductFilterMeta> GetFilterMetaAsync(
         Guid? categoryId = null, Guid? subjectId = null, Guid? facultyId = null, CourseLevel? level = null)

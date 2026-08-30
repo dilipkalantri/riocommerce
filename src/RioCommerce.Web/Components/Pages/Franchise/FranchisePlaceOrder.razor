@@ -989,7 +989,7 @@
             // The popup can stay open for minutes (card entry, OTP). The default JS interop
             // timeout (~1 min) is too short, so allow up to 15 minutes.
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(15));
-            outcome = await JS.InvokeAsync<PopupResult>("hjc.franchisePayRazorpay", cts.Token, jsHandoff, prefill);
+            outcome = await JS.InvokeAsync<PopupResult>("rc.franchisePayRazorpay", cts.Token, jsHandoff, prefill);
         }
         catch (Exception ex)
         {
@@ -1054,7 +1054,7 @@
         msg = null;
     }
 
-    // Mirrors the JS resolve shape from hjc._launchRazorpay.
+    // Mirrors the JS resolve shape from rc._launchRazorpay.
     public class PopupResult
     {
         public string? outcome { get; set; }   // success | dismissed | failed | error

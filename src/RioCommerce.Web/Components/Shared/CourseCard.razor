@@ -13,7 +13,7 @@
                 <span class="course-card__ico">
                     @switch (Product.Level)
                     {
-                        case CourseLevel.CaIntermediate:
+                        case CourseLevel.Intermediate:
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
                             break;
                         case CourseLevel.Books:
@@ -93,24 +93,9 @@
     private int DiscountPct => StrikethroughPrice > Product.EffectivePrice && StrikethroughPrice > 0
         ? (int)Math.Round((StrikethroughPrice - Product.EffectivePrice) / StrikethroughPrice * 100) : 0;
 
-    private string LevelLabel => Product.Level switch
-    {
-        CourseLevel.CaFoundation => "CA Foundation",
-        CourseLevel.CaIntermediate => "CA Intermediate",
-        CourseLevel.CaFinal => "CA Final",
-        CourseLevel.Books => "Books",
-        CourseLevel.TestSeries => "Test Series",
-        _ => Product.Level.ToString()
-    };
+    private string LevelLabel => Product.Level.Label();
 
-    private string LevelClass => Product.Level switch
-    {
-        CourseLevel.CaIntermediate => "inter",
-        CourseLevel.CaFinal => "final",
-        CourseLevel.Books => "books",
-        CourseLevel.TestSeries => "tests",
-        _ => "foundation"
-    };
+    private string LevelClass => Product.Level.CssClass();
 
     // Enum -> CSS variant. Display text comes from Product.BatchStatusText so the label is centralised.
     private static string BatchStatusClass(BatchStatus s) => s switch

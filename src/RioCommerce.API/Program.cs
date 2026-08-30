@@ -1,4 +1,4 @@
-using RioCommerce.Core.Entities;
+﻿using RioCommerce.Core.Entities;
 using RioCommerce.Core.Enums;
 using RioCommerce.Core.Interfaces;
 using RioCommerce.Core.Interfaces.Repositories;
@@ -370,7 +370,7 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
         }));
 
-    // These endpoints are called by hjc.postForm, which parses the response as JSON — an empty 429
+    // These endpoints are called by rc.postForm, which parses the response as JSON — an empty 429
     // body surfaces to the customer as "Unexpected server response." Answer in the same shape the
     // endpoints themselves use so the screen shows a real message.
     options.OnRejected = async (ctx, ct) =>
@@ -436,8 +436,13 @@ app.MapGet("/admin/orders/attachments/{id:guid}", async (
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
-    // Routable pages live in the RioCommerce.Web RCL — register that assembly so its @page endpoints are discovered.
-    .AddAdditionalAssemblies(typeof(RioCommerce.Web.Components.Layout.MainLayout).Assembly);
+    // Routable pages live in two RCLs — admin/auth/franchise in RioCommerce.Web, the public
+    // storefront in RioCommerce.Web.Storefront. Both must be registered here (not just on the
+    // <Router> in Routes.razor) or their @page endpoints are never discovered and 404 before
+    // the router runs.
+    .AddAdditionalAssemblies(
+        typeof(RioCommerce.Web.Components.Layout.MainLayout).Assembly,
+        typeof(RioCommerce.Web.Storefront.Components.Pages.Public.Home).Assembly);
 
 // ── Account endpoints (browser-level cookie auth) ──
 // These run in the real browser request context, so SignInAsync sets a cookie on the browser
@@ -1004,7 +1009,7 @@ using (var scope = app.Services.CreateScope())
     if (!await db.Subjects.AnyAsync())
     {
         db.Subjects.Add(
-            new Subject { Id = Guid.Parse("33333333-3333-3333-3333-333333333301"), Name = "Sample Subject", Slug = "sample-subject", Level = CourseLevel.CaFoundation, DisplayOrder = 1, IsActive = true, CreatedAt = seedDate, UpdatedAt = seedDate }
+            new Subject { Id = Guid.Parse("33333333-3333-3333-3333-333333333301"), Name = "Sample Subject", Slug = "sample-subject", Level = CourseLevel.Beginner, DisplayOrder = 1, IsActive = true, CreatedAt = seedDate, UpdatedAt = seedDate }
         );
         await db.SaveChangesAsync();
     }

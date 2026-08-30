@@ -17,15 +17,15 @@
 .pv .contact-strip__numbers a{color:rgba(255,255,255,.85)}
 .pv .contact-strip__social{display:flex;gap:12px}
 
-.pv .hjc-header{position:sticky;top:0;z-index:1000;height:var(--header-height);border-bottom:1px solid var(--gray-200);backdrop-filter:blur(12px);background:rgba(255,255,255,.95)}
-.pv .hjc-header .container{display:flex;align-items:center;justify-content:space-between;height:100%}
-.pv .hjc-logo{display:flex;align-items:center;gap:var(--space-sm)}
-.pv .hjc-logo img{height:48px;width:auto}
-.pv .hjc-nav{display:flex;align-items:center;gap:var(--space-xl)}
-.pv .hjc-nav a{font-weight:500;font-size:15px;color:var(--gray-600);transition:color .2s;position:relative}
-.pv .hjc-nav a:hover,.pv .hjc-nav a.active{color:var(--navy)}
-.pv .hjc-nav a.active::after{content:'';position:absolute;bottom:-4px;left:0;right:0;height:2px;background:var(--orange);border-radius:1px}
-.pv .hjc-nav-actions{display:flex;align-items:center;gap:var(--space-md)}
+.pv .rc-header{position:sticky;top:0;z-index:1000;height:var(--header-height);border-bottom:1px solid var(--gray-200);backdrop-filter:blur(12px);background:rgba(255,255,255,.95)}
+.pv .rc-header .container{display:flex;align-items:center;justify-content:space-between;height:100%}
+.pv .rc-logo{display:flex;align-items:center;gap:var(--space-sm)}
+.pv .rc-logo img{height:48px;width:auto}
+.pv .rc-nav{display:flex;align-items:center;gap:var(--space-xl)}
+.pv .rc-nav a{font-weight:500;font-size:15px;color:var(--gray-600);transition:color .2s;position:relative}
+.pv .rc-nav a:hover,.pv .rc-nav a.active{color:var(--navy)}
+.pv .rc-nav a.active::after{content:'';position:absolute;bottom:-4px;left:0;right:0;height:2px;background:var(--orange);border-radius:1px}
+.pv .rc-nav-actions{display:flex;align-items:center;gap:var(--space-md)}
 .pv .cart-icon{position:relative;display:flex;align-items:center;padding:8px;border-radius:var(--radius-md);transition:background .2s}
 .pv .cart-icon:hover{background:var(--gray-100)}
 .pv .cart-icon svg{color:var(--gray-600)}
@@ -111,7 +111,7 @@
 .pv .pagination button.active{background:var(--navy);border-color:var(--navy);color:#fff}
 .pv .pagination button.nav-btn{width:auto;padding:0 14px}
 
-.pv .hjc-footer{background:var(--navy-dark);color:rgba(255,255,255,.8);padding:var(--space-4xl) 0 var(--space-xl)}
+.pv .rc-footer{background:var(--navy-dark);color:rgba(255,255,255,.8);padding:var(--space-4xl) 0 var(--space-xl)}
 .pv .footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:var(--space-3xl);margin-bottom:var(--space-3xl)}
 .pv .footer-brand p{font-size:14px;line-height:1.7;margin-top:var(--space-md);color:rgba(255,255,255,.6)}
 .pv .footer-col h4{font-weight:700;font-size:15px;color:#fff;margin-bottom:var(--space-lg);text-transform:uppercase;letter-spacing:1px}
@@ -154,11 +154,11 @@
   .pv .ca-card__badge{font-size:8px;padding:2px 6px}
   .pv .bottom-filters{display:block}
   .pv .floating-buttons{bottom:70px;right:12px}
-  .pv .hjc-nav{display:none}
+  .pv .rc-nav{display:none}
   .pv .mobile-menu-btn{display:flex !important}
-  .pv .hjc-nav-actions .btn{display:none}
-  .pv .hjc-header{height:60px}
-  .pv .hjc-logo img{height:38px}
+  .pv .rc-nav-actions .btn{display:none}
+  .pv .rc-header{height:60px}
+  .pv .rc-logo img{height:38px}
   .pv .pagination button{width:34px;height:34px;font-size:12px}
   .pv .footer-grid{grid-template-columns:1fr;gap:20px}
   .pv .footer-bottom{flex-direction:column;text-align:center;gap:6px}

@@ -15,7 +15,7 @@ public class LeadNote : BaseEntity
 {
     public Guid LeadId { get; set; }
 
-    /// <summary>Free-text note body, e.g. "Called customer, interested in CA Foundation."</summary>
+    /// <summary>Free-text note body, e.g. "Called customer, interested in Beginner."</summary>
     public string Body { get; set; } = string.Empty;
 
     /// <summary>Admin who wrote the note. Null only for system-generated entries.</summary>

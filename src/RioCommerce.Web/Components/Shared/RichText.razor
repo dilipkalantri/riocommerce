@@ -22,7 +22,7 @@
         {
             _ref = DotNetObjectReference.Create(this);
             _initialised = Value;
-            await JS.InvokeVoidAsync("hjc.quill.init", _el, _ref, Value ?? "");
+            await JS.InvokeVoidAsync("rc.quill.init", _el, _ref, Value ?? "");
         }
     }
 

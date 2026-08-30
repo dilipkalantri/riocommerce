@@ -28,15 +28,15 @@
         <div class="hero__course-btns reveal" data-delay="3">
             <a href="/ca-foundation" class="hero__course-btn hero__course-btn--foundation magnetic">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
-                CA Foundation Courses
+                Beginner Courses
             </a>
             <a href="/ca-intermediate" class="hero__course-btn hero__course-btn--inter magnetic">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
-                CA Intermediate Courses
+                Intermediate Courses
             </a>
             <a href="/ca-final" class="hero__course-btn hero__course-btn--final magnetic">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4.5 6v6c0 4.4 3.2 8.4 7.5 9.5 4.3-1.1 7.5-5.1 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>
-                CA Final Courses
+                Advanced Courses
             </a>
             <a href="/books" class="hero__course-btn hero__course-btn--books magnetic">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
@@ -52,7 +52,7 @@
            svg-noclamp is REQUIRED here: responsive-normalize.css clamps every loose
            <svg> without a width attribute to icon size (16–24px). These are full-bleed
            decorations sized in CSS (width:200%;height:100%), and that clamp — which
-           outranks .hjc-app .hero__wave-svg on specificity — collapsed all three to an
+           outranks .rc-app .hero__wave-svg on specificity — collapsed all three to an
            ~18px square in the hero's bottom-left corner, which read as a "cut corner"
            notch on the banner. The class is the escape hatch that file provides. *@
         <svg class="hero__wave-svg hero__wave-svg--back svg-noclamp"  viewBox="0 0 2880 120" preserveAspectRatio="none"><path fill="currentColor" d="M0,50 C240,20 480,20 720,50 C960,80 1200,80 1440,50 C1680,20 1920,20 2160,50 C2400,80 2640,80 2880,50 L2880,120 L0,120 Z"/></svg>
@@ -506,12 +506,12 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Re-scan for scroll-reveal / counters / magnetic targets (idempotent on the JS side).
-        try { await JS.InvokeVoidAsync("hjc.homeFx"); } catch { }
+        try { await JS.InvokeVoidAsync("rc.homeFx"); } catch { }
         // Once the dynamic faculty cards are in the DOM, wire up the carousel.
-        try { await JS.InvokeVoidAsync("hjc.facultyCarousel"); } catch { }
+        try { await JS.InvokeVoidAsync("rc.facultyCarousel"); } catch { }
         // Same for the testimonials strip — the reviews arrive after the first render, and on
         // phones the strip is a scroller that needs its auto-advance wired up. No-op on desktop.
-        try { await JS.InvokeVoidAsync("hjc.testimonialCarousel"); } catch { }
+        try { await JS.InvokeVoidAsync("rc.testimonialCarousel"); } catch { }
         if (!firstRender) return;
         // Enquiry popup is gated by localStorage (per browser/device): at most 3 displays total,
         // and suppressed for 30 days after a successful submission. The timer only proposes showing

@@ -101,7 +101,7 @@
             }
 
             @* ── 🏢 Franchisees (everything franchise-related lives here) ── *@
-            @if (ShowAny("sales.franchise_orders.view")
+            @if (_franchiseOn && ShowAny("sales.franchise_orders.view")
                  && MatchGroup("Franchisees", "Dashboard", "Franchise Orders", "Create Franchise Order", "Franchise List", "Import Franchisees", "Bulk Assign Products", "Franchise Settings"))
             {
                 <div class="sidebar__group">
@@ -239,19 +239,19 @@
             }
 
             @* ── Serial Keys (dispatched keys log) ── *@
-            @if (Show("reports.view") && MatchLink("Serial Keys"))
+            @if (_serialKeysOn && Show("reports.view") && MatchLink("Serial Keys"))
             {
                 <NavLink href="/admin/serial-keys" class="sidebar__link sidebar__link--top"><span class="sidebar__ico">🔑</span><span class="sidebar__txt">Serial Keys</span></NavLink>
             }
-            @if (Show("reports.view") && MatchLink("Bulk Serial Map"))
+            @if (_serialKeysOn && Show("reports.view") && MatchLink("Bulk Serial Map"))
             {
                 <NavLink href="/admin/serial-keys/bulk-map" class="sidebar__link sidebar__link--top"><span class="sidebar__ico">🗂️</span><span class="sidebar__txt">Bulk Serial Map</span></NavLink>
             }
-            @if (Show("reports.view") && MatchLink("ERP Serial Import"))
+            @if (_serialKeysOn && Show("reports.view") && MatchLink("ERP Serial Import"))
             {
                 <NavLink href="/admin/serial-keys/erp-import" class="sidebar__link sidebar__link--top"><span class="sidebar__ico">📥</span><span class="sidebar__txt">ERP Serial Import</span></NavLink>
             }
-            @if (Show("reports.view") && MatchLink("Superclass Registrations"))
+            @if (_serialKeysOn && Show("reports.view") && MatchLink("Superclass Registrations"))
             {
                 <NavLink href="/admin/integrations/superclass" class="sidebar__link sidebar__link--top"><span class="sidebar__ico">🎓</span><span class="sidebar__txt">Superclass Registrations</span></NavLink>
             }
@@ -334,8 +334,8 @@
                                 @if (MatchLink("Email Templates"))   { <NavLink href="/admin/notifications" class="sidebar__link"><span class="sidebar__txt">Email Templates</span></NavLink> }
                                 @if (MatchLink("Email Logs"))        { <NavLink href="/admin/email-logs" class="sidebar__link"><span class="sidebar__txt">Email Logs</span></NavLink> }
                                 @if (MatchLink("SMS Gateway"))       { <NavLink href="/admin/settings/sms" class="sidebar__link"><span class="sidebar__txt">SMS Gateway</span></NavLink> }
-                                @if (MatchLink("Serial Key Providers")) { <NavLink href="/admin/settings/serial-keys" class="sidebar__link"><span class="sidebar__txt">Serial Key Providers</span></NavLink> }
-                                @if (MatchLink("Superclass Settings")) { <NavLink href="/admin/settings/superclass" class="sidebar__link"><span class="sidebar__txt">Superclass Settings</span></NavLink> }
+                                @if (_serialKeysOn && MatchLink("Serial Key Providers")) { <NavLink href="/admin/settings/serial-keys" class="sidebar__link"><span class="sidebar__txt">Serial Key Providers</span></NavLink> }
+                                @if (_serialKeysOn && MatchLink("Superclass Settings")) { <NavLink href="/admin/settings/superclass" class="sidebar__link"><span class="sidebar__txt">Superclass Settings</span></NavLink> }
                                 @if (MatchLink("Scheduled Tasks"))   { <NavLink href="/admin/scheduled-tasks" class="sidebar__link"><span class="sidebar__txt">Scheduled Tasks</span></NavLink> }
                                 @if (MatchLink("Finance Settings"))  { <NavLink href="/admin/settings/finance" class="sidebar__link"><span class="sidebar__txt">Finance Settings</span></NavLink> }
                                 @if (MatchLink("Application Logs"))  { <NavLink href="/admin/logs" class="sidebar__link"><span class="sidebar__txt">Application Logs</span></NavLink> }
@@ -598,13 +598,14 @@
         var configured = Config["StoreUrl"];
         _storeUrl = string.IsNullOrWhiteSpace(configured) ? "/" : configured!.Trim();
         // Never let a settings hiccup keep the admin shell from rendering.
-        try { customLogoUrl = (await Settings.GetAsync()).LogoUrl; } catch { }
+        try { var cfg = await Settings.GetAsync(); customLogoUrl = cfg.LogoUrl; _franchiseOn = cfg.FranchiseEnabled; _serialKeysOn = cfg.SerialKeysEnabled; } catch { }
         await LoadPermissionsAsync();
     }
 
     // Same source as the storefront header, footer and sign-in page: whatever the admin uploaded on
     // Admin › Settings, falling back to the bundled asset when nothing has been.
     private string? customLogoUrl;
+    private bool _franchiseOn = true, _serialKeysOn = true;
     private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
 

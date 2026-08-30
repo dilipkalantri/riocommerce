@@ -817,14 +817,14 @@ namespace RioCommerce.Infrastructure.Migrations
                 columns: new[] { "Id", "DisplayOrder", "IsActive", "Level", "Name", "Slug" },
                 values: new object[,]
                 {
-                    { new Guid("33333333-3333-3333-3333-333333333301"), 1, true, CourseLevel.CaFoundation, "Economics", "economics" },
-                    { new Guid("33333333-3333-3333-3333-333333333302"), 2, true, CourseLevel.CaFoundation, "Law", "law" },
-                    { new Guid("33333333-3333-3333-3333-333333333303"), 3, true, CourseLevel.CaFoundation, "Accounts", "accounts" },
-                    { new Guid("33333333-3333-3333-3333-333333333304"), 4, true, CourseLevel.CaFoundation, "Maths (QA)", "maths-qa" },
-                    { new Guid("33333333-3333-3333-3333-333333333305"), 5, true, CourseLevel.CaIntermediate, "Costing", "costing" },
-                    { new Guid("33333333-3333-3333-3333-333333333306"), 6, true, CourseLevel.CaIntermediate, "Audit", "audit" },
-                    { new Guid("33333333-3333-3333-3333-333333333307"), 7, true, CourseLevel.CaIntermediate, "Direct Tax", "direct-tax" },
-                    { new Guid("33333333-3333-3333-3333-333333333308"), 8, true, CourseLevel.CaIntermediate, "Adv. Accounting", "adv-accounting" }
+                    { new Guid("33333333-3333-3333-3333-333333333301"), 1, true, CourseLevel.Beginner, "Economics", "economics" },
+                    { new Guid("33333333-3333-3333-3333-333333333302"), 2, true, CourseLevel.Beginner, "Law", "law" },
+                    { new Guid("33333333-3333-3333-3333-333333333303"), 3, true, CourseLevel.Beginner, "Accounts", "accounts" },
+                    { new Guid("33333333-3333-3333-3333-333333333304"), 4, true, CourseLevel.Beginner, "Maths (QA)", "maths-qa" },
+                    { new Guid("33333333-3333-3333-3333-333333333305"), 5, true, CourseLevel.Intermediate, "Costing", "costing" },
+                    { new Guid("33333333-3333-3333-3333-333333333306"), 6, true, CourseLevel.Intermediate, "Audit", "audit" },
+                    { new Guid("33333333-3333-3333-3333-333333333307"), 7, true, CourseLevel.Intermediate, "Direct Tax", "direct-tax" },
+                    { new Guid("33333333-3333-3333-3333-333333333308"), 8, true, CourseLevel.Intermediate, "Adv. Accounting", "adv-accounting" }
                 });
 
             migrationBuilder.InsertData(

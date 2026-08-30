@@ -78,7 +78,7 @@ public class SuperclassMappingModeTests
     private static async Task<Guid> SeedProductAsync(RioCommerceDbContext db)
     {
         var id = Guid.NewGuid();
-        db.Products.Add(new Product { Id = id, Title = "CA Foundation All Subjects COMBO", Slug = $"p-{id:N}" });
+        db.Products.Add(new Product { Id = id, Title = "Beginner All Subjects COMBO", Slug = $"p-{id:N}" });
         await db.SaveChangesAsync();
         return id;
     }
@@ -96,7 +96,7 @@ public class SuperclassMappingModeTests
         db.OrderItems.Add(new OrderItem
         {
             Id = Guid.NewGuid(), OrderId = orderId, ProductId = productId,
-            ProductTitle = "CA Foundation All Subjects COMBO", Quantity = 1,
+            ProductTitle = "Beginner All Subjects COMBO", Quantity = 1,
             UnitPrice = 1000m, LineTotal = 1000m,
         });
         await db.SaveChangesAsync();
@@ -657,7 +657,7 @@ public class SuperclassRequestMappingTests
             OrderItemId = Guid.NewGuid(),
             OrderNumber = "RIO-1079",
             ProductId = Guid.NewGuid(),
-            ProductTitle = "CA Foundation All Subjects COMBO",
+            ProductTitle = "Beginner All Subjects COMBO",
             ProviderProductCode = providerProductCode,
             CustomerName = "Harsh Soni",
             CustomerEmail = "ssjfaridabad@example.test",

@@ -26,15 +26,15 @@
 .pv .contact-strip__social a{opacity:.85;transition:transform .2s}
 .pv .contact-strip__social a:hover{transform:scale(1.15);opacity:1}
 
-.pv .hjc-header{position:sticky;top:0;z-index:1000;height:var(--header-height);border-bottom:1px solid var(--gray-200);backdrop-filter:blur(12px);background:rgba(255,255,255,.95)}
-.pv .hjc-header .container{display:flex;align-items:center;justify-content:space-between;height:100%}
-.pv .hjc-logo{display:flex;align-items:center;gap:var(--space-sm)}
-.pv .hjc-logo img{height:48px;width:auto}
-.pv .hjc-nav{display:flex;align-items:center;gap:var(--space-xl)}
-.pv .hjc-nav a{font-weight:500;font-size:15px;color:var(--gray-600);transition:color .2s;position:relative}
-.pv .hjc-nav a:hover,.pv .hjc-nav a.active{color:var(--navy)}
-.pv .hjc-nav a.active::after{content:'';position:absolute;bottom:-4px;left:0;right:0;height:2px;background:var(--orange);border-radius:1px}
-.pv .hjc-nav-actions{display:flex;align-items:center;gap:var(--space-md)}
+.pv .rc-header{position:sticky;top:0;z-index:1000;height:var(--header-height);border-bottom:1px solid var(--gray-200);backdrop-filter:blur(12px);background:rgba(255,255,255,.95)}
+.pv .rc-header .container{display:flex;align-items:center;justify-content:space-between;height:100%}
+.pv .rc-logo{display:flex;align-items:center;gap:var(--space-sm)}
+.pv .rc-logo img{height:48px;width:auto}
+.pv .rc-nav{display:flex;align-items:center;gap:var(--space-xl)}
+.pv .rc-nav a{font-weight:500;font-size:15px;color:var(--gray-600);transition:color .2s;position:relative}
+.pv .rc-nav a:hover,.pv .rc-nav a.active{color:var(--navy)}
+.pv .rc-nav a.active::after{content:'';position:absolute;bottom:-4px;left:0;right:0;height:2px;background:var(--orange);border-radius:1px}
+.pv .rc-nav-actions{display:flex;align-items:center;gap:var(--space-md)}
 .pv .cart-icon{position:relative;display:flex;align-items:center;padding:8px;border-radius:var(--radius-md);transition:background .2s}
 .pv .cart-icon:hover{background:var(--gray-100)}
 .pv .cart-icon svg{color:var(--gray-600)}
@@ -166,7 +166,7 @@
 .pv .cta-banner__title{font-family:var(--font-display);font-size:30px;color:#fff;margin-bottom:6px}
 .pv .cta-banner__text{font-size:15px;color:rgba(255,255,255,.7)}
 
-.pv .hjc-footer{background:var(--navy-dark);color:rgba(255,255,255,.8);padding:var(--space-4xl) 0 var(--space-xl)}
+.pv .rc-footer{background:var(--navy-dark);color:rgba(255,255,255,.8);padding:var(--space-4xl) 0 var(--space-xl)}
 .pv .footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:var(--space-3xl);margin-bottom:var(--space-3xl)}
 .pv .footer-brand p{font-size:14px;line-height:1.7;margin-top:var(--space-md);color:rgba(255,255,255,.6)}
 .pv .footer-col h4{font-weight:700;font-size:15px;color:#fff;margin-bottom:var(--space-lg);text-transform:uppercase;letter-spacing:1px}
@@ -216,10 +216,10 @@
   .pv .contact-strip__numbers svg{display:none}
   .pv .contact-strip__social{gap:10px;justify-content:center}
   .pv .contact-strip__social a svg{width:16px;height:16px}
-  .pv .hjc-header{height:60px}
-  .pv .hjc-logo img{height:38px}
-  .pv .hjc-nav{display:none}
-  .pv .hjc-nav-actions .btn{display:none}
+  .pv .rc-header{height:60px}
+  .pv .rc-logo img{height:38px}
+  .pv .rc-nav{display:none}
+  .pv .rc-nav-actions .btn{display:none}
   .pv .mobile-menu-btn{display:flex !important}
   .pv .hero{min-height:auto;padding:32px 0}
   .pv .hero__label{font-size:12px;padding:6px 14px}

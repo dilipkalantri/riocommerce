@@ -10,6 +10,7 @@
     <ProjectReference Include="..\RioCommerce.Core\RioCommerce.Core.csproj" />
     <ProjectReference Include="..\RioCommerce.Infrastructure\RioCommerce.Infrastructure.csproj" />
     <ProjectReference Include="..\RioCommerce.Web\RioCommerce.Web.csproj" />
+    <ProjectReference Include="..\RioCommerce.Web.Storefront\RioCommerce.Web.Storefront.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />

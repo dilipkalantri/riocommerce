@@ -28,13 +28,13 @@
     <div class="filter-bar2">
         <select class="filter-select" @onchange="OnLevel">
             <option value="">All Levels</option>
-            <option value="@((int)CourseLevel.CaFoundation)" selected="@(levelEnum == CourseLevel.CaFoundation)">CA Foundation</option>
-            <option value="@((int)CourseLevel.CaIntermediate)" selected="@(levelEnum == CourseLevel.CaIntermediate)">CA Intermediate</option>
-            @* Listed after CA Intermediate to match the rest of the site. The VALUE is the enum
-               ordinal, which for CaFinal is 4 because the enum is append-only — see CourseLevel.cs.
+            <option value="@((int)CourseLevel.Beginner)" selected="@(levelEnum == CourseLevel.Beginner)">Beginner</option>
+            <option value="@((int)CourseLevel.Intermediate)" selected="@(levelEnum == CourseLevel.Intermediate)">Intermediate</option>
+            @* Listed after Intermediate to match the rest of the site. The VALUE is the enum
+               ordinal, which for Advanced is 4 because the enum is append-only — see CourseLevel.cs.
                Test Series is deliberately still absent here; this filter has always been a curated
                subset rather than every level. *@
-            <option value="@((int)CourseLevel.CaFinal)" selected="@(levelEnum == CourseLevel.CaFinal)">CA Final</option>
+            <option value="@((int)CourseLevel.Advanced)" selected="@(levelEnum == CourseLevel.Advanced)">Advanced</option>
             <option value="@((int)CourseLevel.Books)" selected="@(levelEnum == CourseLevel.Books)">Books</option>
         </select>
         <select class="filter-select" @onchange="OnType">

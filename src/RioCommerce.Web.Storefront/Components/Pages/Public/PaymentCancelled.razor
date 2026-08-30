@@ -1,26 +1,21 @@
-@page "/checkout/payment-failed"
+@page "/checkout/payment-cancelled"
 @inject ICheckoutService Checkout
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager Nav
 @inject IJSRuntime JS
-@inject ISiteSettingsService SettingsSvc
 
-<SeoHead Seo="@(new SeoMetadata { Title = "Payment Failed — RioCommerce" })" />
+<SeoHead Seo="@(new SeoMetadata { Title = "Payment Cancelled — RioCommerce" })" />
 
-<div class="container cart-page pay-status pay-status--fail">
-    <header class="ps-hero ps-hero--fail">
+<div class="container cart-page pay-status pay-status--cancel">
+    <header class="ps-hero ps-hero--cancel">
         <div class="ps-hero__ring" aria-hidden="true">
             <svg class="ps-hero__mark" viewBox="0 0 52 52">
-                <circle class="ps-hero__circle ps-hero__circle--fail" cx="26" cy="26" r="24" />
-                <path class="ps-hero__x" d="M18 18 l16 16 M34 18 l-16 16" />
+                <circle class="ps-hero__circle ps-hero__circle--cancel" cx="26" cy="26" r="24" />
+                <path class="ps-hero__bang" d="M26 14 L26 30 M26 36 L26 38" />
             </svg>
         </div>
-        <h1 class="ps-hero__title">Payment Failed</h1>
-        <p class="ps-hero__sub">Unfortunately your payment could not be completed. No course access has been granted and no invoice has been generated.</p>
-        @if (!string.IsNullOrEmpty(Reason))
-        {
-            <div class="ps-hero__reason"><strong>Reason:</strong> @Reason</div>
-        }
+        <h1 class="ps-hero__title">Payment Cancelled</h1>
+        <p class="ps-hero__sub">Your payment was cancelled. <strong>No amount has been deducted</strong> and no course access has been granted.</p>
         @if (!string.IsNullOrEmpty(OrderNumber))
         {
             <div class="ps-hero__order">Order <strong>#@OrderNumber</strong> · Status: <strong>Pending</strong></div>
@@ -38,7 +33,7 @@
                 <section class="ps-card">
                     <h2 class="ps-card__title">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                        Order Summary
+                        Order Summary (Pending)
                     </h2>
                     <div class="ps-courses">
                         @foreach (var item in receipt.Items)
@@ -58,27 +53,16 @@
                     </div>
                     <div class="ps-totals">
                         <div><span>Subtotal</span><strong>₹@receipt.Subtotal.ToString("N0")</strong></div>
-                        @if (receipt.Discount > 0)
-                        {
-                            <div class="ps-totals--save"><span>Discount</span><strong>− ₹@receipt.Discount.ToString("N0")</strong></div>
-                        }
                         @if (receipt.IgstAmount > 0)
                         {
-                            <div><span>IGST (18%, incl.)</span><strong>₹@receipt.IgstAmount.ToString("N0")</strong></div>
+                            <div><span>GST (18%, incl.)</span><strong>₹@receipt.IgstAmount.ToString("N0")</strong></div>
                         }
                         else
                         {
-                            <div><span>CGST (9%, incl.)</span><strong>₹@receipt.CgstAmount.ToString("N0")</strong></div>
-                            <div><span>SGST (9%, incl.)</span><strong>₹@receipt.SgstAmount.ToString("N0")</strong></div>
+                            <div><span>GST (incl.)</span><strong>₹@((receipt.CgstAmount + receipt.SgstAmount).ToString("N0"))</strong></div>
                         }
-                        <div class="ps-totals__grand"><span>Amount Due</span><strong>₹@receipt.Total.ToString("N0")</strong></div>
+                        <div class="ps-totals__grand"><span>Amount</span><strong>₹@receipt.Total.ToString("N0")</strong></div>
                     </div>
-                </section>
-            }
-            else if (!string.IsNullOrEmpty(OrderNumber))
-            {
-                <section class="ps-card">
-                    <p style="color:var(--gray-500)">We couldn't load the order details, but you can still retry the payment from below.</p>
                 </section>
             }
         </div>
@@ -105,14 +89,7 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
                     Back To Cart
                 </a>
-                @if (!string.IsNullOrWhiteSpace(siteCfg?.ContactPhone1))
-                {
-                    <a href="tel:@siteCfg.ContactPhone1" class="ps-cta ps-cta--ghost">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                        Contact Support
-                    </a>
-                }
-                <a href="/courses" class="ps-cta ps-cta--ghost">
+                <a href="/courses/ca-foundation" class="ps-cta ps-cta--ghost">
                     Continue Shopping
                 </a>
 
@@ -124,35 +101,12 @@
                     </div>
                 }
             </section>
-
-            <section class="ps-card ps-help">
-                <h3 class="ps-card__title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-                    Need Help?
-                </h3>
-                @if (!string.IsNullOrWhiteSpace(siteCfg?.ContactPhone1))
-                {
-                    <a href="tel:@siteCfg.ContactPhone1" class="ps-help__line">📞 @siteCfg.ContactPhone1</a>
-                }
-                @if (!string.IsNullOrWhiteSpace(siteCfg?.WhatsappNumber))
-                {
-                    var waNum = siteCfg.WhatsappNumber.TrimStart('+');
-                    if (!waNum.StartsWith("91")) waNum = "91" + waNum;
-                    <a href="https://wa.me/@waNum" target="_blank" rel="noopener" class="ps-help__line">💬 WhatsApp Support</a>
-                }
-                @{ var email = siteCfg?.SupportEmail ?? siteCfg?.ContactEmail; }
-                @if (!string.IsNullOrWhiteSpace(email))
-                {
-                    <a href="mailto:@email" class="ps-help__line">📧 @email</a>
-                }
-            </section>
         </aside>
     </div>
 </div>
 
 @code {
     [SupplyParameterFromQuery(Name = "o")] public string? OrderNumber { get; set; }
-    [SupplyParameterFromQuery(Name = "r")] public string? Reason { get; set; }
 
     private OrderReceipt? receipt;
     private bool loading = true;
@@ -160,14 +114,11 @@
     private bool _popupOpen;
     private string? retryError;
     private Guid _userId;
-    private SiteSettings? siteCfg;
 
     private bool busy => placing || _popupOpen;
 
     protected override async Task OnInitializedAsync()
     {
-        try { siteCfg = await SettingsSvc.GetAsync(); } catch { }
-
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var id = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (Guid.TryParse(id, out _userId) && !string.IsNullOrEmpty(OrderNumber))
@@ -191,18 +142,16 @@
 
         try
         {
-            // JS owns the retry flow: POST /retry-order → popup OR redirect → server settle →
-            // window.location.replace. We never come back to this Blazor circuit. Pick the
-            // gateway the order was placed with so a Razorpay order retries on Razorpay and
-            // an Easebuzz order retries on Easebuzz.
+            // Same JS-driven retry flow as the failure page; pick the gateway matching
+            // the order's PaymentMode.
             if (receipt?.PaymentMode == PaymentMode.Easebuzz)
             {
-                await JS.InvokeVoidAsync("hjc.retryEasebuzz", OrderNumber);
+                await JS.InvokeVoidAsync("rc.retryEasebuzz", OrderNumber);
             }
             else
             {
                 var prefill = new { name = receipt?.StudentName, email = receipt?.StudentEmail, contact = receipt?.StudentPhone };
-                await JS.InvokeVoidAsync("hjc.retryRazorpay", OrderNumber, prefill);
+                await JS.InvokeVoidAsync("rc.retryRazorpay", OrderNumber, prefill);
             }
         }
         catch (Exception ex)
@@ -216,17 +165,15 @@
 }
 
 <style>
-    .pay-status{--ps-fail:#DC2626;--ps-fail-2:#F87171;--ps-warn:#D97706;--ps-warn-2:#FBBF24;--ps-primary:#163A70;--ps-ink:#0F1B33;--ps-mute:#64748B;--ps-line:#E5ECF4;--ps-bg:#F8FAFC;background:linear-gradient(180deg,#F8FAFC 0%,#FDFEFF 360px);padding-bottom:30px}
-    .pay-status .ps-hero{position:relative;text-align:center;color:#fff;border-radius:28px;padding:42px 24px 32px;margin:18px 0 22px;overflow:hidden;box-shadow:0 24px 60px -30px rgba(220,38,38,.5)}
-    .pay-status .ps-hero--fail{background:linear-gradient(135deg,#9F1239 0%,#DC2626 60%,#F87171 100%)}
+    /* Shared base styles — duplicated from PaymentFailed.razor because Razor style
+       blocks render only when their owning component renders. */
+    .pay-status{--ps-primary:#163A70;--ps-ink:#0F1B33;--ps-mute:#64748B;--ps-line:#E5ECF4;--ps-bg:#F8FAFC;background:linear-gradient(180deg,#F8FAFC 0%,#FDFEFF 360px);padding-bottom:30px}
+    .pay-status .ps-hero{position:relative;text-align:center;color:#fff;border-radius:28px;padding:42px 24px 32px;margin:18px 0 22px;overflow:hidden}
     .pay-status .ps-hero::before{content:"";position:absolute;inset:0;background:radial-gradient(900px 320px at 100% -10%,rgba(255,255,255,.15),transparent 60%),radial-gradient(700px 240px at -10% 110%,rgba(0,0,0,.18),transparent 60%);pointer-events:none}
-    .pay-status .ps-hero__ring{position:relative;width:96px;height:96px;margin:0 auto 12px;border-radius:50%;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);display:inline-flex;align-items:center;justify-content:center;animation:psPulseFail 2.2s ease-out infinite}
+    .pay-status .ps-hero__ring{position:relative;width:96px;height:96px;margin:0 auto 12px;border-radius:50%;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);display:inline-flex;align-items:center;justify-content:center;animation:psPulseCancel 2.2s ease-out infinite}
     .pay-status .ps-hero__mark{width:72px;height:72px}
-    .pay-status .ps-hero__circle--fail{fill:#fff;stroke:#FECACA;stroke-width:2;animation:psDraw .55s ease-out both}
-    .pay-status .ps-hero__x{fill:none;stroke:#DC2626;stroke-width:6;stroke-linecap:round;animation:psStrokeIn .4s .25s ease-out both}
     .pay-status .ps-hero__title{position:relative;font-size:36px;font-weight:800;letter-spacing:-.5px;margin:6px 0 6px}
     .pay-status .ps-hero__sub{position:relative;margin:0 auto 12px;font-size:14px;color:rgba(255,255,255,.92);max-width:580px;line-height:1.55;font-weight:500}
-    .pay-status .ps-hero__reason{position:relative;display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.28);color:#fff;font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:999px;margin-top:6px;max-width:90%}
     .pay-status .ps-hero__order{position:relative;margin-top:10px;font-size:12.5px;color:rgba(255,255,255,.85);font-weight:500}
     .pay-status .ps-hero__order strong{color:#fff;font-weight:800;letter-spacing:.4px}
 
@@ -247,9 +194,8 @@
     .pay-status .ps-totals{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px dashed var(--ps-line)}
     .pay-status .ps-totals > div{display:flex;justify-content:space-between;font-size:13px;color:var(--ps-mute);font-weight:500}
     .pay-status .ps-totals strong{color:var(--ps-ink);font-weight:700}
-    .pay-status .ps-totals--save,.pay-status .ps-totals--save strong{color:#0B45AB}
     .pay-status .ps-totals__grand{margin-top:6px;padding-top:8px;border-top:1px dashed var(--ps-line);font-size:14px}
-    .pay-status .ps-totals__grand strong{color:var(--ps-fail);font-size:17px;font-weight:800}
+    .pay-status .ps-totals__grand strong{font-size:17px;font-weight:800}
 
     .pay-status .ps-actions__title{font-size:13px;font-weight:700;color:var(--ps-mute);text-transform:uppercase;letter-spacing:.6px;margin:0 0 12px}
     .pay-status .ps-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;height:48px;padding:0 18px;border-radius:14px;font-size:14px;font-weight:700;text-decoration:none;cursor:pointer;border:1.5px solid transparent;margin-bottom:10px;transition:transform .15s,box-shadow .2s,filter .2s,background .2s,border-color .2s,color .2s}
@@ -266,11 +212,14 @@
     .pay-status .ps-retry-err{margin-top:6px;padding:10px 12px;border-radius:12px;background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;font-size:12.5px;font-weight:600;display:flex;align-items:flex-start;gap:8px}
     .pay-status .ps-retry-err svg{width:16px;height:16px;flex:0 0 auto;margin-top:1px}
 
-    .pay-status .ps-help__line{display:block;padding:8px 0;font-size:13.5px;font-weight:600;color:var(--ps-ink);text-decoration:none;border-bottom:1px solid var(--ps-line)}
-    .pay-status .ps-help__line:last-child{border-bottom:0}
-    .pay-status .ps-help__line:hover{color:var(--ps-primary)}
+    /* Cancel-specific styles */
+    .pay-status--cancel .ps-hero--cancel{background:linear-gradient(135deg,#92400E 0%,#D97706 60%,#FBBF24 100%);box-shadow:0 24px 60px -30px rgba(217,119,6,.5)}
+    .pay-status--cancel .ps-hero__circle--cancel{fill:#fff;stroke:#FDE68A;stroke-width:2;animation:psDraw .55s ease-out both}
+    .pay-status--cancel .ps-hero__bang{fill:none;stroke:#D97706;stroke-width:6;stroke-linecap:round;animation:psStrokeIn .4s .25s ease-out both}
+    .pay-status--cancel .ps-hero__sub strong{color:#fff;font-weight:800}
+    .pay-status--cancel .ps-totals__grand strong{color:#D97706}
 
-    @@keyframes psPulseFail{0%{box-shadow:0 0 0 0 rgba(255,255,255,.45)}70%{box-shadow:0 0 0 18px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+    @@keyframes psPulseCancel{0%{box-shadow:0 0 0 0 rgba(255,255,255,.45)}70%{box-shadow:0 0 0 18px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
     @@keyframes psDraw{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
     @@keyframes psStrokeIn{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
     @@keyframes psSpin{to{transform:rotate(360deg)}}

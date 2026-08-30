@@ -14,7 +14,7 @@ namespace RioCommerce.Infrastructure.Services;
 ///   2. Exact faculty short-code (lower-cased) → /faculty/{ShortCode}
 ///   3. Exact category slug → /courses?category={slug}
 ///   4. Known static page mapping
-///   5. SEO landing-slug heuristic — partial token match (e.g. "best-ca-foundation-classes-in-pune" → /courses?level=ca-foundation)
+///   5. SEO landing-slug heuristic — partial token match (e.g. "best-beginner-classes-in-pune" → /courses/beginner)
 ///   6. No match → "/"
 ///
 /// The PartialMatch label is used by the migration tool to group these for admin review.
@@ -45,10 +45,10 @@ public sealed class UrlMatchService : IUrlMatchService
         ["books"]             = "/courses?type=books",
         ["air-talks"]         = "/air-talks",
         ["download-app"]      = "/download-app",
-        ["ca-foundation"]     = "/courses?level=ca-foundation",
-        ["ca-foundations"]    = "/courses?level=ca-foundation",
-        ["ca-inter"]          = "/courses?level=ca-intermediate",
-        ["ca-intermediate"]   = "/courses?level=ca-intermediate",
+        ["beginner"]          = "/courses/beginner",
+        ["ca-foundations"]    = "/courses/beginner",
+        ["ca-inter"]          = "/courses/intermediate",
+        ["intermediate"]      = "/courses/intermediate",
         ["vendor/apply"]      = "/franchise/apply",
         ["manufacturer/all"]  = "/faculty",
     };
@@ -82,9 +82,9 @@ public sealed class UrlMatchService : IUrlMatchService
             return (mapped, UrlMatchStatus.ExactMatch, "Known static page");
 
         // 5. SEO landing slug heuristic
-        if (slug.Contains("ca-foundation"))   return ("/courses?level=ca-foundation",   UrlMatchStatus.PartialMatch, "Contains 'ca-foundation'");
-        if (slug.Contains("ca-inter") || slug.Contains("ca-intermediate"))
-            return ("/courses?level=ca-intermediate", UrlMatchStatus.PartialMatch, "Contains 'ca-inter'");
+        if (slug.Contains("beginner"))   return ("/courses/beginner",   UrlMatchStatus.PartialMatch, "Contains 'beginner'");
+        if (slug.Contains("ca-inter") || slug.Contains("intermediate"))
+            return ("/courses/intermediate", UrlMatchStatus.PartialMatch, "Contains 'intermediate'");
         if (slug.Contains("test-series"))     return ("/courses?type=test-series",      UrlMatchStatus.PartialMatch, "Contains 'test-series'");
         if (slug.Contains("books") || slug.Contains("book-set"))
             return ("/courses?type=books", UrlMatchStatus.PartialMatch, "Contains 'book'");

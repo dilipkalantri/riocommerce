@@ -1343,7 +1343,7 @@ else
     private async Task CopyOrderNo()
     {
         moreMenu = false;
-        if (o != null) { await JS.InvokeVoidAsync("hjc.copy", o.OrderNumber); Toast.Info("Order number copied."); }
+        if (o != null) { await JS.InvokeVoidAsync("rc.copy", o.OrderNumber); Toast.Info("Order number copied."); }
     }
 
     // ── billing / shipping address ──
@@ -1406,7 +1406,7 @@ else
     {
         if (o == null) return;
         var addr = string.Join(", ", new[] { o.BillingName ?? o.StudentName, o.BillingAddress, o.BillingCity, o.BillingState, o.BillingPincode }.Where(x => !string.IsNullOrWhiteSpace(x)));
-        await JS.InvokeVoidAsync("hjc.copy", addr);
+        await JS.InvokeVoidAsync("rc.copy", addr);
         Toast.Info("Address copied.");
     }
 

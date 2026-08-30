@@ -12,15 +12,15 @@ using Xunit;
 namespace RioCommerce.Tests;
 
 /// <summary>
-/// Every course level can be filtered for, CA Final included.
+/// Every course level can be filtered for, Advanced included.
 ///
 /// <para>The Products search panel listed the ordinals 0–3 by hand and stopped before
-/// <c>CaFinal</c> (4), so CA Final courses could not be filtered at all. The enum has always had the
+/// <c>Advanced</c> (4), so Advanced courses could not be filtered at all. The enum has always had the
 /// member and the label switch has always had its caption — only the dropdown markup was short.</para>
 ///
 /// <para>The order the options appear in cannot come from the enum: <c>CourseLevel</c> is declared
-/// append-only because its ordinals are serialised into public search URLs, which puts CaFinal last
-/// in the declaration and after CA Intermediate on screen. So the coverage test below asserts the
+/// append-only because its ordinals are serialised into public search URLs, which puts Advanced last
+/// in the declaration and after Intermediate on screen. So the coverage test below asserts the
 /// display list holds every member — the guard that would have caught the original omission.</para>
 /// </summary>
 public class ProductLevelFilterTests
@@ -44,21 +44,21 @@ public class ProductLevelFilterTests
                        Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
 
         db.Faculty.AddRange(
-            new Faculty { Id = f.FinalFaculty, DisplayName = "CA Final Faculty", IsActive = true },
+            new Faculty { Id = f.FinalFaculty, DisplayName = "Advanced Faculty", IsActive = true },
             new Faculty { Id = f.InterFaculty, DisplayName = "CA Inter Faculty", IsActive = true });
 
         db.Subjects.AddRange(
             new Subject { Id = f.FinalSub, Name = "Final SCMPE", Slug = "scmpe", IsActive = true },
             new Subject { Id = f.InterSub, Name = "Inter Audit", Slug = "audit", IsActive = true });
 
-        db.Categories.Add(new Category { Id = f.FinalCat, Name = "CA Final", Slug = "ca-final", IsActive = true });
+        db.Categories.Add(new Category { Id = f.FinalCat, Name = "Advanced", Slug = "advanced", IsActive = true });
 
         db.Products.AddRange(
-            new Product { Id = f.FinalProduct, Title = "CA Final SCMPE", Slug = "final-scmpe",
-                          Level = CourseLevel.CaFinal, SubjectId = f.FinalSub, CategoryId = f.FinalCat,
+            new Product { Id = f.FinalProduct, Title = "Advanced SCMPE", Slug = "final-scmpe",
+                          Level = CourseLevel.Advanced, SubjectId = f.FinalSub, CategoryId = f.FinalCat,
                           PrimaryFacultyId = f.FinalFaculty, Status = ProductStatus.Active },
             new Product { Id = f.InterProduct, Title = "CA Inter Audit", Slug = "inter-audit",
-                          Level = CourseLevel.CaIntermediate, SubjectId = f.InterSub,
+                          Level = CourseLevel.Intermediate, SubjectId = f.InterSub,
                           PrimaryFacultyId = f.InterFaculty, Status = ProductStatus.Active },
             new Product { Id = f.BooksProduct, Title = "Reference Book", Slug = "book",
                           Level = CourseLevel.Books, Status = ProductStatus.Active });
@@ -80,9 +80,9 @@ public class ProductLevelFilterTests
     /// </summary>
     private static readonly CourseLevel[] DisplayOrder =
     {
-        CourseLevel.CaFoundation,
-        CourseLevel.CaIntermediate,
-        CourseLevel.CaFinal,
+        CourseLevel.Beginner,
+        CourseLevel.Intermediate,
+        CourseLevel.Advanced,
         CourseLevel.Books,
         CourseLevel.TestSeries,
     };
@@ -97,20 +97,20 @@ public class ProductLevelFilterTests
     }
 
     [Fact]
-    public void CaFinalAppearsAfterCaIntermediate()
+    public void AdvancedAppearsAfterIntermediate()
     {
-        Assert.Equal(2, Array.IndexOf(DisplayOrder, CourseLevel.CaFinal));
-        Assert.Equal(1, Array.IndexOf(DisplayOrder, CourseLevel.CaIntermediate));
+        Assert.Equal(2, Array.IndexOf(DisplayOrder, CourseLevel.Advanced));
+        Assert.Equal(1, Array.IndexOf(DisplayOrder, CourseLevel.Intermediate));
     }
 
     [Fact]
-    public void TheEnumStillDeclaresCaFinalLast()
+    public void TheEnumStillDeclaresAdvancedLast()
     {
         // Declaration order is append-only because the ordinals live in public search URLs. If this
         // ever fails, someone reordered the enum and every bookmarked ?level=N changed meaning.
-        Assert.Equal(4, (int)CourseLevel.CaFinal);
-        Assert.Equal(0, (int)CourseLevel.CaFoundation);
-        Assert.Equal(1, (int)CourseLevel.CaIntermediate);
+        Assert.Equal(4, (int)CourseLevel.Advanced);
+        Assert.Equal(0, (int)CourseLevel.Beginner);
+        Assert.Equal(1, (int)CourseLevel.Intermediate);
         Assert.Equal(2, (int)CourseLevel.Books);
         Assert.Equal(3, (int)CourseLevel.TestSeries);
     }
@@ -118,8 +118,8 @@ public class ProductLevelFilterTests
     // ── Filtering by each level actually works ──────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(CourseLevel.CaFinal)]
-    [InlineData(CourseLevel.CaIntermediate)]
+    [InlineData(CourseLevel.Advanced)]
+    [InlineData(CourseLevel.Intermediate)]
     [InlineData(CourseLevel.Books)]
     public async Task EachLevelReturnsOnlyItsOwnProducts(CourseLevel level)
     {
@@ -136,28 +136,28 @@ public class ProductLevelFilterTests
     }
 
     [Fact]
-    public async Task CaFinalReturnsTheCaFinalCourse()
+    public async Task AdvancedReturnsTheAdvancedCourse()
     {
         using var db = NewDb();
         var f = await SeedAsync(db);
 
         var page = await new ProductRepository(db).GetFilteredAsync(new ProductFilterRequest
         {
-            Level = CourseLevel.CaFinal, Page = 1, PageSize = 100,
+            Level = CourseLevel.Advanced, Page = 1, PageSize = 100,
         });
 
         Assert.Equal(new[] { f.FinalProduct }, page.Items.Select(i => i.Id).ToArray());
     }
 
-    // ── The cascade still behaves, CA Final included ────────────────────────────────────────────
+    // ── The cascade still behaves, Advanced included ────────────────────────────────────────────
 
     [Fact]
-    public async Task CaFinalNarrowsSubjectsFacultyAndCategories()
+    public async Task AdvancedNarrowsSubjectsFacultyAndCategories()
     {
         using var db = NewDb();
         var f = await SeedAsync(db);
 
-        var meta = await Products(db).GetFilterMetaAsync(level: CourseLevel.CaFinal);
+        var meta = await Products(db).GetFilterMetaAsync(level: CourseLevel.Advanced);
 
         Assert.Equal(new[] { f.FinalSub }, meta.Subjects.Select(s => s.Id).ToArray());
         Assert.Equal(new[] { f.FinalFaculty }, meta.Faculties.Select(x => x.Id).ToArray());
@@ -165,13 +165,13 @@ public class ProductLevelFilterTests
     }
 
     [Fact]
-    public async Task CaFinalIntersectsWithFaculty()
+    public async Task AdvancedIntersectsWithFaculty()
     {
         using var db = NewDb();
         var f = await SeedAsync(db);
 
-        // CA Final AND the Inter faculty is an impossible pair — nothing should survive.
-        var meta = await Products(db).GetFilterMetaAsync(level: CourseLevel.CaFinal, facultyId: f.InterFaculty);
+        // Advanced AND the Inter faculty is an impossible pair — nothing should survive.
+        var meta = await Products(db).GetFilterMetaAsync(level: CourseLevel.Advanced, facultyId: f.InterFaculty);
 
         Assert.Empty(meta.Subjects);
         Assert.Empty(meta.Categories);
@@ -183,8 +183,8 @@ public class ProductLevelFilterTests
         using var db = NewDb();
         var f = await SeedAsync(db);
 
-        // The Inter subject was already picked, then the level moved to CA Final.
-        var meta = await Products(db).GetFilterMetaAsync(level: CourseLevel.CaFinal);
+        // The Inter subject was already picked, then the level moved to Advanced.
+        var meta = await Products(db).GetFilterMetaAsync(level: CourseLevel.Advanced);
 
         // The page drops a selection the list no longer offers — this asserts the list says so.
         Assert.DoesNotContain(f.InterSub, meta.Subjects.Select(s => s.Id));

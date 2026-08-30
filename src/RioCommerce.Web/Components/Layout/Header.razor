@@ -86,12 +86,15 @@
                             Admin
                         </a>
                     </AuthorizeView>
-                    <AuthorizeView Roles="franchise_admin" Context="fr">
-                        <a href="/franchise" class="header__chip" title="Franchise portal">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>
-                            Franchise
-                        </a>
-                    </AuthorizeView>
+                    @if (_franchiseOn)
+                    {
+                        <AuthorizeView Roles="franchise_admin" Context="fr">
+                            <a href="/franchise" class="header__chip" title="Franchise portal">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>
+                                Franchise
+                            </a>
+                        </AuthorizeView>
+                    }
                     <div class="header__profile">
                         <button type="button" class="header__user @(profileOpen ? "is-open" : "")" @onclick="ToggleProfile" aria-label="Account menu" aria-expanded="@profileOpen">
                             <span class="header__avatar"><span class="header__avatar-txt">@Initials(uname)</span><span class="header__status"></span></span>
@@ -112,19 +115,29 @@
                                 <a href="/account" class="header__menu-item" @onclick="CloseProfile">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>My Account
                                 </a>
-                                <AuthorizeView Roles="franchise_admin" Context="frCart">
-                                    <NotAuthorized Context="frCartNo">
-                                        <a href="/cart" class="header__menu-item" @onclick="CloseProfile">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>Cart
-                                            @if (cartCount > 0) { <span class="header__menu-count">@cartCount</span> }
-                                        </a>
-                                    </NotAuthorized>
-                                    <Authorized Context="frCartYes">
-                                        <a href="/franchise/order" class="header__menu-item" @onclick="CloseProfile">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Place Franchise Order
-                                        </a>
-                                    </Authorized>
-                                </AuthorizeView>
+                                @if (_franchiseOn)
+                                {
+                                    <AuthorizeView Roles="franchise_admin" Context="frCart">
+                                        <NotAuthorized Context="frCartNo">
+                                            <a href="/cart" class="header__menu-item" @onclick="CloseProfile">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>Cart
+                                                @if (cartCount > 0) { <span class="header__menu-count">@cartCount</span> }
+                                            </a>
+                                        </NotAuthorized>
+                                        <Authorized Context="frCartYes">
+                                            <a href="/franchise/order" class="header__menu-item" @onclick="CloseProfile">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Place Franchise Order
+                                            </a>
+                                        </Authorized>
+                                    </AuthorizeView>
+                                }
+                                else
+                                {
+                                    <a href="/cart" class="header__menu-item" @onclick="CloseProfile">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>Cart
+                                        @if (cartCount > 0) { <span class="header__menu-count">@cartCount</span> }
+                                    </a>
+                                }
                                 <div class="header__menu-sep"></div>
                                 <form method="post" action="/account/logout" data-enhance="false" style="margin:0">
                                     <button type="submit" class="header__menu-item header__menu-item--danger">
@@ -197,6 +210,7 @@
     private int cartCount;
     private List<MenuItemNode>? menu;
     private string? customLogoUrl;
+    private bool _franchiseOn = true;
     private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
     private void ToggleMenu() => MenuOpen = !MenuOpen;
@@ -270,7 +284,7 @@
     };
 
     // An item is in the "active path" if it — or any descendant — matches the current URL.
-    // Highlights the whole hierarchy (e.g. Courses ▸ CA Intermediate ▸ Faculty) without touching Home.
+    // Highlights the whole hierarchy (e.g. Courses ▸ Intermediate ▸ Faculty) without touching Home.
     private bool IsActiveBranch(MenuItemNode n) => IsActive(n.Url) || n.Children.Any(IsActiveBranch);
 
     // Recursive mobile accordion node. Tapping the ± toggle expands children; the label still links out.
@@ -299,7 +313,7 @@
     {
         if (_focusSearch) { _focusSearch = false; try { await searchInput.FocusAsync(); } catch { } }
         // Keep multi-level flyouts inside the viewport (idempotent; re-scans new nodes each render).
-        try { await JS.InvokeVoidAsync("hjc.megaFlyout"); } catch { }
+        try { await JS.InvokeVoidAsync("rc.megaFlyout"); } catch { }
     }
 
     protected override void OnInitialized() => Nav.LocationChanged += OnLocationChanged;
@@ -313,11 +327,11 @@
         // The desktop dropdowns are CSS-only (:hover / :focus-within), so no
         // Blazor state controls them — the clicked link keeps focus and the
         // pointer keeps hovering, leaving the panel open after navigation.
-        // hjc.closeNav drops focus and suppresses the panels until the pointer
+        // rc.closeNav drops focus and suppresses the panels until the pointer
         // moves away.
         InvokeAsync(async () =>
         {
-            try { await JS.InvokeVoidAsync("hjc.closeNav"); } catch { /* prerender / JS unavailable */ }
+            try { await JS.InvokeVoidAsync("rc.closeNav"); } catch { /* prerender / JS unavailable */ }
         });
     }
 
@@ -348,7 +362,7 @@
     protected override async Task OnInitializedAsync()
     {
         try { menu = await Menu.GetTreeAsync(enabledOnly: true); } catch { }
-        try { customLogoUrl = (await Settings.GetAsync()).LogoUrl; } catch { }
+        try { var cfg = await Settings.GetAsync(); customLogoUrl = cfg.LogoUrl; _franchiseOn = cfg.FranchiseEnabled; } catch { }
         try
         {
             var state = await AuthProvider.GetAuthenticationStateAsync();

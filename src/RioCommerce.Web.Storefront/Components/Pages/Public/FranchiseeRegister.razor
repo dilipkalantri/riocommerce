@@ -1,8 +1,19 @@
 @page "/franchisee/register"
 @inject IFranchiseService Svc
+@inject ISiteSettingsService Settings
 @inject IJSRuntime JS
 @implements IDisposable
 <SeoHead Seo="@(new SeoMetadata { Title = "Become a Franchisee — RioCommerce", Description = "Apply to become an RioCommerce franchisee partner — fill the registration form and our team will reach out." })" />
+
+@if (!_franchiseOn)
+{
+    <div style="text-align:center;padding:80px 20px">
+        <h1>Franchisee Registration</h1>
+        <p style="color:var(--gray-500)">Franchise registration is not available at this time.</p>
+        <a href="/" class="btn btn-primary" style="margin-top:16px">Back to Home</a>
+    </div>
+    return;
+}
 
 <div class="container contact-page">
     <div class="contact-hero">
@@ -75,6 +86,11 @@
 </div>
 
 @code {
+    private bool _franchiseOn = true;
+
+    protected override async Task OnInitializedAsync()
+        => _franchiseOn = (await Settings.GetAsync()).FranchiseEnabled;
+
     private FranchiseRegistrationRequest req = new();
     private bool busy, submitted, awaitingOtp;
     private string? error, submittedName, submittedEmail;
@@ -150,7 +166,7 @@
 
     private async Task FocusAsync(int idx)
     {
-        try { await JS.InvokeVoidAsync("hjc.focusEl", $"fr-otp-{idx}"); } catch { }
+        try { await JS.InvokeVoidAsync("rc.focusEl", $"fr-otp-{idx}"); } catch { }
         StateHasChanged();
     }
 

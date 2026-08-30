@@ -87,7 +87,7 @@ public class SerialKeyProviderFollowsConfigTests
         var orderItemId = Guid.NewGuid();
         var modeId = Guid.NewGuid();
 
-        db.Products.Add(new Product { Id = productId, Title = "CA Foundation LAW Regular", Slug = $"p-{productId:N}" });
+        db.Products.Add(new Product { Id = productId, Title = "Beginner LAW Regular", Slug = $"p-{productId:N}" });
         db.Set<ProductMode>().Add(new ProductMode
         {
             Id = modeId, ProductId = productId, ModeName = "Recorded Lectures + Hardcopy Notes",
@@ -102,7 +102,7 @@ public class SerialKeyProviderFollowsConfigTests
         db.OrderItems.Add(new OrderItem
         {
             Id = orderItemId, OrderId = orderId, ProductId = productId, ProductModeId = modeId,
-            ProductTitle = "CA Foundation LAW Regular", Quantity = 1, UnitPrice = 1000m, LineTotal = 1000m,
+            ProductTitle = "Beginner LAW Regular", Quantity = 1, UnitPrice = 1000m, LineTotal = 1000m,
         });
 
         var cfgJson = configProvider == "superclass"
@@ -121,7 +121,7 @@ public class SerialKeyProviderFollowsConfigTests
         var req = new GenerateKeyRequest
         {
             ProviderKey = recordProvider, OrderId = orderId, OrderItemId = orderItemId, OrderNumber = "RIO-1055",
-            ProductId = productId, ProductTitle = "CA Foundation LAW Regular",
+            ProductId = productId, ProductTitle = "Beginner LAW Regular",
             ProviderProductCode = productId.ToString(),
             CustomerName = "ISHA BHALEGHARE", CustomerEmail = "isha@example.com",
             CustomerPhone = "9876500000", CustomerCountryCode = "91", CustomerPincode = "411001",

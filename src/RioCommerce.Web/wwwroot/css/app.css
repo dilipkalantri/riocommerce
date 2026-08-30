@@ -57,17 +57,17 @@ select.form-input{appearance:none;background:#fff url("data:image/svg+xml,%3Csvg
 /* ── Permanently fixed top bar ───────────────────────────────────────────────
    .site-topbar wraps the contact strip + header and is fixed at all times — it is
    never in normal flow, so there is no "becomes fixed after scrolling" state and
-   nothing to shrink or toggle. .hjc-app carries a matching padding-top (set below
+   nothing to shrink or toggle. .rc-app carries a matching padding-top (set below
    per breakpoint) so page content starts beneath the bar instead of under it.
    The header itself stays position:static inside the fixed wrapper. */
 /* Opaque background on the wrapper: the header's inner is a translucent "floating
    pill" (backdrop-filter), which let page content show through the fixed bar as it
    scrolled underneath. The strip keeps its own dark background on top of this. */
 .site-topbar{position:fixed;top:0;left:0;right:0;width:100%;z-index:99999;background:#fff}
-/* The offset lives on <main> rather than .hjc-app: as padding on the content box it
+/* The offset lives on <main> rather than .rc-app: as padding on the content box it
    cannot be collapsed away by a child's top margin (which was letting the homepage
    banner ride ~8px up under the bar). */
-.hjc-app>main{padding-top:var(--topbar-h,126px)}
+.rc-app>main{padding-top:var(--topbar-h,126px)}
 
 .header{position:static;background:#fff;border-bottom:1px solid var(--gray-200)}
 .header__inner{max-width:1200px;margin:0 auto;padding:0 20px;display:flex;align-items:center;height:64px}
@@ -95,7 +95,7 @@ select.form-input{appearance:none;background:#fff url("data:image/svg+xml,%3Csvg
 /* Invisible hover bridges so the pointer never crosses a dead zone between parent and child. */
 .hnav-drop::before{content:"";position:absolute;top:-13px;left:0;right:0;height:15px}
 .hnav-fly::before{content:"";position:absolute;top:0;bottom:0;left:-11px;width:15px}
-/* Viewport-edge flips (toggled by hjc.megaFlyout): open to the left / right-align when short on room. */
+/* Viewport-edge flips (toggled by rc.megaFlyout): open to the left / right-align when short on room. */
 .hnav-fly.flip-left{left:auto;right:calc(100% - 5px)}
 .hnav-drop.flip-right{left:auto;right:0}
 /* Items — same height, typography, bullet, hover across every level. */
@@ -105,18 +105,18 @@ select.form-input{appearance:none;background:#fff url("data:image/svg+xml,%3Csvg
 .hnav-drop__link--parent{padding-right:8px}
 .hnav-fly-caret{margin-left:auto;padding-left:10px;font-weight:800;color:var(--gray-400);flex-shrink:0}
 /* mobile accordion (recursive) — dark drawer, unlimited depth, no horizontal overflow */
-.hjc-app .dnav-item{display:flex;flex-direction:column}
-.hjc-app .dnav-row{display:flex;align-items:center;gap:6px}
-.hjc-app .dnav-link{flex:1;min-width:0;color:rgba(255,255,255,.84);font-weight:600;border-radius:12px;padding:13px 14px;transition:background .2s,color .2s}
-.hjc-app .dnav-link:hover{background:rgba(255,255,255,.09);color:#fff}
-.hjc-app .dnav-toggle{flex-shrink:0;width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:10px;cursor:pointer;color:#fff}
-.hjc-app .dnav-toggle:hover{background:rgba(255,255,255,.12)}
-.hjc-app .dnav-toggle__ico{position:relative;width:14px;height:14px}
-.hjc-app .dnav-toggle__ico::before,.hjc-app .dnav-toggle__ico::after{content:"";position:absolute;background:#fff;border-radius:2px;transition:transform .25s var(--p-ease),opacity .2s}
-.hjc-app .dnav-toggle__ico::before{left:0;right:0;top:6px;height:2px}
-.hjc-app .dnav-toggle__ico::after{top:0;bottom:0;left:6px;width:2px}
-.hjc-app .dnav-toggle.open .dnav-toggle__ico::after{transform:scaleY(0);opacity:0}
-.hjc-app .dnav-children{overflow:hidden;animation:dnavDown .22s var(--p-ease)}
+.rc-app .dnav-item{display:flex;flex-direction:column}
+.rc-app .dnav-row{display:flex;align-items:center;gap:6px}
+.rc-app .dnav-link{flex:1;min-width:0;color:rgba(255,255,255,.84);font-weight:600;border-radius:12px;padding:13px 14px;transition:background .2s,color .2s}
+.rc-app .dnav-link:hover{background:rgba(255,255,255,.09);color:#fff}
+.rc-app .dnav-toggle{flex-shrink:0;width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:10px;cursor:pointer;color:#fff}
+.rc-app .dnav-toggle:hover{background:rgba(255,255,255,.12)}
+.rc-app .dnav-toggle__ico{position:relative;width:14px;height:14px}
+.rc-app .dnav-toggle__ico::before,.rc-app .dnav-toggle__ico::after{content:"";position:absolute;background:#fff;border-radius:2px;transition:transform .25s var(--p-ease),opacity .2s}
+.rc-app .dnav-toggle__ico::before{left:0;right:0;top:6px;height:2px}
+.rc-app .dnav-toggle__ico::after{top:0;bottom:0;left:6px;width:2px}
+.rc-app .dnav-toggle.open .dnav-toggle__ico::after{transform:scaleY(0);opacity:0}
+.rc-app .dnav-children{overflow:hidden;animation:dnavDown .22s var(--p-ease)}
 @keyframes dnavDown{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
 .header__actions{margin-left:auto;display:flex;align-items:center;gap:12px}.header__cart{font-size:20px}
 .header__hamburger{display:none;background:none;border:none;font-size:24px;cursor:pointer;margin-left:auto}

@@ -95,7 +95,7 @@ public class ReportTotalsSerializationTests
         db.Subjects.Add(new Subject { Id = subj, Name = "Economics", Slug = "eco", IsActive = true });
         db.Products.Add(new Product
         {
-            Id = prod, Title = "CA Foundation Combo", Slug = $"p-{prod:N}", SubjectId = subj,
+            Id = prod, Title = "Beginner Combo", Slug = $"p-{prod:N}", SubjectId = subj,
             SellingPrice = 1180m, GstRate = 18m, Status = ProductStatus.Active
         });
         db.Orders.Add(new Order
@@ -106,13 +106,13 @@ public class ReportTotalsSerializationTests
         });
         db.OrderItems.Add(new OrderItem
         {
-            Id = itemId, OrderId = orderId, ProductId = prod, ProductTitle = "CA Foundation Combo",
+            Id = itemId, OrderId = orderId, ProductId = prod, ProductTitle = "Beginner Combo",
             Quantity = 1, UnitPrice = 1180m, Discount = 0m, LineTotal = 1180m
         });
         db.FacultyShareEntries.Add(new FacultyShareEntry
         {
             Id = Guid.NewGuid(), FacultyId = fac, OrderId = orderId, OrderNumber = "FRN-9999",
-            OrderItemId = itemId, ProductId = prod, ProductTitle = "CA Foundation Combo",
+            OrderItemId = itemId, ProductId = prod, ProductTitle = "Beginner Combo",
             BaseAmount = 1000m, ShareType = SharingType.Percentage, ShareValue = 10m,
             ShareAmount = 100m, GstOnShare = 0m, TotalPayout = 100m
         });

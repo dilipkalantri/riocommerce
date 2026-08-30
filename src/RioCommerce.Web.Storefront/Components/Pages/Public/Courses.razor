@@ -102,7 +102,7 @@
 </section>
 
 @code {
-    [Parameter] public string Level { get; set; } = "ca-foundation";
+    [Parameter] public string Level { get; set; } = "beginner";
 
     private List<ProductListItem> items = new();
     private FilterOptions? filters;
@@ -117,21 +117,12 @@
     private SeoMetadata seo = new();
 
     private int TotalPages => (int)Math.Ceiling(totalCount / (double)PageSize);
-    private string PageTitle => Level switch
+    private CourseLevel? LevelEnum => CourseLevelLabels.FromSlug(Level);
+    private string PageTitle => LevelEnum switch
     {
-        "ca-foundation" => "CA Foundation Courses",
-        "ca-intermediate" => "CA Intermediate Courses",
-        "ca-final" => "CA Final Courses",
-        "books" => "Books & Study Material",
+        CourseLevel.Books => "Books & Study Material",
+        { } l => $"{l.Label()} Courses",
         _ => "All Courses"
-    };
-    private CourseLevel? LevelEnum => Level switch
-    {
-        "ca-foundation" => CourseLevel.CaFoundation,
-        "ca-intermediate" => CourseLevel.CaIntermediate,
-        "ca-final" => CourseLevel.CaFinal,
-        "books" => CourseLevel.Books,
-        _ => null
     };
     private IEnumerable<SubjectOption> SubjectOptions =>
         filters == null ? Enumerable.Empty<SubjectOption>()

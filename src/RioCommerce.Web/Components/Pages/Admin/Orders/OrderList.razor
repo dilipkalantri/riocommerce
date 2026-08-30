@@ -702,7 +702,7 @@
         var csv = await Svc.ExportCsvAsync(filter);
         exporting = false;
         await LogExport("csv");
-        await JS.InvokeVoidAsync("hjc.downloadCsv", $"orders-{DateTime.Now:yyyyMMdd}.csv", csv);
+        await JS.InvokeVoidAsync("rc.downloadCsv", $"orders-{DateTime.Now:yyyyMMdd}.csv", csv);
     }
     private async Task ExportExcel()
     {
@@ -711,7 +711,7 @@
         var csv = await Svc.ExportCsvAsync(filter);
         exporting = false;
         await LogExport("excel");
-        await JS.InvokeVoidAsync("hjc.downloadCsv", $"orders-{DateTime.Now:yyyyMMdd}.xls", csv);
+        await JS.InvokeVoidAsync("rc.downloadCsv", $"orders-{DateTime.Now:yyyyMMdd}.xls", csv);
     }
     private async Task Print()
     {
@@ -791,14 +791,7 @@
         };
     }
 
-    private static string FormatLevel(string? lvl) => lvl switch
-    {
-        "CaFoundation"   => "CA Foundation",
-        "CaIntermediate" => "CA Intermediate",
-        "Books"          => "Books",
-        "TestSeries"     => "Test Series",
-        _                => lvl ?? ""
-    };
+    private static string FormatLevel(string? lvl) => CourseLevelLabels.FormatString(lvl);
 
     private static (string label, string variant) OrderBadge(OrderStatus s) => s switch
     {

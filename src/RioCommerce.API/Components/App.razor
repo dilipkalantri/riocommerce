@@ -10,6 +10,7 @@
     <link rel="apple-touch-icon" href="/_content/RioCommerce.Web/assets/logo.png" />
     <link rel="stylesheet" href="_content/RioCommerce.Web/css/app.css" />
     <link rel="stylesheet" href="_content/RioCommerce.Web/css/home-premium.css" />
+    <link rel="stylesheet" href="_content/RioCommerce.Web.Storefront/css/theme.css" />
     <link rel="stylesheet" href="_content/RioCommerce.Web/css/admin-grid.css" />
     <link rel="stylesheet" href="_content/RioCommerce.Web/css/hero-banner.css" />
     @* responsive-normalize.css must load LAST so its breakpoint defaults override
@@ -23,6 +24,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet" />
     @if (analytics.Length > 0) { @((MarkupString)analytics) }
+    @if (themeOverride.Length > 0) { @((MarkupString)themeOverride) }
     <HeadOutlet @rendermode="RenderMode.InteractiveServer" />
 </head>
 <body>
@@ -32,7 +34,7 @@
     <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     <script>
-        window.hjc = window.hjc || {};
+        window.rc = window.rc || {};
         // Focus an element by id (OTP box navigation).
         // Close the header nav after a client-side navigation.
         //
@@ -42,7 +44,7 @@
         // resting over the panel. Blurring fixes the first; the .is-navigating
         // class force-hides the panels until the pointer leaves the nav, which
         // fixes the second without breaking normal hover afterwards.
-        window.hjc.closeNav = function () {
+        window.rc.closeNav = function () {
             try {
                 var el = document.activeElement;
                 if (el && typeof el.blur === 'function') el.blur();
@@ -63,12 +65,12 @@
             setTimeout(release, 1500);
         };
 
-        window.hjc.focusEl = function (id) {
+        window.rc.focusEl = function (id) {
             const el = document.getElementById(id);
             if (el) { el.focus(); el.select && el.select(); }
         };
         // POST a urlencoded form and return the parsed JSON (used by the OTP / reset screens).
-        window.hjc.postForm = async function (url, data) {
+        window.rc.postForm = async function (url, data) {
             const body = new URLSearchParams();
             for (const k in data) body.append(k, data[k]);
             const r = await fetch(url, {
@@ -82,7 +84,7 @@
         // Read an image file's natural pixel dimensions before upload (banner size validation).
         // Returns {width,height} or null if it can't be decoded. Looks the <input> up by id so it
         // doesn't depend on passing an ElementReference.
-        window.hjc.readImageSize = function (inputId) {
+        window.rc.readImageSize = function (inputId) {
             return new Promise((resolve) => {
                 const inputEl = document.getElementById(inputId);
                 const f = inputEl && inputEl.files && inputEl.files[0];
@@ -95,7 +97,7 @@
             });
         };
         // Drag-to-reorder rows in the admin banner list. Calls back into .NET with the new id order.
-        window.hjc.bannerReorder = {
+        window.rc.bannerReorder = {
             init: function (container, dotnetRef) {
                 if (!container || container._dndInit) return; container._dndInit = true;
                 let dragEl = null;
@@ -117,7 +119,7 @@
             }
         };
         // Rich-text editor (Quill) interop for the RichText.razor component.
-        window.hjc.quill = {
+        window.rc.quill = {
             init: function (el, dotnetRef, initialHtml) {
                 if (!window.Quill || !el) return false;
                 const q = new Quill(el, {
@@ -141,7 +143,7 @@
         };
         // Product media gallery: prev/next arrows + dots, click-to-play YouTube (thumbnail shown until
         // clicked), and stops playback when a video is scrolled away.
-        window.hjc.mediaGallery = {
+        window.rc.mediaGallery = {
             init: function (c) {
                 if (!c || c._mgInit) return; c._mgInit = true;
                 const track = c.querySelector('.mg__track');
@@ -191,8 +193,8 @@
             }
         };
         // ===== Premium storefront FX: scroll-reveal, count-up, magnetic buttons, hero parallax =====
-        window.hjc._fmtIN = function (n) { try { return Math.round(n).toLocaleString('en-IN'); } catch (e) { return Math.round(n); } };
-        window.hjc._countUp = function (el) {
+        window.rc._fmtIN = function (n) { try { return Math.round(n).toLocaleString('en-IN'); } catch (e) { return Math.round(n); } };
+        window.rc._countUp = function (el) {
             if (el._counted) return; el._counted = true;
             var target = parseFloat(el.getAttribute('data-count')) || 0;
             var suffix = el.getAttribute('data-suffix') || '';
@@ -201,38 +203,38 @@
                 if (!start) start = ts;
                 var p = Math.min((ts - start) / dur, 1);
                 var eased = 1 - Math.pow(1 - p, 3);
-                el.textContent = window.hjc._fmtIN(target * eased) + suffix;
+                el.textContent = window.rc._fmtIN(target * eased) + suffix;
                 if (p < 1) requestAnimationFrame(step);
             }
             requestAnimationFrame(step);
         };
-        window.hjc.homeFx = function () {
+        window.rc.homeFx = function () {
             if ('IntersectionObserver' in window) {
-                if (!window.hjc._revObs) {
-                    window.hjc._revObs = new IntersectionObserver(function (entries) {
+                if (!window.rc._revObs) {
+                    window.rc._revObs = new IntersectionObserver(function (entries) {
                         entries.forEach(function (en) {
                             if (!en.isIntersecting) return;
                             en.target.classList.add('reveal--in');
-                            if (en.target.querySelectorAll) en.target.querySelectorAll('[data-count]').forEach(function (c) { window.hjc._countUp(c); });
-                            if (en.target.hasAttribute('data-count')) window.hjc._countUp(en.target);
-                            window.hjc._revObs.unobserve(en.target);
+                            if (en.target.querySelectorAll) en.target.querySelectorAll('[data-count]').forEach(function (c) { window.rc._countUp(c); });
+                            if (en.target.hasAttribute('data-count')) window.rc._countUp(en.target);
+                            window.rc._revObs.unobserve(en.target);
                         });
                     }, { threshold: 0.14, rootMargin: '0px 0px -40px 0px' });
                 }
                 document.querySelectorAll('.reveal:not([data-rev-init])').forEach(function (e) {
-                    e.setAttribute('data-rev-init', '1'); window.hjc._revObs.observe(e);
+                    e.setAttribute('data-rev-init', '1'); window.rc._revObs.observe(e);
                 });
-                if (!window.hjc._cntObs) {
-                    window.hjc._cntObs = new IntersectionObserver(function (entries) {
-                        entries.forEach(function (en) { if (en.isIntersecting) { window.hjc._countUp(en.target); window.hjc._cntObs.unobserve(en.target); } });
+                if (!window.rc._cntObs) {
+                    window.rc._cntObs = new IntersectionObserver(function (entries) {
+                        entries.forEach(function (en) { if (en.isIntersecting) { window.rc._countUp(en.target); window.rc._cntObs.unobserve(en.target); } });
                     }, { threshold: 0.4 });
                 }
                 document.querySelectorAll('[data-count]:not([data-cnt-init])').forEach(function (e) {
-                    e.setAttribute('data-cnt-init', '1'); window.hjc._cntObs.observe(e);
+                    e.setAttribute('data-cnt-init', '1'); window.rc._cntObs.observe(e);
                 });
             } else {
                 document.querySelectorAll('.reveal').forEach(function (e) { e.classList.add('reveal--in'); });
-                document.querySelectorAll('[data-count]').forEach(function (e) { window.hjc._countUp(e); });
+                document.querySelectorAll('[data-count]').forEach(function (e) { window.rc._countUp(e); });
             }
             // magnetic buttons
             document.querySelectorAll('.magnetic:not([data-mag-init])').forEach(function (el) {
@@ -245,7 +247,7 @@
                 el.addEventListener('pointerleave', function () { el.style.setProperty('--mx', '0px'); el.style.setProperty('--my', '0px'); });
             });
             // hero pointer parallax (moves the glow blobs)
-            var hero = document.querySelector('.hjc-app .hero');
+            var hero = document.querySelector('.rc-app .hero');
             if (hero && !hero._fxInit) {
                 hero._fxInit = true; var raf = null;
                 hero.addEventListener('pointermove', function (ev) {
@@ -260,8 +262,8 @@
         };
         // homepage faculty carousel: auto-advance with pause on hover / manual scroll, plus prev/next arrows.
         // Only activates when there are more cards than fit in the viewport (4 on desktop, 2 tablet, 1 mobile).
-        window.hjc.facultyCarousel = function () {
-            var v = document.querySelector('.hjc-app .fcs-viewport');
+        window.rc.facultyCarousel = function () {
+            var v = document.querySelector('.rc-app .fcs-viewport');
             if (!v || v._fcsInit) return;
             var track = v.querySelector('.fcs-grid');
             if (!track) return;
@@ -354,8 +356,8 @@
         // That is reused here: once past the halfway mark the scroller jumps back by
         // exactly half its width, landing on the identical card, so the loop is
         // invisible rather than a visible rewind to the start.
-        window.hjc.testimonialCarousel = function () {
-            var v = document.querySelector('.hjc-app .tm-marquee');
+        window.rc.testimonialCarousel = function () {
+            var v = document.querySelector('.rc-app .tm-marquee');
             if (!v || v._tmInit) return;
             var track = v.querySelector('.tm-track');
             if (!track || !track.children.length) return;
@@ -399,11 +401,11 @@
         // .is-scrolled (shrink) and .is-hidden (translateY(-140%) on scroll-down),
         // which is what made the header slide out of view while scrolling. Kept as a
         // no-op because App.razor calls it on DOMContentLoaded and on load.
-        window.hjc.navScroll = function () { };
-        document.addEventListener('DOMContentLoaded', function () { try { window.hjc.homeFx(); window.hjc.navScroll(); window.hjc.facultyCarousel(); window.hjc.testimonialCarousel(); } catch (e) { } });
-        window.addEventListener('load', function () { try { window.hjc.homeFx(); window.hjc.navScroll(); window.hjc.facultyCarousel(); window.hjc.testimonialCarousel(); } catch (e) { } });
+        window.rc.navScroll = function () { };
+        document.addEventListener('DOMContentLoaded', function () { try { window.rc.homeFx(); window.rc.navScroll(); window.rc.facultyCarousel(); window.rc.testimonialCarousel(); } catch (e) { } });
+        window.addEventListener('load', function () { try { window.rc.homeFx(); window.rc.navScroll(); window.rc.facultyCarousel(); window.rc.testimonialCarousel(); } catch (e) { } });
 
-        window.hjc.getCookie = function (name) {
+        window.rc.getCookie = function (name) {
             const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
             return m ? m.pop() : '';
         };
@@ -411,8 +413,8 @@
         //   RAZORPAY PAYMENT FLOW (REST-driven, no Blazor JSInvokable in the hot path)
         // ──────────────────────────────────────────────────────────────────────────
         //
-        // window.hjc.payRazorpay(checkoutRequest)  → new order from /checkout
-        // window.hjc.retryRazorpay(localOrderId)   → retry from /checkout/payment-failed
+        // window.rc.payRazorpay(checkoutRequest)  → new order from /checkout
+        // window.rc.retryRazorpay(localOrderId)   → retry from /checkout/payment-failed
         //                                            or /checkout/payment-cancelled
         //
         // Both routines:
@@ -426,7 +428,7 @@
         // No spinners-of-doom, no setTimeout polling, no "awaiting payment" screens.
         // The browser only ever waits on a single fetch and then redirects.
 
-        window.hjc._postJson = async function (url, body) {
+        window.rc._postJson = async function (url, body) {
             const res = await fetch(url, {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -441,7 +443,7 @@
 
         // Boots the Razorpay popup once we have an {orderId, key, amount} handoff in hand.
         // Wires up handler → verify; ondismiss → cancelled page; payment.failed → failed page.
-        window.hjc._launchRazorpay = function (handoff, prefill) {
+        window.rc._launchRazorpay = function (handoff, prefill) {
             return new Promise(function (resolve) {
                 if (!window.Razorpay) {
                     return resolve({ outcome: 'error', reason: 'Razorpay script did not load. Check your network.' });
@@ -503,10 +505,10 @@
 
         // Shared post-popup handler: takes the popup outcome + localOrderId, runs
         // server verification on success, and redirects via window.location.replace.
-        window.hjc._handlePopupOutcome = async function (outcome, localOrderId, prefill) {
+        window.rc._handlePopupOutcome = async function (outcome, localOrderId, prefill) {
             if (outcome.outcome === 'success') {
                 console.log('[Razorpay] verifying with server…');
-                const v = await window.hjc._postJson('/api/payments/razorpay/verify', {
+                const v = await window.rc._postJson('/api/payments/razorpay/verify', {
                     razorpay_order_id: outcome.orderId,
                     razorpay_payment_id: outcome.paymentId,
                     razorpay_signature: outcome.signature,
@@ -532,9 +534,9 @@
         };
 
         // PUBLIC: new-order entry point. Called from Checkout.razor's Pay button.
-        window.hjc.payRazorpay = async function (checkoutRequest, prefill) {
+        window.rc.payRazorpay = async function (checkoutRequest, prefill) {
             try {
-                const r = await window.hjc._postJson('/api/payments/razorpay/create-order', checkoutRequest);
+                const r = await window.rc._postJson('/api/payments/razorpay/create-order', checkoutRequest);
                 if (!r.ok || !r.body || !r.body.success) {
                     const reason = (r.body && r.body.error) || ('Could not create the payment order (' + r.status + ').');
                     console.error('[Razorpay] create-order failed:', reason, r.body || r.raw);
@@ -548,8 +550,8 @@
                     orderId: r.body.orderId,
                     orderNumber: r.body.orderNumber
                 };
-                const outcome = await window.hjc._launchRazorpay(handoff, prefill);
-                await window.hjc._handlePopupOutcome(outcome, r.body.orderNumber, prefill);
+                const outcome = await window.rc._launchRazorpay(handoff, prefill);
+                await window.rc._handlePopupOutcome(outcome, r.body.orderNumber, prefill);
             } catch (ex) {
                 console.error('[Razorpay] payRazorpay threw', ex);
                 window.location.replace('/checkout/payment-failed?o=&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
@@ -562,10 +564,10 @@
         //   back to /api/payments/easebuzz/callback which 302-redirects to the
         //   appropriate /checkout/payment-* page.
         // ──────────────────────────────────────────────────────────────────────────
-        window.hjc.payEasebuzz = async function (checkoutRequest) {
+        window.rc.payEasebuzz = async function (checkoutRequest) {
             try {
                 console.log('[Easebuzz] create-order', checkoutRequest);
-                const r = await window.hjc._postJson('/api/payments/easebuzz/create-order', checkoutRequest);
+                const r = await window.rc._postJson('/api/payments/easebuzz/create-order', checkoutRequest);
                 if (!r.ok || !r.body || !r.body.success || !r.body.redirectUrl) {
                     const reason = (r.body && r.body.error) || ('Could not create the payment order (' + r.status + ').');
                     console.error('[Easebuzz] create-order failed:', reason, r.body || r.raw);
@@ -585,25 +587,25 @@
         // ADMIN/FRANCHISE: initiate payment for an EXISTING order (created at the counter on a
         // customer's behalf). Hits the role-gated admin-initiate endpoints, then reuses the same
         // popup (Razorpay) / redirect (Easebuzz) machinery as the public checkout.
-        window.hjc.adminPayRazorpay = async function (orderNumber, prefill) {
+        window.rc.adminPayRazorpay = async function (orderNumber, prefill) {
             try {
-                const r = await window.hjc._postJson('/api/payments/razorpay/admin-initiate', { localOrderId: orderNumber });
+                const r = await window.rc._postJson('/api/payments/razorpay/admin-initiate', { localOrderId: orderNumber });
                 if (!r.ok || !r.body || !r.body.success) {
                     const reason = (r.body && r.body.error) || ('Could not initiate payment (' + r.status + ').');
                     window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(orderNumber) + '&r=' + encodeURIComponent(reason));
                     return;
                 }
                 const handoff = { key: r.body.key, amount: r.body.amount, currency: r.body.currency, orderId: r.body.orderId, orderNumber: r.body.orderNumber };
-                const outcome = await window.hjc._launchRazorpay(handoff, prefill || {});
-                await window.hjc._handlePopupOutcome(outcome, r.body.orderNumber, prefill || {});
+                const outcome = await window.rc._launchRazorpay(handoff, prefill || {});
+                await window.rc._handlePopupOutcome(outcome, r.body.orderNumber, prefill || {});
             } catch (ex) {
                 window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(orderNumber) + '&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
             }
         };
 
-        window.hjc.adminPayEasebuzz = async function (orderNumber) {
+        window.rc.adminPayEasebuzz = async function (orderNumber) {
             try {
-                const r = await window.hjc._postJson('/api/payments/easebuzz/admin-initiate', { localOrderId: orderNumber });
+                const r = await window.rc._postJson('/api/payments/easebuzz/admin-initiate', { localOrderId: orderNumber });
                 if (!r.ok || !r.body || !r.body.success || !r.body.redirectUrl) {
                     const reason = (r.body && r.body.error) || ('Could not initiate payment (' + r.status + ').');
                     window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(orderNumber) + '&r=' + encodeURIComponent(reason));
@@ -618,13 +620,13 @@
         // FRANCHISE: open the Razorpay popup for an already-created Pending franchise order and
         // return the signed result to Blazor (no redirect). The Blazor page then calls the
         // franchise confirm endpoint via its service. handoff = { key, amount, currency, orderId, orderNumber }.
-        window.hjc.franchisePayRazorpay = function (handoff, prefill) {
-            return window.hjc._launchRazorpay(handoff, prefill || {});
+        window.rc.franchisePayRazorpay = function (handoff, prefill) {
+            return window.rc._launchRazorpay(handoff, prefill || {});
         };
 
-        window.hjc.retryEasebuzz = async function (localOrderId) {
+        window.rc.retryEasebuzz = async function (localOrderId) {
             try {
-                const r = await window.hjc._postJson('/api/payments/easebuzz/retry-order', { localOrderId: localOrderId });
+                const r = await window.rc._postJson('/api/payments/easebuzz/retry-order', { localOrderId: localOrderId });
                 if (!r.ok || !r.body || !r.body.success || !r.body.redirectUrl) {
                     const reason = (r.body && r.body.error) || ('Could not retry the payment (' + r.status + ').');
                     console.error('[Easebuzz] retry-order failed:', reason, r.body || r.raw);
@@ -641,9 +643,9 @@
         };
 
         // PUBLIC: retry entry point. Called from /checkout/payment-failed and -cancelled.
-        window.hjc.retryRazorpay = async function (localOrderId, prefill) {
+        window.rc.retryRazorpay = async function (localOrderId, prefill) {
             try {
-                const r = await window.hjc._postJson('/api/payments/razorpay/retry-order', { localOrderId: localOrderId });
+                const r = await window.rc._postJson('/api/payments/razorpay/retry-order', { localOrderId: localOrderId });
                 if (!r.ok || !r.body || !r.body.success) {
                     const reason = (r.body && r.body.error) || ('Could not retry the payment (' + r.status + ').');
                     console.error('[Razorpay] retry-order failed:', reason, r.body || r.raw);
@@ -658,8 +660,8 @@
                     orderId: r.body.orderId,
                     orderNumber: r.body.orderNumber
                 };
-                const outcome = await window.hjc._launchRazorpay(handoff, prefill);
-                await window.hjc._handlePopupOutcome(outcome, r.body.orderNumber, prefill);
+                const outcome = await window.rc._launchRazorpay(handoff, prefill);
+                await window.rc._handlePopupOutcome(outcome, r.body.orderNumber, prefill);
             } catch (ex) {
                 console.error('[Razorpay] retryRazorpay threw', ex);
                 window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId) +
@@ -671,7 +673,7 @@
         // Kept for any caller that still does the Blazor round-trip. The new REST flow
         // above is preferred — it doesn't depend on the SignalR circuit being alive
         // when the popup closes.
-        window.hjc.openRazorpay = function (opts, dotnetRef) {
+        window.rc.openRazorpay = function (opts, dotnetRef) {
             // ── Diagnostic logging: print every option to the console BEFORE we touch
             //    Razorpay, so when the popup misbehaves the values are right there. The
             //    KeyId is the public Razorpay KeyId (rzp_test_* / rzp_live_*) — safe to log.
@@ -775,8 +777,8 @@
                 return false;
             }
         };
-        window.hjc.copy = function (text) { try { navigator.clipboard.writeText(text); } catch (e) { } };
-        window.hjc.downloadCsv = function (filename, text) {
+        window.rc.copy = function (text) { try { navigator.clipboard.writeText(text); } catch (e) { } };
+        window.rc.downloadCsv = function (filename, text) {
             const blob = new Blob(["﻿" + text], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -786,7 +788,7 @@
         // Binary sibling of downloadCsv, for real .xlsx workbooks. Blazor Server can only hand
         // bytes across the circuit as base64, so it is decoded here rather than sent as a string —
         // a zip container does not survive being treated as text.
-        window.hjc.downloadBytes = function (filename, base64, mime) {
+        window.rc.downloadBytes = function (filename, base64, mime) {
             const bin = atob(base64);
             const bytes = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -796,12 +798,12 @@
             a.href = url; a.download = filename; document.body.appendChild(a); a.click();
             document.body.removeChild(a); URL.revokeObjectURL(url);
         };
-        window.hjc.beep = function () {
+        window.rc.beep = function () {
             try {
                 const Ctx = window.AudioContext || window.webkitAudioContext;
                 if (!Ctx) return;
-                window.hjc._ac = window.hjc._ac || new Ctx();
-                const ac = window.hjc._ac;
+                window.rc._ac = window.rc._ac || new Ctx();
+                const ac = window.rc._ac;
                 const o = ac.createOscillator(), g = ac.createGain();
                 o.type = 'sine'; o.frequency.value = 880;
                 g.gain.setValueAtTime(0.0001, ac.currentTime);
@@ -813,8 +815,8 @@
         };
         // Admin smart-search helpers. Scroll the Nth child of a scroll container into the centre
         // when the user navigates the suggestion list with ↑/↓.
-        window.hjcAdmin = window.hjcAdmin || {};
-        window.hjcAdmin.scrollIntoCenter = function (container, index) {
+        window.rcAdmin = window.rcAdmin || {};
+        window.rcAdmin.scrollIntoCenter = function (container, index) {
             try {
                 if (!container || index == null) return;
                 var child = container.children && container.children[index];
@@ -828,11 +830,35 @@
 
 @code {
     private string analytics = "";
+    private string themeOverride = "";
 
     protected override async Task OnInitializedAsync()
     {
         var s = await Settings.GetAsync();
         var sb = new System.Text.StringBuilder();
+
+        var tsb = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(s.ThemePrimaryColor) || !string.IsNullOrWhiteSpace(s.ThemeAccentColor) || !string.IsNullOrWhiteSpace(s.ThemeFontFamily))
+        {
+            tsb.Append("<style>.rc-app{");
+            if (!string.IsNullOrWhiteSpace(s.ThemePrimaryColor))
+            {
+                var c = s.ThemePrimaryColor;
+                tsb.Append($"--navy:{c};--brand-primary:{c};--brand-blue:{c};--p-royal:{c};--green:{c};");
+            }
+            if (!string.IsNullOrWhiteSpace(s.ThemeAccentColor))
+            {
+                var c = s.ThemeAccentColor;
+                tsb.Append($"--orange:{c};--brand-accent:{c};--brand-azure:{c};--p-orange:{c};--p-green:{c};");
+            }
+            if (!string.IsNullOrWhiteSpace(s.ThemeFontFamily))
+            {
+                var f = s.ThemeFontFamily;
+                tsb.Append($"--font-primary:{f};--font-secondary:{f};");
+            }
+            tsb.Append("}</style>");
+        }
+        themeOverride = tsb.ToString();
         if (!string.IsNullOrWhiteSpace(s.Ga4Id))
             sb.Append($"<script async src=\"https://www.googletagmanager.com/gtag/js?id={s.Ga4Id}\"></script>" +
                       $"<script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments);}}gtag('js',new Date());gtag('config','{s.Ga4Id}');</script>");

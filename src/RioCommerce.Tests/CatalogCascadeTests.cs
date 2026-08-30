@@ -34,10 +34,10 @@ public class CatalogCascadeTests
     //
     //  Product            Level          Subject   Category   Primary   Also teaches
     //  ─────────────────────────────────────────────────────────────────────────────
-    //  Audit Fastrack     CaIntermediate Audit     Inter      Harshad   —
-    //  Costing Fastrack   CaIntermediate Costing   Inter      Harshad   —
-    //  Foundation Law     CaFoundation   Law       Foundation Tejal     —
-    //  Law Crash Course   CaFoundation   Law       Foundation Tejal     Harshad  ← co-taught
+    //  Audit Fastrack     Intermediate Audit     Inter      Harshad   —
+    //  Costing Fastrack   Intermediate Costing   Inter      Harshad   —
+    //  Foundation Law     Beginner   Law       Foundation Tejal     —
+    //  Law Crash Course   Beginner   Law       Foundation Tejal     Harshad  ← co-taught
     //  Orphan Book        Books          (none)    (none)     (none)    —
 
     private sealed record Fx(
@@ -67,14 +67,14 @@ public class CatalogCascadeTests
 
         db.Categories.AddRange(
             new Category { Id = f.InterCat, Name = "CA Inter", Slug = "inter", IsActive = true, DisplayOrder = 1 },
-            new Category { Id = f.FoundationCat, Name = "CA Foundation", Slug = "found", IsActive = true, DisplayOrder = 2 },
+            new Category { Id = f.FoundationCat, Name = "Beginner", Slug = "found", IsActive = true, DisplayOrder = 2 },
             new Category { Id = f.EmptyCat, Name = "Empty", Slug = "empty", IsActive = true, DisplayOrder = 3 });
 
         db.Products.AddRange(
-            New(f.AuditFt, "Audit Fastrack", CourseLevel.CaIntermediate, f.AuditSub, f.InterCat, f.Harshad),
-            New(f.CostingFt, "Costing Fastrack", CourseLevel.CaIntermediate, f.CostingSub, f.InterCat, f.Harshad),
-            New(f.FoundationLaw, "Foundation Law", CourseLevel.CaFoundation, f.LawSub, f.FoundationCat, f.Tejal),
-            New(f.LawCrash, "Law Crash Course", CourseLevel.CaFoundation, f.LawSub, f.FoundationCat, f.Tejal),
+            New(f.AuditFt, "Audit Fastrack", CourseLevel.Intermediate, f.AuditSub, f.InterCat, f.Harshad),
+            New(f.CostingFt, "Costing Fastrack", CourseLevel.Intermediate, f.CostingSub, f.InterCat, f.Harshad),
+            New(f.FoundationLaw, "Foundation Law", CourseLevel.Beginner, f.LawSub, f.FoundationCat, f.Tejal),
+            New(f.LawCrash, "Law Crash Course", CourseLevel.Beginner, f.LawSub, f.FoundationCat, f.Tejal),
             New(f.Orphan, "Orphan Book", CourseLevel.Books, null, null, null));
 
         db.Set<ProductFaculty>().AddRange(
@@ -132,7 +132,7 @@ public class CatalogCascadeTests
         var f = await SeedAsync(db);
 
         var ids = await CatalogCascade
-            .ProductsMatching(db, Pick(level: CourseLevel.CaFoundation), CatalogCascade.Dimension.Product)
+            .ProductsMatching(db, Pick(level: CourseLevel.Beginner), CatalogCascade.Dimension.Product)
             .Select(p => p.Id).ToListAsync();
 
         Assert.Equal(new[] { f.FoundationLaw, f.LawCrash }.OrderBy(x => x), ids.OrderBy(x => x));
@@ -158,11 +158,11 @@ public class CatalogCascadeTests
         var f = await SeedAsync(db);
 
         var ids = await CatalogCascade
-            .ProductsMatching(db, Pick(faculty: f.Harshad, level: CourseLevel.CaFoundation),
+            .ProductsMatching(db, Pick(faculty: f.Harshad, level: CourseLevel.Beginner),
                               CatalogCascade.Dimension.Product)
             .Select(p => p.Id).ToListAsync();
 
-        // Harshad AND CaFoundation → only the co-taught crash course.
+        // Harshad AND Beginner → only the co-taught crash course.
         Assert.Equal(new[] { f.LawCrash }, ids.ToArray());
     }
 
@@ -336,7 +336,7 @@ public class CatalogCascadeTests
         using var db = NewDb();
         var f = await SeedAsync(db);
 
-        var meta = await Products(db).GetFilterMetaAsync(level: CourseLevel.CaIntermediate);
+        var meta = await Products(db).GetFilterMetaAsync(level: CourseLevel.Intermediate);
 
         Assert.Equal(new[] { f.AuditSub, f.CostingSub }.OrderBy(x => x), meta.Subjects.Select(s => s.Id).OrderBy(x => x));
         Assert.Equal(new[] { f.Harshad }, meta.Faculties.Select(x => x.Id).ToArray());
@@ -374,9 +374,9 @@ public class CatalogCascadeTests
         var f = await SeedAsync(db);
 
         var meta = await Products(db).GetFilterMetaAsync(
-            facultyId: f.Harshad, level: CourseLevel.CaFoundation);
+            facultyId: f.Harshad, level: CourseLevel.Beginner);
 
-        // Harshad AND CaFoundation → the crash course only, so Law is the one subject left.
+        // Harshad AND Beginner → the crash course only, so Law is the one subject left.
         Assert.Equal(new[] { f.LawSub }, meta.Subjects.Select(s => s.Id).ToArray());
     }
 
@@ -386,7 +386,7 @@ public class CatalogCascadeTests
         using var db = NewDb();
         var f = await SeedAsync(db);
 
-        var meta = await Products(db).GetFilterMetaAsync(subjectId: f.AuditSub, level: CourseLevel.CaFoundation);
+        var meta = await Products(db).GetFilterMetaAsync(subjectId: f.AuditSub, level: CourseLevel.Beginner);
 
         Assert.Empty(meta.Faculties);
         Assert.Empty(meta.Categories);

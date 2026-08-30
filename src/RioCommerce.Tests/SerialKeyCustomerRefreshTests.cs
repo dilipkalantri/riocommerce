@@ -77,7 +77,7 @@ public class SerialKeyCustomerRefreshTests
         var orderId = Guid.NewGuid();
         var orderItemId = Guid.NewGuid();
 
-        db.Products.Add(new Product { Id = productId, Title = "CA Foundation Economics Regular", Slug = $"p-{productId:N}" });
+        db.Products.Add(new Product { Id = productId, Title = "Beginner Economics Regular", Slug = $"p-{productId:N}" });
         db.Orders.Add(new Order
         {
             Id = orderId, OrderNumber = "RIO-1059", UserId = Guid.NewGuid(),
@@ -89,7 +89,7 @@ public class SerialKeyCustomerRefreshTests
         db.OrderItems.Add(new OrderItem
         {
             Id = orderItemId, OrderId = orderId, ProductId = productId,
-            ProductTitle = "CA Foundation Economics Regular", Quantity = 1,
+            ProductTitle = "Beginner Economics Regular", Quantity = 1,
             UnitPrice = 1000m, LineTotal = 1000m,
         });
 
@@ -107,7 +107,7 @@ public class SerialKeyCustomerRefreshTests
         var req = new GenerateKeyRequest
         {
             ProviderKey = "superclass", OrderId = orderId, OrderItemId = orderItemId, OrderNumber = "RIO-1059",
-            ProductId = productId, ProductTitle = "CA Foundation Economics Regular", ProviderProductCode = "2786",
+            ProductId = productId, ProductTitle = "Beginner Economics Regular", ProviderProductCode = "2786",
             CustomerName = "Anushka Sable", CustomerEmail = "anushkasable2@gmail.com",
             CustomerPhone = "9359427260", CustomerCountryCode = "91",
             CustomerPincode = pincodeAtEnqueue,

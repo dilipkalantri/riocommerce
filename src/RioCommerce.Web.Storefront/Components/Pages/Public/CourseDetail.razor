@@ -1368,25 +1368,12 @@ else
         attrError = null;
         return true;
     }
-    private string LevelLabel => product?.Level switch
-    {
-        CourseLevel.CaFoundation => "CA Foundation",
-        CourseLevel.CaIntermediate => "CA Intermediate",
-        CourseLevel.CaFinal => "CA Final",
-        CourseLevel.Books => "Books",
-        _ => "Courses"
-    };
-    private string LevelSlug => product?.Level switch
-    {
-        CourseLevel.CaIntermediate => "ca-intermediate",
-        CourseLevel.CaFinal => "ca-final",
-        CourseLevel.Books => "books",
-        _ => "ca-foundation"
-    };
+    private string LevelLabel => product?.Level.Label() ?? "Courses";
+    private string LevelSlug => product?.Level.Slug() ?? "beginner";
     private string LevelEmoji => product?.Level switch
     {
-        CourseLevel.CaIntermediate => "📈",
-        CourseLevel.CaFinal => "🏆",
+        CourseLevel.Intermediate => "📈",
+        CourseLevel.Advanced => "🏆",
         CourseLevel.Books => "📚",
         _ => "🎓"
     };
@@ -1598,7 +1585,7 @@ else
     // ── Testimonials modal state ──
     private bool testimonialModalOpen;
     private int  testimonialIndex = -1;
-    private const string TestimonialModalKey = "hjc-testimonial-modal";
+    private const string TestimonialModalKey = "rc-testimonial-modal";
 
     private void OpenTestimonial(int idx)
     {
@@ -1633,7 +1620,7 @@ else
     // Stable key for the modal container — Blazor uses it to reuse the SAME DOM
     // across re-renders while the popup is open, so swipe state / current image
     // never gets torn down by an unrelated parent re-render.
-    private const string BookPreviewModalKey = "hjc-book-reader-modal";
+    private const string BookPreviewModalKey = "rc-book-reader-modal";
 
     private async Task OpenBookPreviewAsync()
     {
@@ -1646,7 +1633,7 @@ else
         var token = await BookPreviewSvc.IssueImageTokenAsync(product.Id);
         if (string.IsNullOrEmpty(token))
         {
-            Console.Error.WriteLine("[hjc.br] no token issued — preview not configured");
+            Console.Error.WriteLine("[rc.br] no token issued — preview not configured");
             return;
         }
 
@@ -1695,7 +1682,7 @@ else
         if (product != null && !galleryInit && product.Videos.Count > 0)
         {
             galleryInit = true;
-            try { await JS.InvokeVoidAsync("hjc.mediaGallery.init", galleryEl); } catch { }
+            try { await JS.InvokeVoidAsync("rc.mediaGallery.init", galleryEl); } catch { }
         }
     }
 

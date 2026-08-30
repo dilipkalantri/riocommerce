@@ -89,18 +89,18 @@ function onTransitionEnd(e) {
 export function init() {
     dispose();   // clean slate if re-initialised
 
-    const root = document.querySelector('.hjc-banner');
+    const root = document.querySelector('.rc-banner');
     if (!root) return;
 
-    const viewport = root.querySelector('.hjc-banner__viewport');
-    const track = root.querySelector('.hjc-banner__track');
+    const viewport = root.querySelector('.rc-banner__viewport');
+    const track = root.querySelector('.rc-banner__track');
     if (!viewport || !track) return;
 
-    const cells = Array.from(track.querySelectorAll('.hjc-banner__slide'));
+    const cells = Array.from(track.querySelectorAll('.rc-banner__slide'));
     // cells = real slides + the two bookend clones; fewer than 3 means nothing to drive.
     if (cells.length < 3) return;
 
-    const dots = Array.from(root.querySelectorAll('.hjc-banner__dot'));
+    const dots = Array.from(root.querySelectorAll('.rc-banner__dot'));
     const interval = Math.max(1500, parseInt(root.dataset.interval || '5000', 10));
     const autoplay = root.dataset.autoplay === 'true';
     const pauseHover = root.dataset.pauseHover === 'true';
@@ -123,7 +123,7 @@ export function init() {
     on(track, 'transitionend', onTransitionEnd);
 
     // Arrows
-    root.querySelectorAll('.hjc-banner__arrow').forEach(btn => {
+    root.querySelectorAll('.rc-banner__arrow').forEach(btn => {
         const d = btn.dataset.dir === 'next' ? 1 : -1;
         on(btn, 'click', () => { go(d); startTimer(); });
     });

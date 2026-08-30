@@ -89,7 +89,7 @@
         if (dndWired || items is not { Count: > 0 }) return;
         dndWired = true;
         selfRef ??= DotNetObjectReference.Create(this);
-        try { await JS.InvokeVoidAsync("hjc.bannerReorder.init", tbodyRef, selfRef); } catch { }
+        try { await JS.InvokeVoidAsync("rc.bannerReorder.init", tbodyRef, selfRef); } catch { }
     }
 
     [JSInvokable]

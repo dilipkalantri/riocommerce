@@ -4502,7 +4502,7 @@ namespace RioCommerce.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayOrder = 1,
                             IsActive = true,
-                            Level = CourseLevel.CaFoundation,
+                            Level = CourseLevel.Beginner,
                             Name = "Economics",
                             Slug = "economics",
                             UpdatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4513,7 +4513,7 @@ namespace RioCommerce.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayOrder = 2,
                             IsActive = true,
-                            Level = CourseLevel.CaFoundation,
+                            Level = CourseLevel.Beginner,
                             Name = "Law",
                             Slug = "law",
                             UpdatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4524,7 +4524,7 @@ namespace RioCommerce.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayOrder = 3,
                             IsActive = true,
-                            Level = CourseLevel.CaFoundation,
+                            Level = CourseLevel.Beginner,
                             Name = "Accounts",
                             Slug = "accounts",
                             UpdatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4535,7 +4535,7 @@ namespace RioCommerce.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayOrder = 4,
                             IsActive = true,
-                            Level = CourseLevel.CaFoundation,
+                            Level = CourseLevel.Beginner,
                             Name = "Maths (QA)",
                             Slug = "maths-qa",
                             UpdatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4546,7 +4546,7 @@ namespace RioCommerce.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayOrder = 5,
                             IsActive = true,
-                            Level = CourseLevel.CaIntermediate,
+                            Level = CourseLevel.Intermediate,
                             Name = "Costing",
                             Slug = "costing",
                             UpdatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4557,7 +4557,7 @@ namespace RioCommerce.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayOrder = 6,
                             IsActive = true,
-                            Level = CourseLevel.CaIntermediate,
+                            Level = CourseLevel.Intermediate,
                             Name = "Audit",
                             Slug = "audit",
                             UpdatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4568,7 +4568,7 @@ namespace RioCommerce.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayOrder = 7,
                             IsActive = true,
-                            Level = CourseLevel.CaIntermediate,
+                            Level = CourseLevel.Intermediate,
                             Name = "Direct Tax",
                             Slug = "direct-tax",
                             UpdatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -4579,7 +4579,7 @@ namespace RioCommerce.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             DisplayOrder = 8,
                             IsActive = true,
-                            Level = CourseLevel.CaIntermediate,
+                            Level = CourseLevel.Intermediate,
                             Name = "Adv. Accounting",
                             Slug = "adv-accounting",
                             UpdatedAt = new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Utc)

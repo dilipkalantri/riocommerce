@@ -82,7 +82,7 @@ public class FranchiseStudentAccountTests
         });
         db.Products.Add(new Product
         {
-            Id = productId, Title = "CA Final FR", Slug = $"p-{productId:N}",
+            Id = productId, Title = "Advanced FR", Slug = $"p-{productId:N}",
             SellingPrice = 5000m, Mrp = 6000m, GstRate = 18m, Status = ProductStatus.Active
         });
         db.Roles.Add(new Role { Id = Guid.NewGuid(), Name = "student", DisplayName = "Student", IsActive = true });

@@ -11,7 +11,7 @@ namespace RioCommerce.Core.Security;
 public static class SafeUrl
 {
     /// <summary>
-    /// True for a site-relative path ("/ca-foundation") or an absolute http/https URL.
+    /// True for a site-relative path ("/courses/beginner") or an absolute http/https URL.
     /// Everything else — javascript:, data:, vbscript:, file:, mailto:, and protocol-relative
     /// "//host/x" (which inherits the page scheme and is not a path) — is rejected.
     /// </summary>

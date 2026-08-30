@@ -110,7 +110,7 @@
 
     private async Task FocusAsync(int idx)
     {
-        try { await JS.InvokeVoidAsync("hjc.focusEl", $"otp-{idx}"); } catch { }
+        try { await JS.InvokeVoidAsync("rc.focusEl", $"otp-{idx}"); } catch { }
         StateHasChanged();
     }
 
@@ -120,7 +120,7 @@
         error = null; verifying = true;
         try
         {
-            var resp = await JS.InvokeAsync<VerifyResult>("hjc.postForm", "/api/account/verify-otp",
+            var resp = await JS.InvokeAsync<VerifyResult>("rc.postForm", "/api/account/verify-otp",
                 new Dictionary<string, string> { ["email"] = Email, ["code"] = Code });
             if (resp.success && !string.IsNullOrEmpty(resp.token))
             {
@@ -141,7 +141,7 @@
         resending = true; error = null;
         try
         {
-            await JS.InvokeAsync<VerifyResult>("hjc.postForm", "/api/account/resend-otp",
+            await JS.InvokeAsync<VerifyResult>("rc.postForm", "/api/account/resend-otp",
                 new Dictionary<string, string> { ["email"] = Email });
             StartCooldown();
         }

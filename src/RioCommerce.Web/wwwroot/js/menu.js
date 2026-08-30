@@ -1,7 +1,7 @@
 // Mega-menu helpers: (1) admin nested drag-and-drop tree, (2) storefront flyout edge-flip.
 // Vanilla JS, no dependencies. Loaded globally via App.razor.
 (function () {
-    window.hjc = window.hjc || {};
+    window.rc = window.rc || {};
 
     function clearIndicators(root) {
         root.querySelectorAll('.mt-drop-before,.mt-drop-after,.mt-drop-inside').forEach(function (el) {
@@ -15,7 +15,7 @@
     // Drag is initiated only from a .mt-handle; the whole .mt-li is the drag unit.
     // On drop we don't move DOM ourselves — we tell .NET (id, targetId, zone) and it
     // mutates the local tree + re-renders. Blazor stays the single source of truth.
-    window.hjc.menuTree = {
+    window.rc.menuTree = {
         init: function (root, dotnetRef) {
             if (!root || root._mtInit) return;
             root._mtInit = true;
@@ -85,8 +85,8 @@
     // ── Storefront: keep nested flyouts inside the viewport ─────────────────────
     // Level-2 dropdowns open downward; level-3+ flyouts open to the right, flipping
     // left when there isn't room. Idempotent — safe to call on every render.
-    window.hjc.megaFlyout = function () {
-        document.querySelectorAll('.hjc-app .hnav-sub:not([data-fly-init])').forEach(function (sub) {
+    window.rc.megaFlyout = function () {
+        document.querySelectorAll('.rc-app .hnav-sub:not([data-fly-init])').forEach(function (sub) {
             sub.setAttribute('data-fly-init', '1');
             sub.addEventListener('mouseenter', function () {
                 var fly = sub.querySelector(':scope > .hnav-fly');
@@ -98,7 +98,7 @@
                 });
             });
         });
-        document.querySelectorAll('.hjc-app .hnav-item:not([data-drop-init])').forEach(function (item) {
+        document.querySelectorAll('.rc-app .hnav-item:not([data-drop-init])').forEach(function (item) {
             item.setAttribute('data-drop-init', '1');
             item.addEventListener('mouseenter', function () {
                 var drop = item.querySelector(':scope > .hnav-drop');
@@ -122,7 +122,7 @@
     //
     // Capture phase, because a handler inside the page may stopPropagation and we would
     // otherwise never hear about the click at all.
-    window.hjc.dismiss = {
+    window.rc.dismiss = {
         on: function (el, dotnetRef, method) {
             if (!el || el._dismissOn) return;
             var handler = function (e) {

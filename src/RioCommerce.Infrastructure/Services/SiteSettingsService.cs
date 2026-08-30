@@ -48,6 +48,11 @@ public class SiteSettingsService : ISiteSettingsService
             MetaPixelId = V("meta_pixel_id"),
             AnnouncementText = V("announcement_text"),
             FomoEnabled = V("fomo_enabled") != "false",
+            FranchiseEnabled = V("franchise_enabled") != "false",
+            SerialKeysEnabled = V("serial_keys_enabled") != "false",
+            ThemePrimaryColor = V("theme_primary_color"),
+            ThemeAccentColor = V("theme_accent_color"),
+            ThemeFontFamily = V("theme_font_family"),
         };
     }
 
@@ -75,6 +80,11 @@ public class SiteSettingsService : ISiteSettingsService
         await UpsertAsync("meta_pixel_id", s.MetaPixelId);
         await UpsertAsync("announcement_text", s.AnnouncementText);
         await UpsertAsync("fomo_enabled", s.FomoEnabled ? "true" : "false");
+        await UpsertAsync("franchise_enabled", s.FranchiseEnabled ? "true" : "false");
+        await UpsertAsync("serial_keys_enabled", s.SerialKeysEnabled ? "true" : "false");
+        await UpsertAsync("theme_primary_color", s.ThemePrimaryColor);
+        await UpsertAsync("theme_accent_color", s.ThemeAccentColor);
+        await UpsertAsync("theme_font_family", s.ThemeFontFamily);
         await _db.SaveChangesAsync();
         _cache.Clear();
     }

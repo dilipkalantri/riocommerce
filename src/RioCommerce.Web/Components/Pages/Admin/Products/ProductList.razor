@@ -36,8 +36,8 @@
 <div class="kpi-grid">
     <div class="kpi-card"><div class="kpi-card__label">Total Products</div><div class="kpi-card__value">@(stats?.Total ?? 0)</div></div>
     <div class="kpi-card"><div class="kpi-card__label">Active</div><div class="kpi-card__value" style="color:var(--green)">@(stats?.Active ?? 0)</div></div>
-    <div class="kpi-card"><div class="kpi-card__label">CA Foundation</div><div class="kpi-card__value">@(stats?.Foundation ?? 0)</div></div>
-    <div class="kpi-card"><div class="kpi-card__label">CA Intermediate</div><div class="kpi-card__value">@(stats?.Intermediate ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Beginner</div><div class="kpi-card__value">@(stats?.Foundation ?? 0)</div></div>
+    <div class="kpi-card"><div class="kpi-card__label">Intermediate</div><div class="kpi-card__value">@(stats?.Intermediate ?? 0)</div></div>
 </div>
 
 @* ── nopCommerce-style search panel ── *@
@@ -86,7 +86,7 @@
                 <select class="form-input" @bind="levelStr" @bind:after="CascadeFilters">
                     <option value="">All</option>
                     @* Values come from the enum itself. The old markup listed the ordinals 0–3 by
-                       hand and simply stopped before CaFinal (4), so CA Final could never be
+                       hand and simply stopped before Advanced (4), so Advanced could never be
                        filtered for. Casting removes the possibility of that drifting again. *@
                     @foreach (var l in LevelFilterOrder) { <option value="@((int)l)">@LevelLabel(l)</option> }
                 </select>
@@ -251,7 +251,7 @@
             });
 
             // Base64 because a zip container cannot cross the circuit as text.
-            await JS.InvokeVoidAsync("hjc.downloadBytes",
+            await JS.InvokeVoidAsync("rc.downloadBytes",
                 $"products-{DateTime.Now:yyyyMMdd-HHmm}.xlsx",
                 Convert.ToBase64String(bytes),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -325,27 +325,19 @@
     /// none omitted.
     ///
     /// <para>It is written out rather than taken from <c>Enum.GetValues</c> because the enum is
-    /// declared append-only: its ordinals are serialised into public search URLs, so CaFinal sits at
-    /// the end of the declaration even though it belongs after CaIntermediate on screen. The enum's
+    /// declared append-only: its ordinals are serialised into public search URLs, so Advanced sits at
+    /// the end of the declaration even though it belongs after Intermediate on screen. The enum's
     /// own remarks say where a level appears is the dropdown's business, and this is the same
     /// sequence the product editor and <see cref="LevelLabel"/> already use.</para>
     /// </summary>
     private static readonly CourseLevel[] LevelFilterOrder =
     {
-        CourseLevel.CaFoundation,
-        CourseLevel.CaIntermediate,
-        CourseLevel.CaFinal,
+        CourseLevel.Beginner,
+        CourseLevel.Intermediate,
+        CourseLevel.Advanced,
         CourseLevel.Books,
         CourseLevel.TestSeries,
     };
 
-    private static string LevelLabel(CourseLevel l) => l switch
-    {
-        CourseLevel.CaFoundation => "CA Foundation",
-        CourseLevel.CaIntermediate => "CA Intermediate",
-        CourseLevel.CaFinal => "CA Final",
-        CourseLevel.Books => "Books",
-        CourseLevel.TestSeries => "Test Series",
-        _ => l.ToString()
-    };
+    private static string LevelLabel(CourseLevel l) => l.Label();
 }

@@ -41,7 +41,7 @@ public class FacultyShareCalculatorTests
     {
         Id = Guid.NewGuid(),
         Title = "Test Course",
-        Level = CourseLevel.CaFoundation,
+        Level = CourseLevel.Beginner,
         SellingPrice = regular,
         SpecialPrice = special,
         SpecialPriceStartDateUtc = specialStart,

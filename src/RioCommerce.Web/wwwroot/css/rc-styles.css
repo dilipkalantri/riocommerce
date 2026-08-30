@@ -122,7 +122,7 @@ input, select, textarea { font-family: inherit; }
 .animate-in-delay-4 { animation-delay: 0.4s; }
 
 /* --- Header / Navbar --- */
-.hjc-header {
+.rc-header {
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -131,24 +131,24 @@ input, select, textarea { font-family: inherit; }
   backdrop-filter: blur(12px);
   background: rgba(255,255,255,0.95);
 }
-.hjc-header .container {
+.rc-header .container {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 100%;
 }
-.hjc-logo { display: flex; align-items: center; gap: var(--space-sm); }
-.hjc-logo img { height: 48px; width: auto; }
-.hjc-nav { display: flex; align-items: center; gap: var(--space-xl); }
-.hjc-nav a {
+.rc-logo { display: flex; align-items: center; gap: var(--space-sm); }
+.rc-logo img { height: 48px; width: auto; }
+.rc-nav { display: flex; align-items: center; gap: var(--space-xl); }
+.rc-nav a {
   font-weight: 500;
   font-size: 15px;
   color: var(--gray-600);
   transition: color 0.2s;
   position: relative;
 }
-.hjc-nav a:hover, .hjc-nav a.active { color: var(--navy); }
-.hjc-nav a.active::after {
+.rc-nav a:hover, .rc-nav a.active { color: var(--navy); }
+.rc-nav a.active::after {
   content: '';
   position: absolute;
   bottom: -4px;
@@ -158,7 +158,7 @@ input, select, textarea { font-family: inherit; }
   background: var(--orange);
   border-radius: 1px;
 }
-.hjc-nav-actions { display: flex; align-items: center; gap: var(--space-md); }
+.rc-nav-actions { display: flex; align-items: center; gap: var(--space-md); }
 
 /* Cart icon */
 .cart-icon {
@@ -296,7 +296,7 @@ input, select, textarea { font-family: inherit; }
 .tag--navy { background: rgba(26,58,92,0.08); color: var(--navy); }
 
 /* --- Footer --- */
-.hjc-footer { background: var(--navy-dark); color: rgba(255,255,255,0.8); padding: var(--space-4xl) 0 var(--space-xl); }
+.rc-footer { background: var(--navy-dark); color: rgba(255,255,255,0.8); padding: var(--space-4xl) 0 var(--space-xl); }
 .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: var(--space-3xl); margin-bottom: var(--space-3xl); }
 .footer-brand p { font-size: 14px; line-height: 1.7; margin-top: var(--space-md); color: rgba(255,255,255,0.6); }
 .footer-social { display: flex; gap: var(--space-sm); margin-top: var(--space-lg); }
@@ -365,7 +365,7 @@ input, select, textarea { font-family: inherit; }
 }
 
 @media (max-width: 768px) {
-  .hjc-nav { display: none; }
+  .rc-nav { display: none; }
   .mobile-menu-btn { display: block; }
   .footer-grid { grid-template-columns: 1fr; }
   .section { padding: var(--space-3xl) 0; }
@@ -376,7 +376,7 @@ input, select, textarea { font-family: inherit; }
 
 @media (max-width: 480px) {
   :root { --header-height: 60px; }
-  .hjc-logo img { height: 38px; }
+  .rc-logo img { height: 38px; }
   .section__title { font-size: 24px; }
   .btn { padding: 10px 20px; font-size: 14px; }
   .btn-lg { padding: 14px 28px; font-size: 15px; }

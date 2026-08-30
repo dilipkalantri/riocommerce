@@ -1,0 +1,91 @@
+/* ============================================================
+   STOREFRONT THEME — Client Brand Tokens
+   ========================================================
+
+   This is the SINGLE file a new client edits to rebrand the
+   storefront. Every colour, font, and shape token used by the
+   public pages is declared here.
+
+   Scoped to .rc-app (the public layout wrapper in MainLayout.razor).
+   AdminLayout does not carry that class, so admin pages are
+   unaffected — they resolve these variables from :root in app.css.
+
+   To rebrand:
+     1. Replace the hex values below with your brand colours.
+     2. Optionally change the font family.
+     3. Deploy. No other file changes needed.
+
+   Runtime override: when the admin sets brand colours in
+   Settings → Theme, a dynamic <style> block is injected that
+   overrides these tokens — so this file serves as the default
+   and the admin UI as the live override.
+   ============================================================ */
+
+.rc-app {
+  /* ── Primary ── */
+  --navy:         #0B45AB;   /* headers, buttons, titles, links   */
+  --navy-light:   #0A5BCF;   /* hover / lighter primary            */
+  --navy-dark:    #082B73;   /* footer, dark sections              */
+
+  /* ── Accent ── */
+  --orange:       #0AC7E5;   /* accents, focus rings, chips        */
+  --orange-dark:  #0AA9C4;   /* accent pressed state               */
+
+  /* ── Success / Semantic ── */
+  --green:        #0B45AB;   /* savings, verified badges           */
+  --green-light:  #E6F9FD;   /* success backgrounds                */
+
+  /* ── Brand Aliases ── */
+  --brand-primary:      var(--navy);
+  --brand-primary-hover: var(--navy-light);
+  --brand-primary-deep: var(--navy-dark);
+  --brand-accent:       var(--orange);
+  --brand-gradient:     linear-gradient(135deg, var(--navy), var(--orange));
+
+  /* Backward-compat aliases used by home-premium.css */
+  --brand-blue:         var(--navy);
+  --brand-blue-hover:   var(--navy-light);
+  --brand-blue-deep:    var(--navy-dark);
+  --brand-azure:        var(--orange);
+
+  /* ── Premium layer tokens (used by home-premium.css) ── */
+  --p-navy:       var(--navy-dark);
+  --p-navy2:      var(--navy-light);
+  --p-royal:      var(--navy);
+  --p-orange:     var(--orange);
+  --p-orange2:    #5AD9EF;
+  --p-green:      var(--orange);
+  --p-green2:     #7FE3F5;
+
+  /* ── Typography ── */
+  --font-primary:   "Jost", sans-serif;
+  --font-secondary: "Jost", sans-serif;
+
+  /* ── Shape ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+}
+
+/* ── Button overrides ── */
+.rc-app .btn-primary { background: var(--brand-primary); color: #fff }
+.rc-app .btn-primary:hover { background: var(--brand-primary-hover) }
+.rc-app .btn-outline { background: #fff; border-color: var(--brand-primary); color: var(--brand-primary) }
+.rc-app .btn-outline:hover { border-color: var(--brand-accent); color: var(--brand-accent) }
+
+/* ── Footer ── */
+.rc-app .footer { background: var(--brand-primary-deep) }
+.rc-app .footer h4 { color: #fff }
+.rc-app .footer a:hover { color: var(--brand-accent) }
+.rc-app .footer__social a:hover,
+.rc-app .footer__phones svg,
+.rc-app .footer__col a[href^="mailto"] svg { color: var(--brand-accent) }
+
+/* ── Input focus rings ── */
+.rc-app .form-input:focus,
+.rc-app .filter-search:focus-within,
+.rc-app .search-box input:focus,
+.rc-app .coupon-input input:focus {
+  border-color: var(--brand-accent);
+  box-shadow: 0 0 0 3px rgba(10, 199, 229, .18);
+}

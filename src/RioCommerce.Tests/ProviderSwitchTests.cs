@@ -66,7 +66,7 @@ public class ProviderSwitchTests
     private static async Task<Guid> SeedProductAsync(RioCommerceDbContext db)
     {
         var id = Guid.NewGuid();
-        db.Products.Add(new Product { Id = id, Title = "CA Foundation LAW Regular", Slug = $"p-{id:N}" });
+        db.Products.Add(new Product { Id = id, Title = "Beginner LAW Regular", Slug = $"p-{id:N}" });
         db.ValencePacks.Add(new ValencePack
         {
             Id = Guid.NewGuid(), ExternalId = 570, PackName = "PACK4672", IsActive = true, LastSyncedAt = DateTime.UtcNow,

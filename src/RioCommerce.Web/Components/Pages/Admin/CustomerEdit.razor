@@ -307,13 +307,5 @@ else
         Toast.Info("Address removed.");
     }
 
-    private static string LevelLabel(CourseLevel l) => l switch
-    {
-        CourseLevel.CaFoundation => "CA Foundation",
-        CourseLevel.CaIntermediate => "CA Intermediate",
-        CourseLevel.CaFinal => "CA Final",
-        CourseLevel.Books => "Books",
-        CourseLevel.TestSeries => "Test Series",
-        _ => l.ToString()
-    };
+    private static string LevelLabel(CourseLevel l) => l.Label();
 }
