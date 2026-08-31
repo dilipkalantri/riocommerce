@@ -1,0 +1,235 @@
+@page "/school/students"
+@using RioCommerce.Core.DTOs.School
+@attribute [Authorize(Roles = "school_principal,school_coordinator")]
+@inject ISchoolStudentService Students
+@inject AuthenticationStateProvider AuthProvider
+
+@* Fills the /school/students route that SchoolNav has always linked to. Reuses the same
+   container / account-page / SchoolNav shell as the dashboard, so the portal keeps one look. *@
+
+<PageTitle>Students — School Portal</PageTitle>
+
+<div class="container account-page">
+    <h1 class="account-page__title">School Portal</h1>
+    <SchoolNav />
+
+    @if (loading)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+    }
+    else if (schoolId is null)
+    {
+        @* Belt and braces: the [Authorize] above already gates the role, this covers a user who
+           holds the role but has no active school link. *@
+        <p style="color:var(--gray-400);padding:30px 0">Your account is not linked to a school.</p>
+    }
+    else
+    {
+        <div class="ss-bar">
+            <div class="ss-bar__search">
+                <input class="form-input" placeholder="Search name, email, phone or roll no."
+                       @bind="search" @bind:event="oninput" @onkeydown="OnSearchKey" />
+            </div>
+            <button class="btn btn-primary" @onclick="OpenAdd">+ Add Student</button>
+        </div>
+
+        @if (message != null)
+        {
+            <div class="inline-alert @(ok ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:14px">@message</div>
+        }
+
+        @if (rows.Count == 0)
+        {
+            <div class="ss-empty">
+                <p>No students on your roll yet.</p>
+                <button class="btn btn-primary" @onclick="OpenAdd">+ Add your first student</button>
+            </div>
+        }
+        else
+        {
+            <div class="ss-table-wrap">
+                <table class="ss-table">
+                    <thead>
+                        <tr>
+                            <th>Student</th><th>Contact</th><th>Class</th><th>Section</th>
+                            <th>Roll No.</th><th>Status</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in rows)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="ss-name">@r.FullName</div>
+                                    <div class="ss-sub">Added @r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</div>
+                                </td>
+                                <td>
+                                    <div class="ss-sub">@(r.Email ?? "—")</div>
+                                    <div class="ss-sub">@(r.Phone ?? "—")</div>
+                                </td>
+                                <td>@(string.IsNullOrWhiteSpace(r.StudentClass) ? "—" : r.StudentClass)</td>
+                                <td>@(string.IsNullOrWhiteSpace(r.Section) ? "—" : r.Section)</td>
+                                <td>@(string.IsNullOrWhiteSpace(r.RollNumber) ? "—" : r.RollNumber)</td>
+                                <td>
+                                    @* IsVerified is the activation signal: it flips to true only when
+                                       the student completes the OTP and sets their own password. *@
+                                    <span class="ss-pill @(r.IsVerified ? "ss-pill--ok" : "ss-pill--wait")"
+                                          title="@(r.IsVerified ? "Account activated by the student" : "Student has not activated the account yet")">
+                                        @(r.IsVerified ? "Active" : "Pending")
+                                    </span>
+                                </td>
+                                <td style="text-align:right">
+                                    <button class="btn btn-outline btn-sm" @onclick="() => Remove(r)">Remove</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="ss-count">@rows.Count student@(rows.Count == 1 ? "" : "s")</p>
+        }
+    }
+</div>
+
+@if (addOpen)
+{
+    <div class="ss-modal-backdrop" @onclick="CloseAdd"></div>
+    <div class="ss-modal" role="dialog" aria-label="Add student">
+        <h3 class="ss-modal__title">Add Student</h3>
+        <p class="ss-modal__hint">
+            The student joins <strong>your</strong> school automatically — school, state and district
+            come from your account, so there is nothing to pick. If an account already exists for
+            this email or mobile, it is linked instead of duplicated.
+        </p>
+
+        <div class="form-group">
+            <label class="form-label">Student Name <span class="required">*</span></label>
+            <input class="form-input" @bind="form.FullName" placeholder="Full name" />
+        </div>
+        <div class="ss-modal__row">
+            <div class="form-group"><label class="form-label">Email <span class="required">*</span></label>
+                <input class="form-input" type="email" @bind="form.Email" placeholder="Student email" /></div>
+            <div class="form-group"><label class="form-label">Mobile <span class="required">*</span></label>
+                <input class="form-input" @bind="form.Phone" placeholder="10-digit mobile" /></div>
+        </div>
+        <div class="ss-modal__row">
+            <div class="form-group"><label class="form-label">Date of Birth <span class="required">*</span></label>
+                <input class="form-input" type="date" @bind="form.DateOfBirth" /></div>
+            <div class="form-group"><label class="form-label">Gender <span class="required">*</span></label>
+                <select class="form-input" @bind="form.Gender">
+                    <option value="">Select</option>
+                    <option>Male</option><option>Female</option><option>Other</option>
+                </select></div>
+        </div>
+        <div class="ss-modal__row">
+            <div class="form-group"><label class="form-label">Class / Standard <span class="required">*</span></label>
+                <select class="form-input" @bind="form.StudentClass">
+                    <option value="">Select Class</option>
+                    @for (var c = 1; c <= 12; c++) { <option>@c</option> }
+                </select></div>
+            <div class="form-group"><label class="form-label">Section <span class="required">*</span></label>
+                <select class="form-input" @bind="form.Section">
+                    <option value="">Select</option>
+                    @foreach (var sec in new[] { "A", "B", "C", "D", "E", "F" }) { <option>@sec</option> }
+                </select></div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Roll No. <span class="required">*</span></label>
+            <input class="form-input" @bind="form.RollNumber" placeholder="Roll number" />
+        </div>
+
+        @if (addError != null) { <div class="inline-alert inline-alert--err" style="margin-bottom:12px">@addError</div> }
+
+        <div class="ss-modal__actions">
+            <button class="btn btn-outline" @onclick="CloseAdd" disabled="@saving">Cancel</button>
+            <button class="btn btn-primary" @onclick="Save" disabled="@saving">@(saving ? "Saving…" : "Add Student")</button>
+        </div>
+    </div>
+}
+
+<style>
+    .ss-bar{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:18px 0 14px;flex-wrap:wrap}
+    .ss-bar__search{flex:1 1 260px;max-width:380px}
+    .ss-table-wrap{overflow-x:auto;border:1px solid var(--gray-200);border-radius:14px;background:#fff}
+    .ss-table{width:100%;border-collapse:collapse;min-width:720px}
+    .ss-table th{text-align:left;font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--gray-500);
+        padding:12px 14px;border-bottom:1px solid var(--gray-200);white-space:nowrap}
+    .ss-table td{padding:12px 14px;border-bottom:1px solid var(--gray-100);font-size:14px;vertical-align:top}
+    .ss-table tbody tr:last-child td{border-bottom:none}
+    .ss-name{font-weight:600;color:var(--vp-ink)}
+    .ss-sub{font-size:12.5px;color:var(--gray-500)}
+    .ss-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700}
+    .ss-pill--ok{background:#e8f5e9;color:#2e7d32}
+    .ss-pill--wait{background:#fff4e5;color:#b45309}
+    .ss-count{margin-top:10px;font-size:13px;color:var(--gray-500)}
+    .ss-empty{padding:44px 20px;text-align:center;border:1px dashed var(--gray-200);border-radius:14px;background:#fff}
+    .ss-empty p{color:var(--gray-500);margin-bottom:14px}
+
+    .ss-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000}
+    .ss-modal{position:fixed;z-index:1001;left:50%;top:50%;transform:translate(-50%,-50%);width:min(620px,calc(100vw - 32px));
+        max-height:calc(100vh - 64px);overflow-y:auto;background:#fff;border-radius:20px;padding:26px;
+        box-shadow:0 40px 80px -30px rgba(15,23,42,.55)}
+    .ss-modal__title{margin:0 0 6px;font-size:21px;font-weight:600;color:var(--vp-ink)}
+    .ss-modal__hint{margin:0 0 18px;font-size:13px;color:var(--gray-500);line-height:1.55}
+    .ss-modal__row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+    .ss-modal__actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+</style>
+
+@code {
+    private bool loading = true, addOpen, saving, ok;
+    private Guid actingUserId;
+    private Guid? schoolId;
+    private string? message, addError;
+    private string search = "";
+    private List<SchoolStudentListItem> rows = new();
+    private AddSchoolStudentRequest form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        var uid = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (uid != null && Guid.TryParse(uid, out var parsed))
+        {
+            actingUserId = parsed;
+            // The school is resolved from the signed-in user, never from the URL or a form field.
+            schoolId = await Students.ResolveSchoolIdAsync(actingUserId);
+            if (schoolId is not null) rows = await Students.ListAsync(actingUserId);
+        }
+        loading = false;
+    }
+
+    private async Task Reload() => rows = await Students.ListAsync(actingUserId, search);
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Reload();
+    }
+
+    private void OpenAdd() { form = new(); addError = null; addOpen = true; }
+    private void CloseAdd() => addOpen = false;
+
+    private async Task Save()
+    {
+        saving = true; addError = null;
+        var res = await Students.AddAsync(actingUserId, form);
+        saving = false;
+
+        if (!res.Ok) { addError = res.Error; return; }
+
+        addOpen = false;
+        ok = true;
+        // Deliberately does NOT say a code was sent - principal enrolment sends nothing.
+        message = res.LinkedExisting
+            ? "Existing student account linked to your school."
+            : "Student added successfully. The student can activate their Vijaypath account using the registered mobile number or email.";
+        await Reload();
+    }
+
+    private async Task Remove(SchoolStudentListItem r)
+    {
+        var (removed, err) = await Students.RemoveAsync(actingUserId, r.Id);
+        ok = removed;
+        message = removed ? $"{r.FullName} removed from your roll." : err;
+        if (removed) await Reload();
+    }
+}

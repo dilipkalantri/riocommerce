@@ -146,6 +146,7 @@ public class RioCommerceDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<Taluka> Talukas => Set<Taluka>();
     public DbSet<School> Schools => Set<School>();
     public DbSet<SchoolUser> SchoolUsers => Set<SchoolUser>();
+    public DbSet<SchoolStudent> SchoolStudents => Set<SchoolStudent>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RioCommerce.Core.DTOs.School;
 using RioCommerce.Core.Entities;
 using RioCommerce.Core.Enums;
@@ -9,10 +10,32 @@ namespace RioCommerce.Infrastructure.Services;
 
 public class SchoolRegistrationService(
     RioCommerceDbContext db,
-    IVerificationService verification) : ISchoolRegistrationService
+    IVerificationService verification,
+    IEmailRouter email,
+    ISmsSender sms,
+    ILogger<SchoolRegistrationService> log) : ISchoolRegistrationService
 {
     private readonly RioCommerceDbContext _db = db;
     private readonly IVerificationService _verification = verification;
+    private readonly IEmailRouter _email = email;
+    private readonly ISmsSender _sms = sms;
+    private readonly ILogger<SchoolRegistrationService> _log = log;
+
+    private const string BrandName = "Vijaypath";
+
+    /// <summary>
+    /// Body for the "registration successful" SMS. DELIBERATELY EMPTY.
+    ///
+    /// Both currently-approved DLT templates are verification/OTP ones, so this different text
+    /// would be rejected by DLT — and rejected AFTER the gateway answers HTTP 200, i.e. silently.
+    /// Rather than ship a message that looks sent and never arrives, the send is skipped while
+    /// this is blank.
+    ///
+    /// To switch it on: get a template approved (e.g. "Dear Customer your school registration
+    /// with Rioplay is successful. UDISE: {#var#}"), put its templateId on the gateway URL, then
+    /// paste the approved text here with {0} where the UDISE variable goes. Nothing else changes.
+    /// </summary>
+    private static readonly string RegistrationSuccessSmsTemplate = string.Empty;
 
     public async Task<SchoolLookupResult?> LookupByUdiseAsync(string udiseCode)
     {
@@ -109,10 +132,14 @@ public class SchoolRegistrationService(
             return (false, "Registration failed due to a conflict. The email or phone may already be in use.");
         }
 
-        var send = await _verification.SendAsync(
+        // One code, delivered to BOTH the principal's email and phone. SendBothAsync writes a
+        // row per channel sharing a single hash, so the code entered at the Verify step matches
+        // whichever channel it arrived on. Succeeds when at least one channel lands, so a dead
+        // SMS gateway cannot block a registration that the email already reached.
+        var send = await _verification.SendBothAsync(
             VerificationPurpose.SchoolRegistration,
-            VerificationChannel.Email,
-            user.Email!,
+            user.Email,
+            user.Phone,
             user.Id,
             user.FullName);
 
@@ -144,6 +171,11 @@ public class SchoolRegistrationService(
         user.LoginCount = 1;
         await _db.SaveChangesAsync();
 
+        // Confirmation is best-effort and deliberately AFTER the save: the account is already
+        // active and the caller is about to be signed in, so a dead mail server or SMS gateway
+        // must never turn a completed registration into a failed one.
+        await SendRegistrationSuccessAsync(user);
+
         return (true, null, user.Id);
     }
 
@@ -156,14 +188,78 @@ public class SchoolRegistrationService(
         if (user == null)
             return (true, null); // don't reveal non-existence
 
-        var send = await _verification.SendAsync(
+        var send = await _verification.SendBothAsync(
             VerificationPurpose.SchoolRegistration,
-            VerificationChannel.Email,
-            user.Email!,
+            user.Email,
+            user.Phone,
             user.Id,
             user.FullName);
 
         return (send.Success, send.ErrorMessage);
+    }
+
+    /// <summary>
+    /// Confirms a completed school registration on email (live) and SMS (dormant until a DLT
+    /// template is approved — see <see cref="RegistrationSuccessSmsTemplate"/>). Never throws.
+    /// </summary>
+    private async Task SendRegistrationSuccessAsync(User user)
+    {
+        try
+        {
+            var link = await _db.SchoolUsers
+                .AsNoTracking()
+                .Include(su => su.School).ThenInclude(s => s.District)
+                .FirstOrDefaultAsync(su => su.UserId == user.Id && su.IsActive);
+
+            var school = link?.School;
+            var schoolName = school?.Name ?? "your school";
+            var udise = school?.UdiseCode ?? "—";
+
+            if (!string.IsNullOrWhiteSpace(user.Email))
+            {
+                // Email is not governed by DLT, so it carries the real brand and full detail.
+                // Email is not bound by DLT, so it carries the real brand and full detail.
+                // Built with string.Join rather than embedded newline escapes: plain, and
+                // it keeps the template readable as a list of lines.
+                var lines = new List<string>
+                {
+                    $"Hi {user.FullName},",
+                    "",
+                    $"Your school registration on {BrandName} is complete.",
+                    "",
+                    $"School   : {schoolName}",
+                    $"UDISE    : {udise}",
+                };
+                if (!string.IsNullOrWhiteSpace(school?.District?.Name))
+                    lines.Add($"District : {school!.District!.Name}");
+                lines.Add($"Login    : {user.Email}");
+                lines.Add("");
+                lines.Add("You can now sign in to the school portal to add coordinators and manage students.");
+                lines.Add("");
+                lines.Add($"— {BrandName}");
+                var body = string.Join(Environment.NewLine, lines);
+
+                var res = await _email.SendAsync(new EmailMessage(
+                    user.Email!, user.FullName,
+                    $"Your {BrandName} school registration is complete", body));
+
+                if (!res.Ok)
+                    _log.LogWarning("School welcome email failed for {UserId}: {Err}", user.Id, res.Error);
+            }
+
+            if (!string.IsNullOrWhiteSpace(RegistrationSuccessSmsTemplate)
+                && !string.IsNullOrWhiteSpace(user.Phone))
+            {
+                var text = string.Format(RegistrationSuccessSmsTemplate, udise);
+                var (ok, err) = await _sms.SendAsync(user.Phone!, text);
+                if (!ok) _log.LogWarning("School welcome SMS failed for {UserId}: {Err}", user.Id, err);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Swallowed on purpose — the registration itself already succeeded.
+            _log.LogError(ex, "School registration confirmation failed for {UserId}", user.Id);
+        }
     }
 
     public async Task<SchoolPortalDashboard?> GetDashboardAsync(Guid userId)

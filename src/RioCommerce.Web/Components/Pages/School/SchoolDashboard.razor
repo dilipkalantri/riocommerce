@@ -1,6 +1,7 @@
 @page "/school"
 @attribute [Authorize(Roles = "school_principal,school_coordinator")]
 @inject ISchoolRegistrationService RegSvc
+@inject ISchoolStudentService StudentSvc
 @inject AuthenticationStateProvider AuthProvider
 
 <PageTitle>School Portal</PageTitle>
@@ -22,18 +23,19 @@
         <p class="account-greeting"><strong>@dash.SchoolName</strong> · @(dash.DistrictName ?? "") <span style="color:var(--gray-400)">(@dash.UdiseCode)</span></p>
 
         <div class="kpi-grid">
-            <div class="kpi-card"><div class="kpi-card__label">Students</div><div class="kpi-card__value">@dash.StudentCount</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Students</div><div class="kpi-card__value">@studentCount</div></div>
             <div class="kpi-card"><div class="kpi-card__label">Coordinators</div><div class="kpi-card__value">@dash.CoordinatorCount</div></div>
             <div class="kpi-card"><div class="kpi-card__label">Active Enrollments</div><div class="kpi-card__value">@dash.EnrollmentCount</div></div>
         </div>
 
         <div style="margin:18px 0">
-            <a href="/school/enrollment" class="btn btn-primary">Enroll Students</a>
+            <a href="/school/students" class="btn btn-primary">Manage Students</a>
         </div>
     }
 </div>
 
 @code {
+    private int studentCount;
     private bool loading = true;
     private RioCommerce.Core.DTOs.School.SchoolPortalDashboard? dash;
 
@@ -42,7 +44,12 @@
         var auth = await AuthProvider.GetAuthenticationStateAsync();
         var uid = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (uid != null && Guid.TryParse(uid, out var userId))
+        {
             dash = await RegSvc.GetDashboardAsync(userId);
+            // GetDashboardAsync still reports 0 (its student count was a Phase-3 placeholder);
+            // take the real figure from the scoped student service instead.
+            studentCount = await StudentSvc.CountAsync(userId);
+        }
         loading = false;
     }
 }

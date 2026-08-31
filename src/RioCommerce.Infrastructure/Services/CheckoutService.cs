@@ -114,6 +114,14 @@ public class CheckoutService : ICheckoutService
 
         var rows = await LoadCartAsync(userId);
         if (rows.Count == 0) throw new InvalidOperationException("Your cart is empty.");
+
+        // Re-check purchase availability at order time: the flag may have been switched off after
+        // these lines were added, and no order may be created for a withdrawn product.
+        var blocked = rows.Where(r => !r.Product.AllowCustomerPurchase).Select(r => r.Product.Title).ToList();
+        if (blocked.Count > 0)
+            throw new InvalidOperationException(
+                $"{string.Join(", ", blocked)} is currently not available for purchase. Please remove it from your cart to continue.");
+
         var user = await _db.Users.FirstAsync(u => u.Id == userId);
 
         // Recompute everything server-side — never trust client amounts.

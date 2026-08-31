@@ -28,6 +28,11 @@
     /* batch badge inherits the canonical .bs-badge palette from home-premium.css — DO NOT redefine colours here. */
     .pd-batch-wrap{align-self:flex-start}
     .pd-oos-msg{font-size:13px;color:#DC2626;background:#FEF2F2;padding:10px 14px;border-radius:12px;border:1px solid rgba(220,38,38,.22);margin:6px 0 0;line-height:1.5}
+    /* Purchase-disabled replacement block — same slot as the OOS box. */
+    .pd-nopurchase-box{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:14px;
+        border:1px solid #ffd9a8;background:#fff8ec;color:#8a5200;font-size:14.5px;line-height:1.5}
+    .pd-nopurchase-box svg{width:20px;height:20px;flex:none}
+
     /* OOS replacement block — replaces Add To Cart / Buy Now per spec. */
     .pd-oos-box{display:flex;flex-direction:column;gap:10px;background:#FEF2F2;border:1px solid rgba(220,38,38,.22);border-radius:14px;padding:14px}
     .pd-oos-badge{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:800;font-size:14px;letter-spacing:.4px;color:#DC2626;text-transform:uppercase}
@@ -1006,6 +1011,10 @@ else
                 // Spec #10: when BatchStatus == OutOfStock, hide Add To Cart + Buy Now entirely
                 // and replace with a red "Out Of Stock" badge + Notify Me button.
                 var oos = product.BatchStatus == BatchStatus.OutOfStock;
+                // Admin switch, separate from publishing: the product stays visible and browsable,
+                // only the purchase controls are withdrawn. The server enforces the same rule, so
+                // this is presentation, not the security boundary.
+                var purchaseOff = !product.AllowCustomerPurchase;
             }
             @if (isFranchiseUser)
             {
@@ -1017,6 +1026,13 @@ else
                         will be added to your order automatically.
                     </p>
                     <a class="btn btn-primary" href="@CurrentFranchiseOrderUrl">Go To Franchise Portal → Place Order</a>
+                </div>
+            }
+            else if (purchaseOff)
+            {
+                <div class="pd-nopurchase-box">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                    <span>This product is currently not available for purchase.</span>
                 </div>
             }
             else if (oos)

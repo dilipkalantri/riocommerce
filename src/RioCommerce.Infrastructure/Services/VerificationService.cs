@@ -254,6 +254,13 @@ public class VerificationService : IVerificationService
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Brand used in customer-facing EMAIL. Deliberately NOT applied to the SMS body: that text is
+    /// fixed by the DLT-approved template, and rebranding it would make every message fail the
+    /// template match and be dropped after the gateway has already returned HTTP 200.
+    /// </summary>
+    private const string BrandName = "Vijaypath";
+
     private static string ThrottleMessage =>
         $"Too many code requests for this address. Please wait {SendWindow.TotalMinutes:N0} minutes and try again.";
 
@@ -291,11 +298,11 @@ public class VerificationService : IVerificationService
 
         if (channel == VerificationChannel.Email)
         {
-            var subject = $"Your RioCommerce verification code: {code}";
+            var subject = $"Your {BrandName} verification code: {code}";
             // Migrated customers never asked for this code — they just tried to log in with their old
             // credentials. Without a line explaining why, the mail looks unsolicited and gets ignored.
             var preamble = purpose == VerificationPurpose.LegacyPasswordSetup
-                ? "Your RioCommerce account has moved to our new website. Your old password could not be " +
+                ? $"Your {BrandName} account has moved to our new website. Your old password could not be " +
                   "carried across, so please set a new one.\n\n"
                 : string.Empty;
             var body =
@@ -303,12 +310,24 @@ public class VerificationService : IVerificationService
                 preamble +
                 $"Your verification code for {context} is: {code}\n\n" +
                 $"It expires in {CodeLifetime.TotalMinutes:N0} minutes. If you didn't request this, ignore this email.\n\n" +
-                "— RioCommerce";
+                $"— {BrandName}";
             var result = await _email.SendAsync(new EmailMessage(target, name, subject, body), ct);
             return (result.Ok, result.Error);
         }
 
-        var smsBody = $"RioCommerce: your verification code is {code}. Valid for {CodeLifetime.TotalMinutes:N0} min.";
+        // DLT-APPROVED TEMPLATE - do not reword.
+        //
+        // Registered with the gateway as:
+        //     Dear Customer your SMS Verification Code for Rioplay is: {#var#}
+        //
+        // TRAI/DLT matches the delivered body against the template registered for the templateId
+        // on the gateway URL, character for character apart from the variable. A mismatch is
+        // dropped AFTER the gateway has already answered HTTP 200, so it fails silently - which is
+        // why nothing here may be rebranded ("Rioplay" included) or padded with a validity line
+        // until a new template is approved and its templateId swapped into the URL.
+        //
+        // The email body below is unaffected: DLT governs SMS only.
+        var smsBody = $"Dear Customer your SMS Verification Code for Rioplay is: {code}";
         return await _sms.SendAsync(target, smsBody);
     }
 

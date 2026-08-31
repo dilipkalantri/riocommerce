@@ -1,12 +1,33 @@
+@using RioCommerce.Core.Constants
 @inject ISiteSettingsService SettingsSvc
+
+@*
+    Top contact bar. The phone and email were previously rendered ONLY when the matching
+    site setting was filled in — and those settings are blank, so the bar showed a lone
+    phone icon with no number and no email at all. They now fall back to the official
+    public details, so the bar is never empty; anything set in Admin → Settings still wins.
+*@
 
 <div class="contact-strip">
     <div class="contact-strip__inner">
         <div class="contact-strip__phones">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-            @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone1)) { <a href="tel:@cfg.ContactPhone1">@cfg.ContactPhone1</a> }
-            @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone2)) { <a href="tel:@cfg.ContactPhone2">@cfg.ContactPhone2</a> }
-            @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone3)) { <a href="tel:@cfg.ContactPhone3">@cfg.ContactPhone3</a> }
+            <a class="contact-strip__item" href="tel:@PublicContactDefaults.TelHref(Phone1)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
+                <span>@Phone1</span>
+            </a>
+
+            @* Extra numbers stay optional — only shown when actually configured. *@
+            @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone2))
+            {
+                <a class="contact-strip__item" href="tel:@PublicContactDefaults.TelHref(cfg!.ContactPhone2)"><span>@cfg!.ContactPhone2</span></a>
+            }
+
+            <span class="contact-strip__sep" aria-hidden="true"></span>
+
+            <a class="contact-strip__item" href="mailto:@Email">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
+                <span>@Email</span>
+            </a>
         </div>
         <div class="contact-strip__social">
             @if (!string.IsNullOrWhiteSpace(cfg?.InstagramUrl))
@@ -27,6 +48,15 @@
 
 @code {
     private SiteSettings? cfg;
+
+    // Configured value wins; the official detail is the fallback so the bar is never blank.
+    private string Phone1 => string.IsNullOrWhiteSpace(cfg?.ContactPhone1)
+        ? PublicContactDefaults.Phone : cfg!.ContactPhone1!;
+    // Blank OR a seeded example.com placeholder both count as "not configured".
+    private string Email =>
+        string.IsNullOrWhiteSpace(cfg?.ContactEmail) || PublicContactDefaults.IsPlaceholderEmail(cfg!.ContactEmail)
+            ? PublicContactDefaults.Email : cfg!.ContactEmail!;
+
     protected override async Task OnInitializedAsync()
     {
         try { cfg = await SettingsSvc.GetAsync(); } catch { }

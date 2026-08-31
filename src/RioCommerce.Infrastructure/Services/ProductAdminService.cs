@@ -388,6 +388,7 @@ public class ProductAdminService : IProductAdminService
             ApplicableAttemptsCsv = p.ApplicableAttempts != null ? string.Join(", ", p.ApplicableAttempts) : null,
             Sku = p.Sku, Gtin = p.Gtin, Tags = p.Tags, AdminComment = p.AdminComment, MarkAsNew = p.MarkAsNew,
             AvailableStartUtc = p.AvailableStartUtc, AvailableEndUtc = p.AvailableEndUtc, ProductCost = p.ProductCost, AllowReviews = p.AllowReviews,
+            AllowCustomerPurchase = p.AllowCustomerPurchase,
             // Special price
             SpecialPrice = p.SpecialPrice, SpecialPriceStartDateUtc = p.SpecialPriceStartDateUtc, SpecialPriceEndDateUtc = p.SpecialPriceEndDateUtc,
             Badge = p.Badge, IsFeatured = p.IsFeatured, DisplayOrder = p.DisplayOrder, HomePageDisplayOrder = p.HomePageDisplayOrder, Status = p.Status,
@@ -518,6 +519,7 @@ public class ProductAdminService : IProductAdminService
         p.AdminComment = m.AdminComment; p.MarkAsNew = m.MarkAsNew;
         p.AvailableStartUtc = m.AvailableStartUtc; p.AvailableEndUtc = m.AvailableEndUtc;
         p.ProductCost = m.ProductCost; p.AllowReviews = m.AllowReviews;
+        p.AllowCustomerPurchase = m.AllowCustomerPurchase;
         p.Badge = m.Badge; p.IsFeatured = m.IsFeatured; p.DisplayOrder = m.DisplayOrder; p.HomePageDisplayOrder = m.HomePageDisplayOrder; p.Status = m.Status;
         p.SeoTitle = m.SeoTitle; p.SeoDescription = m.SeoDescription;
         // HomeCardImageUrl is set via the dedicated upload/delete endpoints, but allow Save to clear it
@@ -1136,6 +1138,7 @@ public class ProductAdminService : IProductAdminService
             BooksInfo = s.BooksInfo, ExamOrientedInfo = s.ExamOrientedInfo, AdditionalDetails = s.AdditionalDetails,
             Views = s.Views, Validity = s.Validity, Language = s.Language, CourseSchedule = s.CourseSchedule,
             Tags = s.Tags, AdminComment = s.AdminComment, MarkAsNew = s.MarkAsNew, ProductCost = s.ProductCost, AllowReviews = s.AllowReviews,
+            AllowCustomerPurchase = s.AllowCustomerPurchase,
             AvailableStartUtc = s.AvailableStartUtc, AvailableEndUtc = s.AvailableEndUtc,
             SeoTitle = s.SeoTitle, SeoDescription = s.SeoDescription, Badge = s.Badge, DisplayOrder = s.DisplayOrder,
             HomePageDisplayOrder = s.HomePageDisplayOrder,

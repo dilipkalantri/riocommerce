@@ -1,0 +1,492 @@
+/* ============================================================================
+   VIJAYPATH — PREMIUM FOOTER
+   ----------------------------------------------------------------------------
+   Loaded AFTER app.css / home-premium.css / theme.css / vijaypath.css so the
+   premium layer wins on source order, and BEFORE responsive-normalize.css.
+   responsive-normalize still loads last, so anything it can reach needs to
+   out-specify it rather than rely on order — notably its global
+        svg:not([width]):not([data-large]):not(.svg-noclamp){width:clamp(...)}
+   at (0,3,1). Every icon rule below therefore carries 4+ classes AND repeats
+   the same :not() chain.
+
+   Palette comes entirely from the existing tokens in theme.css:
+     --navy #5d38de (Vijaypath purple)   --navy-light #7455e8
+     --orange #ff5028 (Vijaypath accent) --vp-ink #1e272f (dark navy ground)
+   ========================================================================== */
+
+.rc-app .footer{
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--vp-ink);
+  color: #e9e6f2;
+  padding: 0 0 clamp(20px, 2.4vw, 28px);
+  font-family: var(--font-primary);
+}
+
+/* ── 2. Top border: thin purple → orange gradient ───────────────────────── */
+.rc-app .footer::before{
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--navy) 0%, var(--navy-light) 38%, var(--orange) 100%);
+  animation: none;                 /* replaces the old 8s sliding 4-stop band */
+  z-index: 2;
+}
+
+/* ── 28. Background decoration — sits behind everything, never readable text ─ */
+.rc-app .footer__decor{
+  position: absolute; inset: 0; z-index: -1;
+  pointer-events: none; overflow: hidden;
+}
+.rc-app .footer__decor-aura{ position: absolute; border-radius: 50%; filter: blur(110px) }
+.rc-app .footer__decor-aura--purple{
+  width: 620px; height: 620px; top: -280px; left: -180px;
+  background: radial-gradient(circle, rgba(93,56,222,.34), transparent 70%);
+}
+.rc-app .footer__decor-aura--orange{
+  width: 460px; height: 460px; bottom: -220px; right: -140px;
+  background: radial-gradient(circle, rgba(255,80,40,.20), transparent 70%);
+}
+.rc-app .footer__decor-dots{
+  position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,.075) 1px, transparent 1px);
+  background-size: 30px 30px;
+  -webkit-mask-image: radial-gradient(78% 62% at 50% 22%, #000, transparent 80%);
+          mask-image: radial-gradient(78% 62% at 50% 22%, #000, transparent 80%);
+}
+/* one very faint abstract curve for depth */
+.rc-app .footer__decor-arc{
+  position: absolute; left: 50%; top: 38%;
+  transform: translateX(-50%);
+  width: 128%; aspect-ratio: 2.6 / 1;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.055);
+  border-bottom-color: transparent;
+}
+
+/* ── 8. Centred container ───────────────────────────────────────────────── */
+.rc-app .footer__shell{
+  position: relative; z-index: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(34px, 4vw, 52px) clamp(18px, 3.4vw, 40px) 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3–7. NEWSLETTER
+   ══════════════════════════════════════════════════════════════════════════ */
+.rc-app .footer__newsletter{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
+  align-items: center;
+  gap: clamp(20px, 3vw, 40px);
+  max-width: none;
+  margin: 0 0 clamp(34px, 4vw, 52px);
+  padding: clamp(22px, 2.6vw, 32px) clamp(22px, 3vw, 36px);
+  border-radius: 24px;
+  background:
+    linear-gradient(135deg, rgba(93,56,222,.16), rgba(255,80,40,.08) 62%, rgba(255,255,255,.03)),
+    rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 26px 62px -34px rgba(0,0,0,.95);
+}
+
+.rc-app .footer__newsletter-text{ display: flex; gap: 16px; align-items: flex-start; min-width: 0 }
+
+/* 5. Real vector mail icon in an accented tile */
+.rc-app .footer__newsletter-badge{
+  flex: none;
+  width: 46px; height: 46px;
+  border-radius: 14px;
+  display: grid; place-items: center;
+  color: #ffb9a6;
+  background: rgba(255,80,40,.16);
+  box-shadow: inset 0 0 0 1px rgba(255,80,40,.30), 0 10px 22px -14px rgba(255,80,40,.9);
+}
+.rc-app .footer .footer__newsletter-text .footer__newsletter-badge svg:not([width]):not([data-large]):not(.svg-noclamp){
+  width: 22px; height: 22px; flex: none;
+}
+
+.rc-app .footer__newsletter-text h4{
+  margin: 0 0 5px;
+  color: #fff;
+  font-size: clamp(18px, 1.5vw, 20px);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -.01em;
+  display: block;                    /* home-premium.css made this a flex row */
+  padding-bottom: 0;
+}
+.rc-app .footer__newsletter-text p{
+  margin: 0;
+  color: #b8b2cd;
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 46ch;
+}
+
+/* 6. Input + 7. Subscribe button */
+.rc-app .footer__newsletter-form{
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+.rc-app .footer__newsletter-form input{
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 50px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(10,12,18,.45);
+  color: #fff;
+  font-family: var(--font-primary);
+  font-size: 14.5px;
+  outline: none;
+  transition: border-color .22s ease, background .22s ease, box-shadow .22s ease;
+}
+.rc-app .footer__newsletter-form input::placeholder{ color: rgba(255,255,255,.42) }
+.rc-app .footer__newsletter-form input:hover{ border-color: rgba(255,255,255,.30) }
+.rc-app .footer__newsletter-form input:focus,
+.rc-app .footer__newsletter-form input:focus-visible{
+  border-color: var(--navy-light);
+  background: rgba(10,12,18,.62);
+  box-shadow: 0 0 0 3px rgba(116,85,232,.24);
+}
+
+.rc-app .footer .footer__newsletter-form .btn.btn-primary{
+  flex: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 50px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--navy) 0%, #7a45c8 46%, var(--orange) 100%);
+  color: #fff;
+  font-family: var(--font-primary);
+  font-size: 15px; font-weight: 600;
+  letter-spacing: .01em;
+  cursor: pointer;
+  box-shadow: 0 12px 26px -14px rgba(93,56,222,.9);
+  transition: transform .24s cubic-bezier(.22,.7,.24,1), box-shadow .24s ease, filter .24s ease;
+}
+.rc-app .footer .footer__newsletter-form .btn.btn-primary:hover:not(:disabled){
+  transform: translateY(-2px);
+  box-shadow: 0 20px 38px -16px rgba(93,56,222,1);
+  filter: brightness(1.06);
+}
+.rc-app .footer .footer__newsletter-form .btn.btn-primary:disabled{ opacity: .6; cursor: default }
+.rc-app .footer .footer__newsletter-form .btn.btn-primary:focus-visible{
+  outline: 2px solid #cbbcff; outline-offset: 3px;
+}
+.rc-app .footer .footer__newsletter-form .btn.btn-primary svg:not([width]):not([data-large]):not(.svg-noclamp){
+  width: 17px; height: 17px; flex: none;
+  transition: transform .24s cubic-bezier(.22,.7,.24,1);
+}
+.rc-app .footer .footer__newsletter-form .btn.btn-primary:hover:not(:disabled) svg{ transform: translateX(3px) }
+
+.rc-app .footer__newsletter-done{
+  display: inline-flex; align-items: center; gap: 8px;
+  color: #8ee6a0; font-weight: 600; font-size: 14.5px;
+}
+.rc-app .footer .footer__newsletter-done svg:not([width]):not([data-large]):not(.svg-noclamp){
+  width: 18px; height: 18px; flex: none;
+}
+.rc-app .footer__newsletter-msg{
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: #ffc9bb;
+  text-align: left;
+  width: auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   9. MAIN COLUMNS — brand column intentionally wider (holds the contact block)
+   ══════════════════════════════════════════════════════════════════════════ */
+.rc-app .footer__inner{
+  display: grid;
+  grid-template-columns: minmax(0, 2.05fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: clamp(26px, 3vw, 44px);
+  max-width: none;
+  margin: 0;
+  padding-bottom: clamp(30px, 3.4vw, 44px);
+}
+.rc-app .footer__col{ min-width: 0 }
+
+/* ── 10. Logo in a deliberate white brand container ─────────────────────── */
+.rc-app .footer__brand-mark{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #FFFFFF;
+  box-shadow: 0 12px 30px -16px rgba(0,0,0,.85), inset 0 0 0 1px rgba(255,255,255,.9);
+}
+.rc-app .footer .footer__brand-mark .footer__logo{
+  display: block;
+  height: 30px;
+  width: auto;                 /* keeps the 253×31 wordmark's aspect ratio */
+  max-width: 100%;
+  margin: 0;
+}
+
+/* ── 11. Brand description ──────────────────────────────────────────────── */
+.rc-app .footer__tagline{
+  margin: 16px 0 0;
+  color: #b8b2cd;
+  font-size: 14.5px;
+  line-height: 1.68;
+  max-width: 38ch;
+}
+
+/* ── 12/13. Contact block ───────────────────────────────────────────────── */
+.rc-app .footer__contact{
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  margin-top: 22px;
+  font-style: normal;   /* <address> defaults to italic in every browser */
+}
+.rc-app .footer__contact-row{
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  gap: 11px;
+  color: #b8b2cd;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.rc-app .footer__contact-ico{
+  width: 32px; height: 32px;
+  border-radius: 9px;
+  display: grid; place-items: center;
+  color: #cbbcff;
+  background: rgba(93,56,222,.18);
+  box-shadow: inset 0 0 0 1px rgba(93,56,222,.28);
+  margin-top: 1px;
+}
+.rc-app .footer .footer__contact-row .footer__contact-ico svg:not([width]):not([data-large]):not(.svg-noclamp){
+  width: 18px; height: 18px; flex: none;
+}
+.rc-app .footer__contact-label{
+  display: block;
+  color: #fff;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+  opacity: .82;
+}
+/* contact rows that are links */
+.rc-app .footer .footer__contact a{
+  color: #b8b2cd;
+  text-decoration: none;
+  transition: color .22s ease;
+  display: inline;
+  margin: 0;
+  width: auto;
+  transform: none;
+}
+.rc-app .footer .footer__contact a:hover{ color: var(--orange) }
+.rc-app .footer .footer__contact a:focus-visible{
+  outline: 2px solid #cbbcff; outline-offset: 3px; border-radius: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   15/16/20. LINK COLUMNS
+   ══════════════════════════════════════════════════════════════════════════ */
+.rc-app .footer__col h4{
+  margin: 0 0 18px;
+  color: #fff;
+  font-size: 16.5px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  padding-bottom: 10px;
+  position: relative;
+}
+.rc-app .footer__col h4::after{
+  content: "";
+  position: absolute; left: 0; bottom: 0;
+  width: 34px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--navy-light), var(--orange));
+}
+
+.rc-app .footer__links{ display: flex; flex-direction: column; gap: 2px }
+.rc-app .footer .footer__links a{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 0;
+  color: #b8b2cd;
+  font-size: 14.5px;
+  font-weight: 400;
+  text-decoration: none;
+  transform: none;
+  transition: color .24s ease;
+}
+.rc-app .footer .footer__links a:hover{ color: var(--orange); transform: none }
+.rc-app .footer .footer__links a:focus-visible{
+  outline: 2px solid #cbbcff; outline-offset: 2px; border-radius: 4px; color: #fff;
+}
+/* 15. subtle arrow that fades + slides in on hover */
+.rc-app .footer .footer__links a .footer__arrow svg:not([width]):not([data-large]):not(.svg-noclamp){
+  width: 15px; height: 15px; flex: none;
+}
+.rc-app .footer__arrow{
+  display: inline-flex;
+  opacity: 0;
+  transform: translateX(-5px);
+  transition: opacity .24s ease, transform .24s cubic-bezier(.22,.7,.24,1);
+  color: var(--orange);
+}
+.rc-app .footer .footer__links a:hover .footer__arrow,
+.rc-app .footer .footer__links a:focus-visible .footer__arrow{
+  opacity: 1; transform: translateX(0);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   17/18. FIND US — social buttons
+   ══════════════════════════════════════════════════════════════════════════ */
+.rc-app .footer__social{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 0;
+}
+.rc-app .footer .footer__social a{
+  width: 48px; height: 48px;
+  margin: 0;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  color: #d5cfe6;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.14);
+  transform: none;
+  transition: transform .24s cubic-bezier(.22,.7,.24,1), color .24s ease,
+              border-color .24s ease, background .24s ease, box-shadow .24s ease;
+}
+.rc-app .footer .footer__social a:hover{
+  transform: translateY(-3px);
+  color: #fff;
+  border-color: rgba(255,80,40,.55);
+  background: rgba(255,80,40,.14);
+  box-shadow: 0 14px 26px -14px rgba(255,80,40,.9);
+}
+.rc-app .footer .footer__social a:focus-visible{
+  outline: 2px solid #cbbcff; outline-offset: 3px;
+}
+.rc-app .footer .footer__social a svg:not([width]):not([data-large]):not(.svg-noclamp){
+  width: 20px; height: 20px; flex: none;
+}
+.rc-app .footer__social-note{
+  margin: 16px 0 0;
+  color: #b8b2cd;
+  font-size: 13.5px;
+  line-height: 1.6;
+  max-width: 30ch;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   22–26. DIVIDER + BOTTOM BAR
+   ══════════════════════════════════════════════════════════════════════════ */
+.rc-app .footer__bottom{
+  position: relative; z-index: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: clamp(16px, 1.8vw, 22px) clamp(18px, 3.4vw, 40px) 0;
+  border-top: 1px solid rgba(255,255,255,.09);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  text-align: left;
+  font-size: 13.5px;
+  color: #9a94b0;
+}
+.rc-app .footer__bottom p{ margin: 0; font-size: 13.5px; color: #9a94b0; line-height: 1.6 }
+.rc-app .footer__credit{ margin: 0; font-size: 13.5px; color: #9a94b0 }
+.rc-app .footer .footer__credit a{
+  color: #cbbcff;
+  font-weight: 500;
+  text-decoration: none;
+  margin: 0; width: auto; transform: none;
+  transition: color .24s ease;
+}
+.rc-app .footer .footer__credit a:hover{ color: var(--orange) }
+.rc-app .footer .footer__credit a:focus-visible{
+  outline: 2px solid #cbbcff; outline-offset: 3px; border-radius: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   29. RESPONSIVE
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Tablet landscape — newsletter still horizontal, columns go 2 × 2 */
+@media (max-width: 1024px){
+  .rc-app .footer__inner{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 30px 32px;
+  }
+  .rc-app .footer__newsletter{ grid-template-columns: minmax(0, 1fr) minmax(300px, 400px) }
+  .rc-app .footer__tagline,
+  .rc-app .footer__social-note{ max-width: 46ch }
+}
+
+/* Tablet portrait — newsletter stacks, columns stay 2 × 2 */
+@media (max-width: 860px){
+  .rc-app .footer__newsletter{ grid-template-columns: minmax(0, 1fr); gap: 20px }
+  .rc-app .footer__newsletter-form{ max-width: 520px }
+}
+
+/* Phone — single column, centred bottom bar */
+@media (max-width: 640px){
+  .rc-app .footer__shell{ padding-top: 30px }
+  /* keep the brand container prominent but not viewport-dominating */
+  .rc-app .footer .footer__brand-mark{ padding: 9px 13px; border-radius: 11px }
+  .rc-app .footer .footer__brand-mark .footer__logo{ height: 25px }
+  .rc-app .footer__inner{ grid-template-columns: minmax(0, 1fr); gap: 30px }
+  .rc-app .footer__newsletter{ padding: 20px; border-radius: 20px }
+  .rc-app .footer__newsletter-text{ gap: 13px }
+  .rc-app .footer__newsletter-form{ flex-direction: column; max-width: none }
+  .rc-app .footer .footer__newsletter-form .btn.btn-primary{ width: 100%; justify-content: center }
+  .rc-app .footer__tagline,
+  .rc-app .footer__social-note{ max-width: none }
+  .rc-app .footer__col h4{ margin-bottom: 14px }
+  .rc-app .footer__bottom{
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+  }
+  /* keep the decorative auras from ballooning the paint area on phones */
+  .rc-app .footer__decor-aura--purple{ width: 340px; height: 340px; top: -150px; left: -110px }
+  .rc-app .footer__decor-aura--orange{ width: 260px; height: 260px; bottom: -120px; right: -80px }
+  .rc-app .footer__decor-arc{ display: none }
+}
+
+/* Small phone — protect touch targets and stop any tiny type */
+@media (max-width: 380px){
+  .rc-app .footer__shell{ padding-left: 14px; padding-right: 14px }
+  .rc-app .footer__bottom{ padding-left: 14px; padding-right: 14px }
+  .rc-app .footer__contact-row{ grid-template-columns: 30px minmax(0, 1fr); gap: 9px }
+  .rc-app .footer__contact-ico{ width: 30px; height: 30px }
+  .rc-app .footer .footer__brand-mark .footer__logo{ height: 22px }
+  .rc-app .footer .footer__social a{ width: 46px; height: 46px }
+}
+
+/* 34. Honour reduced-motion — drop the movement, keep the colour feedback */
+@media (prefers-reduced-motion: reduce){
+  .rc-app .footer .footer__newsletter-form .btn.btn-primary:hover:not(:disabled),
+  .rc-app .footer .footer__newsletter-form .btn.btn-primary:hover:not(:disabled) svg,
+  .rc-app .footer .footer__social a:hover{ transform: none }
+  .rc-app .footer__arrow{ transition: opacity .01ms }
+}

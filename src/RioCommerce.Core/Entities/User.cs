@@ -17,6 +17,15 @@ public class User : BaseEntity
     public string? State { get; set; }
     public CourseLevel? CourseInterest { get; set; }   // doubles as the customer's "Level"
     public string? Gender { get; set; }                // "Male" | "Female" | null
+
+    // ── Student profile (individual registration). All optional: the school flow and
+    //    existing accounts never set them. Backed by 0042_student_profile_fields.sql.
+    public DateTime? DateOfBirth { get; set; }
+    public string? District { get; set; }
+    public string? SchoolName { get; set; }
+    public string? StudentClass { get; set; }         // "5", "8", "10" …
+    public string? Board { get; set; }                // CBSE | ICSE | State Board | Other
+
     public string? Attempt { get; set; }               // target exam attempt, e.g. "Sept 2026"
     public string? AdminComment { get; set; }          // internal admin note
     public string? ReferralCode { get; set; }

@@ -33,6 +33,10 @@ public class ProductListItem
     public bool IsFeatured { get; set; }
     public int HomePageDisplayOrder { get; set; }
     /// <summary>Current batch availability — drives the storefront badge on every card.</summary>
+    /// <summary>False hides Add To Cart / Buy Now. Defaults true so any projection that
+    /// does not set it keeps today's purchasable behaviour.</summary>
+    public bool AllowCustomerPurchase { get; set; } = true;
+
     public BatchStatus BatchStatus { get; set; } = BatchStatus.Upcoming;
     /// <summary>Display label for <see cref="BatchStatus"/>. Computed so every consumer (API JSON
     /// payloads, Razor pages, cards, recommendation rows) reads the SAME text from the SAME source.

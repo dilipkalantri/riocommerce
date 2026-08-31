@@ -1,0 +1,435 @@
+@page "/school/enrollment"
+@using RioCommerce.Core.DTOs.School
+@attribute [Authorize(Roles = "school_principal,school_coordinator")]
+@inject ISchoolStudentService Students
+@inject ISchoolEnrollmentService Enrollment
+@inject AuthenticationStateProvider AuthProvider
+
+@* Fills the /school/enrollment route SchoolNav has always reserved. Same container /
+   account-page / SchoolNav shell as the dashboard and students pages.
+
+   The course list and every price come from ISchoolEnrollmentService, which projects the
+   live Products table — nothing in this file names a course or an amount. *@
+
+<PageTitle>Enroll Students — School Portal</PageTitle>
+
+<div class="container account-page">
+    <h1 class="account-page__title">School Portal</h1>
+    <SchoolNav />
+
+    @if (loading)
+    {
+        <div class="se-skeleton" aria-live="polite" aria-busy="true">
+            <span class="se-skeleton__bar"></span>
+            <span class="se-skeleton__bar se-skeleton__bar--short"></span>
+            <p class="se-skeleton__text">Loading courses…</p>
+        </div>
+    }
+    else if (schoolId is null)
+    {
+        <p class="se-note">Your account is not linked to a school.</p>
+    }
+    else
+    {
+        @* ── Summary cards ─────────────────────────────────────────────── *@
+        <div class="se-stats">
+            <div class="se-stat">
+                <span class="se-stat__ico se-stat__ico--purple" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </span>
+                <span class="se-stat__value">@roster.Count</span>
+                <span class="se-stat__label">Students Added</span>
+            </div>
+            <div class="se-stat">
+                <span class="se-stat__ico se-stat__ico--green" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+                </span>
+                <span class="se-stat__value">@selected.Count</span>
+                <span class="se-stat__label">Confirmed</span>
+            </div>
+            <div class="se-stat">
+                <span class="se-stat__ico se-stat__ico--orange" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                </span>
+                <span class="se-stat__value se-stat__value--text" title="@(Chosen?.Title ?? "")">@(Chosen?.Title ?? "—")</span>
+                <span class="se-stat__label">Course</span>
+            </div>
+            <div class="se-stat">
+                <span class="se-stat__ico se-stat__ico--rose" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3a4.5 4.5 0 1 0 0-9"/></svg>
+                </span>
+                <span class="se-stat__value">₹@TotalPayable.ToString("N0")</span>
+                <span class="se-stat__label">Total Payable</span>
+            </div>
+        </div>
+
+        @if (submitted is not null)
+        {
+            <div class="se-success" role="status">
+                <span class="se-success__ico" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+                </span>
+                <div>
+                    <h2 class="se-success__title">Enrollment submitted successfully.</h2>
+                    <p class="se-success__line">
+                        Order <strong>#@submitted.OrderNumber</strong> ·
+                        @submitted.StudentCount student@(submitted.StudentCount == 1 ? "" : "s") ·
+                        ₹@submitted.Total.ToString("N0")
+                    </p>
+                    <p class="se-success__line">
+                        Payment status: <span class="se-pill se-pill--wait">Pending</span>
+                        Our team will process the payment separately.
+                    </p>
+                    <button class="btn btn-primary" @onclick="StartAnother">Enroll more students</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <section class="se-panel">
+                <h2 class="se-panel__title">Enroll Students</h2>
+
+                @* ── Course picker ──────────────────────────────────────── *@
+                @if (loadError)
+                {
+                    <p class="se-alert se-alert--err">Unable to load enrollment products. Please try again.</p>
+                    <button class="btn btn-outline" @onclick="ReloadProducts">Retry</button>
+                }
+                else if (products.Count == 0)
+                {
+                    <p class="se-alert">No enrollment products are currently available.</p>
+                }
+                else
+                {
+                    <div class="se-field">
+                        <label class="form-label" for="se-course">Select Course *</label>
+                        <div class="se-select">
+                            <span class="se-select__ico" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            </span>
+                            <select id="se-course" class="se-select__input" value="@productId"
+                                    @onchange="OnCourseChanged">
+                                <option value="">Choose a course…</option>
+                                @foreach (var p in products)
+                                {
+                                    <option value="@p.Id">@p.Title (₹@p.Price.ToString("N0"))</option>
+                                }
+                            </select>
+                            <span class="se-select__chev" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
+                        </div>
+                    </div>
+
+                    @if (Chosen is not null)
+                    {
+                        <div class="se-chosen">
+                            <span class="se-chosen__label">Selected Course</span>
+                            <span class="se-chosen__name">@Chosen.Title</span>
+                            <span class="se-chosen__price">₹@Chosen.Price.ToString("N0") / student</span>
+                        </div>
+                    }
+                }
+
+                @* ── Roster ─────────────────────────────────────────────── *@
+                <div class="se-sub">
+                    <h3 class="se-sub__title">Select Students</h3>
+                    <a class="btn btn-outline se-sub__add" href="/school/students">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                        Add student
+                    </a>
+                </div>
+
+                @if (roster.Count == 0)
+                {
+                    <div class="se-empty">
+                        <p>No students on your roll yet.</p>
+                        <a class="btn btn-primary" href="/school/students">Add your first student</a>
+                    </div>
+                }
+                else
+                {
+                    <div class="se-table-wrap">
+                        <table class="se-table">
+                            <thead>
+                                <tr>
+                                    <th class="se-table__check">
+                                        <input type="checkbox" aria-label="Select all students"
+                                               checked="@AllSelected" @onchange="ToggleAll" />
+                                    </th>
+                                    <th class="se-table__num">#</th>
+                                    <th>Student Name</th>
+                                    <th>Class</th>
+                                    <th>Division</th>
+                                    <th>Roll No.</th>
+                                    <th>Mobile Number</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ var n = 0; }
+                                @foreach (var r in roster)
+                                {
+                                    var isOn = selected.Contains(r.UserId);
+                                    n++;
+                                    <tr class="@(isOn ? "is-on" : null)">
+                                        <td class="se-table__check">
+                                            <input type="checkbox" checked="@isOn"
+                                                   aria-label="@("Select " + r.FullName)"
+                                                   @onchange="e => Toggle(r.UserId, e)" />
+                                        </td>
+                                        <td class="se-table__num">@n</td>
+                                        <td class="se-name">@r.FullName</td>
+                                        <td>@(string.IsNullOrWhiteSpace(r.StudentClass) ? "—" : r.StudentClass)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(r.Section) ? "—" : r.Section)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(r.RollNumber) ? "—" : r.RollNumber)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(r.Phone) ? "—" : r.Phone)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                @if (error != null)
+                {
+                    <p class="se-alert se-alert--err" role="alert">@error</p>
+                }
+
+                @* ── Total + submit ─────────────────────────────────────── *@
+                <div class="se-foot">
+                    <div class="se-total">
+                        <div class="se-total__row"><span>Fee per student</span><span>@(Chosen is null ? "—" : "₹" + Chosen.Price.ToString("N0"))</span></div>
+                        <div class="se-total__row"><span>Students selected</span><span>@selected.Count</span></div>
+                        <div class="se-total__row se-total__row--sum"><span>Total Payable</span><span>₹@TotalPayable.ToString("N0")</span></div>
+                        <p class="se-total__hint">No payment is collected here. The order is created pending payment and settled with our team.</p>
+                    </div>
+                    <button class="btn btn-primary se-submit" disabled="@(!CanSubmit)" @onclick="Submit">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg>
+                        @(saving ? "Creating enrollment…" : "Submit Enrollment")
+                    </button>
+                </div>
+            </section>
+        }
+    }
+</div>
+
+<style>
+    .se-note{color:var(--gray-400);padding:30px 0}
+
+    .se-skeleton{padding:26px 0}
+    .se-skeleton__bar{display:block;height:14px;border-radius:8px;margin-bottom:10px;max-width:420px;
+        background:linear-gradient(90deg,var(--gray-100),var(--gray-200),var(--gray-100));
+        background-size:200% 100%;animation:se-shim 1.3s linear infinite}
+    .se-skeleton__bar--short{max-width:240px}
+    .se-skeleton__text{color:var(--gray-500);font-size:13.5px;margin:12px 0 0}
+    @@keyframes se-shim{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+    /* ── summary cards: 4 → 2×2 → 2/1 ── */
+    .se-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:18px 0 22px}
+    .se-stat{display:flex;flex-direction:column;gap:2px;padding:18px;border:1px solid var(--gray-200);
+        border-radius:16px;background:#fff;min-width:0}
+    .se-stat__ico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;margin-bottom:8px}
+    .se-stat__ico--purple{background:#efeaff;color:#5d38de}
+    .se-stat__ico--green{background:#e8f5e9;color:#2e7d32}
+    .se-stat__ico--orange{background:#fff3e0;color:#e65100}
+    .se-stat__ico--rose{background:#fce4ec;color:#c62828}
+    .se-stat__value{font-size:26px;font-weight:600;color:var(--vp-ink);line-height:1.15}
+    .se-stat__value--text{font-size:15px;font-weight:600;line-height:1.35;
+        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .se-stat__label{font-size:13px;color:var(--gray-500)}
+
+    .se-panel{border:1px solid var(--gray-200);border-radius:18px;background:#fff;padding:24px}
+    .se-panel__title{margin:0 0 18px;font-size:22px;font-weight:600;color:var(--vp-ink)}
+
+    .se-field{max-width:520px;margin-bottom:14px}
+    .se-select{position:relative;display:flex;align-items:center}
+    .se-select__ico{position:absolute;left:13px;color:#5d38de;display:grid;place-items:center;pointer-events:none}
+    .se-select__chev{position:absolute;right:13px;color:var(--gray-500);display:grid;place-items:center;pointer-events:none}
+    .se-select__input{width:100%;height:48px;padding:0 42px 0 42px;border:1px solid var(--gray-200);
+        border-radius:12px;background:#fff;font-family:var(--font-primary);font-size:14.5px;color:var(--vp-ink);
+        appearance:none;-webkit-appearance:none;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+    .se-select__input:hover{border-color:#c9bef4}
+    .se-select__input:focus,.se-select__input:focus-visible{outline:none;border-color:#5d38de;
+        box-shadow:0 0 0 3px rgba(93,56,222,.16)}
+
+    .se-chosen{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;max-width:520px;
+        padding:14px 16px;border-radius:14px;border:1px solid #ded4fb;
+        background:linear-gradient(135deg,#f6f2ff,#fff7f4)}
+    .se-chosen__label{flex:0 0 100%;font-size:11.5px;font-weight:700;letter-spacing:.7px;
+        text-transform:uppercase;color:#6b5bb5}
+    .se-chosen__name{font-size:15px;font-weight:600;color:var(--vp-ink)}
+    .se-chosen__price{font-size:14px;font-weight:600;color:#e0441f}
+
+    .se-sub{display:flex;align-items:center;justify-content:space-between;gap:12px;
+        flex-wrap:wrap;margin:26px 0 12px}
+    .se-sub__title{margin:0;font-size:17px;font-weight:600;color:var(--vp-ink)}
+    .se-sub__add{display:inline-flex;align-items:center;gap:7px}
+
+    .se-table-wrap{overflow-x:auto;border:1px solid var(--gray-200);border-radius:14px;background:#fff}
+    .se-table{width:100%;border-collapse:collapse;min-width:760px}
+    .se-table th{text-align:left;font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;
+        color:var(--gray-500);padding:13px 14px;border-bottom:1px solid var(--gray-200);
+        white-space:nowrap;background:var(--gray-50,#fafafa)}
+    .se-table td{padding:13px 14px;border-bottom:1px solid var(--gray-100);font-size:14px}
+    .se-table tbody tr:last-child td{border-bottom:none}
+    .se-table tbody tr:hover{background:#faf8ff}
+    .se-table tbody tr.is-on{background:#f6f2ff}
+    .se-table__check{width:44px}
+    .se-table__num{width:52px;color:var(--gray-500)}
+    .se-name{font-weight:600;color:var(--vp-ink)}
+
+    .se-empty{padding:40px 20px;text-align:center;border:1px dashed var(--gray-200);
+        border-radius:14px;background:#fff}
+    .se-empty p{color:var(--gray-500);margin-bottom:14px}
+
+    .se-alert{margin:14px 0 0;padding:12px 14px;border-radius:12px;font-size:13.5px;
+        background:var(--gray-100);color:var(--gray-600,#555)}
+    .se-alert--err{background:#fdecea;color:#b3261e}
+
+    .se-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;
+        flex-wrap:wrap;margin-top:22px}
+    .se-total{min-width:260px;flex:1 1 260px;max-width:360px;padding:16px 18px;border-radius:14px;
+        border:1px solid var(--gray-200);background:var(--gray-50,#fafafa)}
+    .se-total__row{display:flex;justify-content:space-between;gap:14px;font-size:14px;
+        color:var(--gray-600,#555);padding:5px 0}
+    .se-total__row--sum{border-top:1px solid var(--gray-200);margin-top:6px;padding-top:11px;
+        font-size:17px;font-weight:700;color:var(--vp-ink)}
+    .se-total__hint{margin:10px 0 0;font-size:12px;line-height:1.55;color:var(--gray-500)}
+    .se-submit{display:inline-flex;align-items:center;gap:9px;height:48px;padding:0 26px}
+    .se-submit:disabled{opacity:.55;cursor:not-allowed}
+
+    .se-success{display:flex;gap:16px;align-items:flex-start;padding:24px;border-radius:18px;
+        border:1px solid #cfe9d4;background:#f4fbf5}
+    .se-success__ico{flex:none;width:44px;height:44px;border-radius:13px;display:grid;place-items:center;
+        background:#e0f2e2;color:#2e7d32}
+    .se-success__title{margin:0 0 8px;font-size:20px;font-weight:600;color:var(--vp-ink)}
+    .se-success__line{margin:0 0 8px;font-size:14px;color:var(--gray-600,#555);line-height:1.6}
+    .se-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;
+        margin-right:6px}
+    .se-pill--wait{background:#fff4e5;color:#b45309}
+
+    /* icons keep a fixed size: responsive-normalize.css clamps bare svgs globally */
+    .se-select .se-select__ico svg:not([width]):not([data-large]):not(.svg-noclamp),
+    .se-select .se-select__chev svg:not([width]):not([data-large]):not(.svg-noclamp){width:18px;height:18px}
+    .se-stats .se-stat .se-stat__ico svg:not([width]):not([data-large]):not(.svg-noclamp){width:19px;height:19px}
+    .se-foot .se-submit svg:not([width]):not([data-large]):not(.svg-noclamp),
+    .se-sub .se-sub__add svg:not([width]):not([data-large]):not(.svg-noclamp){width:17px;height:17px;flex:none}
+    .se-success .se-success__ico svg:not([width]):not([data-large]):not(.svg-noclamp){width:22px;height:22px}
+
+    @@media (max-width:1024px){
+        .se-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+    @@media (max-width:560px){
+        .se-panel{padding:18px}
+        .se-foot{flex-direction:column;align-items:stretch}
+        .se-total{max-width:none}
+        .se-submit{width:100%;justify-content:center}
+        .se-field{max-width:none}
+        .se-chosen{max-width:none}
+    }
+    @@media (max-width:400px){
+        .se-stats{grid-template-columns:minmax(0,1fr)}
+    }
+</style>
+
+@code {
+    private bool loading = true, saving, loadError;
+    private Guid actingUserId;
+    private Guid? schoolId;
+    private string? error;
+
+    private string productId = "";
+    private List<SchoolEnrollmentProduct> products = new();
+    private List<SchoolStudentListItem> roster = new();
+    private readonly HashSet<Guid> selected = new();
+    private PlaceSchoolEnrollmentResult? submitted;
+
+    private SchoolEnrollmentProduct? Chosen =>
+        Guid.TryParse(productId, out var id) ? products.FirstOrDefault(p => p.Id == id) : null;
+
+    // Total Payable = selected course's catalogue price × students ticked. Never a literal.
+    private decimal TotalPayable => (Chosen?.Price ?? 0m) * selected.Count;
+
+    private bool AllSelected => roster.Count > 0 && selected.Count == roster.Count;
+    private bool CanSubmit => !saving && Chosen is not null && selected.Count > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        var uid = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (uid != null && Guid.TryParse(uid, out var parsed))
+        {
+            actingUserId = parsed;
+            // The school is resolved from the signed-in user, never from the URL or a form field.
+            schoolId = await Students.ResolveSchoolIdAsync(actingUserId);
+            if (schoolId is not null)
+            {
+                roster = await Students.ListAsync(actingUserId);
+                await LoadProductsAsync();
+            }
+        }
+        loading = false;
+    }
+
+    private async Task LoadProductsAsync()
+    {
+        loadError = false;
+        try { products = await Enrollment.ListProductsAsync(); }
+        catch { products = new(); loadError = true; }   // the reason stays server-side
+    }
+
+    private async Task ReloadProducts() => await LoadProductsAsync();
+
+    private void OnCourseChanged(ChangeEventArgs e)
+    {
+        productId = e.Value?.ToString() ?? "";
+        error = null;
+    }
+
+    private void Toggle(Guid userId, ChangeEventArgs e)
+    {
+        if (e.Value is bool on && on) selected.Add(userId);
+        else selected.Remove(userId);
+        error = null;
+    }
+
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        selected.Clear();
+        if (e.Value is bool on && on)
+            foreach (var r in roster) selected.Add(r.UserId);
+        error = null;
+    }
+
+    private void StartAnother()
+    {
+        submitted = null;
+        selected.Clear();
+        productId = "";
+        error = null;
+    }
+
+    private async Task Submit()
+    {
+        if (!CanSubmit) return;              // guards a double-click before the disable lands
+        saving = true; error = null;
+
+        var res = await Enrollment.PlaceAsync(actingUserId, new PlaceSchoolEnrollmentRequest
+        {
+            ProductId = Chosen!.Id,
+            StudentUserIds = selected.ToList(),
+        });
+
+        saving = false;
+
+        if (!res.Ok)
+        {
+            // Selections are deliberately left intact so nothing has to be re-entered.
+            error = res.Error ?? "We could not submit this enrollment. Please try again.";
+            return;
+        }
+
+        submitted = res;
+        roster = await Students.ListAsync(actingUserId);
+    }
+}

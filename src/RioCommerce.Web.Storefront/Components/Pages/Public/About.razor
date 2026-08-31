@@ -1,0 +1,338 @@
+@page "/about"
+@inject IJSRuntime JS
+
+@* The header and the hero CTA have always linked to /about, but no page claimed the route, so
+   both landed on the 404 component. This page fills it. Styling is page-scoped behind an
+   .ab- prefix, following the Contact page convention, and leans on the shared brand tokens. *@
+
+<SeoHead Seo="@seo" />
+
+<style>
+    .ab { --ab-ink: var(--vp-ink); --ab-muted: var(--vp-muted); }
+
+    /* ── shared section furniture ── */
+    .ab-sec { padding: clamp(52px, 6vw, 84px) clamp(20px, 4vw, 36px); }
+    .ab-sec__inner { max-width: 1160px; margin: 0 auto; }
+    .ab-eyebrow {
+        display: inline-flex; align-items: center; gap: 10px; margin-bottom: 14px;
+        color: var(--orange); font-size: 12.5px; font-weight: 700;
+        letter-spacing: 1.5px; text-transform: uppercase;
+    }
+    .ab-eyebrow::before { content: ""; width: 26px; height: 2px; border-radius: 2px;
+        background: linear-gradient(90deg, var(--orange), var(--navy)); }
+    .ab-h2 { font-size: clamp(26px, 3.4vw, 38px); font-weight: 600; line-height: 1.2;
+        color: var(--ab-ink); margin: 0 0 16px; }
+    .ab-p { color: var(--ab-muted); font-size: 16.5px; line-height: 1.75; margin: 0 0 14px; max-width: 68ch; }
+
+    /* ── hero ── */
+    .ab-hero { position: relative; overflow: hidden;
+        padding: clamp(46px, 6vw, 78px) clamp(20px, 4vw, 36px) clamp(40px, 5vw, 64px);
+        background: linear-gradient(180deg, #fbfaff 0%, #f4f0ff 55%, #fff6f3 100%); }
+    .ab-hero::before, .ab-hero::after { content: ""; position: absolute; border-radius: 50%;
+        pointer-events: none; }
+    .ab-hero::before { width: 380px; height: 380px; top: -150px; left: -110px;
+        background: radial-gradient(circle, rgba(93,56,222,.18), transparent 70%); }
+    .ab-hero::after { width: 340px; height: 340px; bottom: -160px; right: -100px;
+        background: radial-gradient(circle, rgba(255,80,40,.16), transparent 70%); }
+    .ab-hero__inner { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; text-align: center; }
+    .ab-hero__eyebrow { justify-content: center; }
+    .ab-hero h1 { font-size: clamp(30px, 4.6vw, 50px); font-weight: 600; line-height: 1.14;
+        color: var(--ab-ink); margin: 0 0 18px; }
+    .ab-hero p { color: var(--ab-muted); font-size: clamp(15.5px, 1.5vw, 18px); line-height: 1.75;
+        margin: 0 auto; max-width: 74ch; }
+
+    /* pull quote */
+    .ab-quote { position: relative; max-width: 780px; margin: clamp(30px, 4vw, 44px) auto 0;
+        padding: clamp(24px, 3vw, 32px) clamp(22px, 3vw, 34px) clamp(24px, 3vw, 32px) clamp(52px, 6vw, 70px);
+        background: #fff; border-radius: 20px; border: 1px solid rgba(93,56,222,.12);
+        box-shadow: 0 24px 54px -34px rgba(67,38,176,.5); text-align: left; }
+    .ab-quote::before { content: "\201C"; position: absolute; left: clamp(16px, 2vw, 24px); top: 2px;
+        font-family: Georgia, "Times New Roman", serif; font-size: clamp(54px, 7vw, 76px);
+        line-height: 1; color: rgba(93,56,222,.28); }
+    .ab-quote__text { font-size: clamp(16px, 1.7vw, 19px); font-style: italic; line-height: 1.65;
+        color: var(--ab-ink); margin: 0 0 12px; }
+    .ab-quote__by { color: var(--navy); font-size: 14px; font-weight: 700; }
+
+    /* ── founder ── */
+    .ab-founder { background: #fff; }
+    .ab-founder__grid { display: grid; grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr);
+        gap: clamp(30px, 4.5vw, 64px); align-items: center; }
+    .ab-founder__media { position: relative; justify-self: center; width: 100%; max-width: 380px; }
+    .ab-founder__ring { position: relative; aspect-ratio: 1 / 1; padding: 12px; border-radius: 50%;
+        background: conic-gradient(from 210deg, var(--orange), var(--navy), var(--navy-light), var(--orange));
+        box-shadow: 0 30px 66px -30px rgba(67,38,176,.55); }
+    .ab .ab-founder__photo { display: block; width: 100%; height: 100%; border-radius: 50%;
+        object-fit: cover; object-position: 50% 16%; background: #fff; }
+    .ab-founder__plate { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%);
+        display: inline-flex; align-items: center; gap: 9px; padding: 10px 22px; border-radius: 999px;
+        background: #fff; color: var(--ab-ink); font-size: 15px; font-weight: 600; white-space: nowrap;
+        box-shadow: 0 16px 32px -16px rgba(30,39,47,.5), inset 0 0 0 1px rgba(93,56,222,.10); }
+    .ab-founder__plate::before { content: ""; width: 9px; height: 9px; border-radius: 50%;
+        background: linear-gradient(135deg, var(--orange), var(--navy)); }
+
+    /* ── stat strip (reused by both number bands) ── */
+    .ab-stats { display: grid; gap: 18px; grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-top: clamp(28px, 3.5vw, 40px); }
+    .ab-stats--6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .ab-stat { padding: 24px 20px; border-radius: 18px; text-align: left;
+        background: linear-gradient(180deg, #fff 0%, #fff6f3 60%, #ffe7e0 100%);
+        border: 1px solid rgba(255,80,40,.10);
+        box-shadow: 0 12px 30px -22px rgba(30,39,47,.55);
+        transition: transform .3s cubic-bezier(.22,.7,.24,1), box-shadow .3s; }
+    .ab-stat:hover { transform: translateY(-5px);
+        box-shadow: 0 26px 48px -28px rgba(255,80,40,.7); }
+    .ab-stat__n { font-size: clamp(24px, 2.6vw, 34px); font-weight: 700; line-height: 1.1;
+        color: var(--ab-ink); font-variant-numeric: tabular-nums; margin-bottom: 5px; }
+    .ab-stat__l { color: var(--ab-muted); font-size: 14.5px; line-height: 1.45; }
+
+    /* ── purpose ── */
+    .ab-purpose { background: linear-gradient(180deg, #fbfaff, #f6f3ff); }
+
+    /* ── mission / vision / efforts ── */
+    .ab-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+    .ab-card { padding: clamp(26px, 3vw, 36px); border-radius: 22px; background: #fff;
+        border: 1px solid rgba(93,56,222,.10);
+        box-shadow: 0 22px 50px -38px rgba(67,38,176,.5); }
+    .ab-card__icon { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+        margin-bottom: 16px; color: #fff;
+        background: linear-gradient(135deg, var(--navy-dark), var(--navy));
+        box-shadow: 0 12px 24px -14px rgba(67,38,176,.9); }
+    .ab-card__icon svg { width: 22px; height: 22px; }
+    .ab-card--accent .ab-card__icon { background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+        box-shadow: 0 12px 24px -14px rgba(255,80,40,.9); }
+    .ab-card h3 { font-size: 21px; font-weight: 600; color: var(--ab-ink); margin: 0 0 10px; }
+    .ab-card p { color: var(--ab-muted); font-size: 15.5px; line-height: 1.7; margin: 0; }
+
+    /* ── companies ── */
+    .ab-co { background: #fff; }
+    .ab-co__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px;
+        margin-top: clamp(26px, 3vw, 36px); }
+    .ab-co__card { position: relative; overflow: hidden; padding: 26px 24px; border-radius: 20px;
+        background: linear-gradient(180deg, #fff, #faf8ff);
+        border: 1px solid rgba(93,56,222,.12);
+        transition: transform .3s cubic-bezier(.22,.7,.24,1), box-shadow .3s, border-color .3s; }
+    .ab-co__card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+        background: linear-gradient(90deg, var(--orange), var(--navy));
+        transform: scaleX(0); transform-origin: left; transition: transform .38s cubic-bezier(.22,.7,.24,1); }
+    .ab-co__card:hover { transform: translateY(-5px); border-color: rgba(93,56,222,.24);
+        box-shadow: 0 26px 52px -30px rgba(67,38,176,.6); }
+    .ab-co__card:hover::before { transform: scaleX(1); }
+    .ab-co__num { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: rgba(93,56,222,.45); }
+    .ab-co__name { font-size: 18.5px; font-weight: 600; color: var(--ab-ink); margin: 8px 0 7px; }
+    .ab-co__desc { color: var(--ab-muted); font-size: 14.5px; line-height: 1.6; margin: 0; }
+
+    /* ── legacy (dark) ── */
+    .ab-legacy { background: var(--vp-ink); color: #ece8f7; }
+    .ab-legacy .ab-h2 { color: #fff; }
+    .ab-legacy .ab-p { color: #c9c2e2; }
+    .ab-legacy .ab-stat { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.10);
+        box-shadow: none; }
+    .ab-legacy .ab-stat:hover { background: rgba(255,255,255,.08); box-shadow: none; }
+    .ab-legacy .ab-stat__n { color: #fff; }
+    .ab-legacy .ab-stat__l { color: #b9b1d6; }
+
+    @@media (max-width: 1000px) {
+        .ab-founder__grid { grid-template-columns: 1fr; text-align: center; }
+        .ab-founder__media { max-width: 300px; }
+        .ab-founder .ab-eyebrow { justify-content: center; }
+        .ab-founder .ab-p { margin-left: auto; margin-right: auto; }
+        .ab-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ab-stats--6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .ab-co__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ab-duo { grid-template-columns: 1fr; }
+    }
+    @@media (max-width: 620px) {
+        .ab-stats, .ab-stats--6 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+        .ab-co__grid { grid-template-columns: 1fr; }
+        .ab-stat { padding: 18px 16px; }
+        .ab-quote { padding-left: 44px; }
+    }
+</style>
+
+<div class="ab">
+
+    @* ── Hero ── *@
+    <section class="ab-hero">
+        <div class="ab-hero__inner">
+            <span class="ab-eyebrow ab-hero__eyebrow reveal">About Vijaypath</span>
+            <h1 class="reveal">Bringing accessible learning to students</h1>
+            <p class="reveal">
+                Vijaypath focuses on making quality learning more accessible to students through digital
+                learning and student-centered methodology, enabling learners to gain confidence, develop
+                capabilities, and access enhanced educational prospects.
+            </p>
+
+            <figure class="ab-quote reveal">
+                <blockquote class="ab-quote__text">
+                    When you have a deep quest for knowledge, a teacher will come before you
+                    physically or virtually
+                </blockquote>
+                <figcaption class="ab-quote__by">A Visionary and Educationalist</figcaption>
+            </figure>
+        </div>
+    </section>
+
+    @* ── Founder ── *@
+    <section class="ab-sec ab-founder">
+        <div class="ab-sec__inner ab-founder__grid">
+            <div class="ab-founder__media reveal">
+                <div class="ab-founder__ring">
+                    <img class="ab-founder__photo"
+                         src="_content/RioCommerce.Web.Storefront/images/vijaypath-founder.png"
+                         alt="Dr. Vijay Bhatkar" loading="lazy" decoding="async" />
+                </div>
+                <span class="ab-founder__plate">Dr. Vijay Bhatkar</span>
+            </div>
+            <div>
+                <span class="ab-eyebrow reveal">A Visionary and Educationalist</span>
+                <h2 class="ab-h2 reveal">Dr. Vijay Bhatkar</h2>
+                <p class="ab-p reveal">
+                    Scientist, educationalist, and lifelong learner whose contributions shaped India's
+                    technology landscape. Vijaypath draws inspiration from his vision to digitally uplift
+                    students nationwide.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    @* ── Purpose + the programme numbers ── *@
+    <section class="ab-sec ab-purpose">
+        <div class="ab-sec__inner">
+            <span class="ab-eyebrow reveal">A Purpose-led Initiative</span>
+            <h2 class="ab-h2 reveal">Built on a vision for accessible education</h2>
+            <p class="ab-p reveal">
+                Initiative began with Dr. Vijay Bhatkar's vision regarding quality education accessibility.
+                Launched a Scholarship Guidance Program in Pune covering Marathi medium schools with Pune
+                District Secondary and Higher Secondary School Headmasters Association support.
+            </p>
+
+            @* Counters animate via rc.homeFx; _fmtIN gives the Indian grouping (7,591). *@
+            <div class="ab-stats reveal">
+                <div class="ab-stat"><div class="ab-stat__n" data-count="320" data-suffix="+">0</div><div class="ab-stat__l">Schools Participated</div></div>
+                <div class="ab-stat"><div class="ab-stat__n" data-count="7591" data-suffix="+">0</div><div class="ab-stat__l">Students Benefited</div></div>
+                <div class="ab-stat"><div class="ab-stat__n" data-count="3816" data-suffix="+">0</div><div class="ab-stat__l">Class 8 Students</div></div>
+                <div class="ab-stat"><div class="ab-stat__n" data-count="3775" data-suffix="+">0</div><div class="ab-stat__l">Class 5 Students</div></div>
+            </div>
+        </div>
+    </section>
+
+    @* ── Mission / Vision ── *@
+    <section class="ab-sec">
+        <div class="ab-sec__inner ab-duo">
+            <div class="ab-card ab-card--accent reveal">
+                <div class="ab-card__icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>
+                </div>
+                <h3>Our Mission</h3>
+                <p>To provide affordable and quality scholarship guidance for every aspiring student.</p>
+            </div>
+            <div class="ab-card reveal">
+                <div class="ab-card__icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </div>
+                <h3>Our Vision</h3>
+                <p>To build a strong educational ecosystem through technology, schools, teachers, and parents.</p>
+            </div>
+        </div>
+    </section>
+
+    @* ── Collective efforts / expansion ── *@
+    <section class="ab-sec ab-purpose">
+        <div class="ab-sec__inner ab-duo">
+            <div class="ab-card reveal">
+                <div class="ab-card__icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <h3>Collective Efforts Towards the Mission</h3>
+                <p>
+                    Partnership with Pune District Secondary and Higher Secondary School Headmasters
+                    Association working toward accessible education across Maharashtra. Headmasters
+                    Association coordinates ground-level implementation with schools and educators.
+                </p>
+            </div>
+            <div class="ab-card ab-card--accent reveal">
+                <div class="ab-card__icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
+                <h3>Maharashtra Expansion Vision</h3>
+                <p>
+                    Initiative expanding beyond Pune across Maharashtra through collaboration with schools,
+                    educational coordinators, and academic experts. Plans include introducing new programs
+                    beyond scholarship preparation.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    @* ── Group companies ── *@
+    <section class="ab-sec ab-co">
+        <div class="ab-sec__inner">
+            <span class="ab-eyebrow reveal">Our Companies</span>
+            <h2 class="ab-h2 reveal">An ecosystem built around learning</h2>
+            <div class="ab-co__grid">
+                @{ var ci = 0; }
+                @foreach (var c in companies)
+                {
+                    ci++;
+                    <div class="ab-co__card reveal">
+                        <div class="ab-co__num">@ci.ToString("00")</div>
+                        <div class="ab-co__name">@c.Name</div>
+                        <p class="ab-co__desc">@c.Desc</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    @* ── Legacy numbers ── *@
+    <section class="ab-sec ab-legacy">
+        <div class="ab-sec__inner">
+            <span class="ab-eyebrow reveal">A Legacy of Excellence</span>
+            <h2 class="ab-h2 reveal">In education, governance, and technology</h2>
+            @* 20M / 1B are kept as suffixes rather than raw counts: the shared counter formats with
+               Indian grouping, which would render 20000000 as 2,00,00,000 instead of 20M. *@
+            <div class="ab-stats ab-stats--6 reveal">
+                <div class="ab-stat"><div class="ab-stat__n" data-count="20" data-suffix="M+">0</div><div class="ab-stat__l">Learners Engaged</div></div>
+                <div class="ab-stat"><div class="ab-stat__n" data-count="500" data-suffix="+">0</div><div class="ab-stat__l">Hours of Corporate Content</div></div>
+                <div class="ab-stat"><div class="ab-stat__n" data-count="2000" data-suffix="+">0</div><div class="ab-stat__l">Learners Impacted</div></div>
+                <div class="ab-stat"><div class="ab-stat__n" data-count="500" data-suffix="+">0</div><div class="ab-stat__l">Brands Globally Benefited</div></div>
+                <div class="ab-stat"><div class="ab-stat__n" data-count="700" data-suffix="+">0</div><div class="ab-stat__l">Digital Platforms Built</div></div>
+                <div class="ab-stat"><div class="ab-stat__n" data-count="1" data-suffix="B+">0</div><div class="ab-stat__l">End Users Reached</div></div>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+@code {
+    private readonly SeoMetadata seo = new()
+    {
+        Title = "About Us — Vijaypath",
+        Description = "Vijaypath makes quality learning more accessible through digital learning and a "
+                    + "student-centered methodology, inspired by the vision of Dr. Vijay Bhatkar.",
+        Keywords = "about Vijaypath, Dr. Vijay Bhatkar, scholarship guidance, Maharashtra education"
+    };
+
+    private record Company(string Name, string Desc);
+
+    private readonly Company[] companies =
+    {
+        new("Multiversity", "Immersive eLearning Content Development"),
+        new("Know-IT", "Advanced IT Training & Talent Development"),
+        new("India International Multiversity", "Integral IT Training & Talent Development"),
+        new("ACTS C-DAC", "Certified Post Graduate Computer Training"),
+        new("Multia", "Award-Winning Design & Digital Experience Consultancy"),
+        new("Multiversity Publication", "Purposeful Publication & Literature"),
+        new("Multiversity Green", "Sustainable Land & Farm Development"),
+        new("Nuverse Health Solutions", "Accessible Deep-Tech Innovation"),
+        new("108 Global", "Global Strategy & Transformation Consulting"),
+    };
+
+    // Scroll-reveal and the counters are wired by the shared helper. It runs on DOMContentLoaded
+    // for a full page load, but Blazor's client-side navigation does not re-fire that, so the
+    // page re-arms it here. The helper is idempotent (elements are tagged once).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("rc.homeFx"); } catch { }
+    }
+}

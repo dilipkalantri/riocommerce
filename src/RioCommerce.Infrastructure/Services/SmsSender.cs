@@ -26,7 +26,13 @@ public class SmsSender : ISmsSender
     {
         if (string.IsNullOrWhiteSpace(toPhone)) return (false, "No phone number.");
         var s = await _settings.GetSmsAsync();
-        if (!s.Enabled || string.IsNullOrWhiteSpace(s.Provider) || string.IsNullOrWhiteSpace(s.ApiKey))
+        // URL-template gateways put the apikey (and entity/template ids) in the query string, so
+        // their credential lives in BaseUrl, not ApiKey. Judging them by ApiKey would leave a fully
+        // configured gateway stuck in log-only mode.
+        var configured = IsUrlTemplate(s.Provider)
+            ? !string.IsNullOrWhiteSpace(s.BaseUrl)
+            : !string.IsNullOrWhiteSpace(s.ApiKey);
+        if (!s.Enabled || string.IsNullOrWhiteSpace(s.Provider) || !configured)
         {
             _log.LogInformation("📱 [SMS·logged] → {Phone} (provider not enabled/configured): {Body}", toPhone, body);
             return (true, null);
@@ -38,6 +44,7 @@ public class SmsSender : ISmsSender
             http.Timeout = TimeSpan.FromSeconds(15);
             var ok = s.Provider.ToUpperInvariant() switch
             {
+                "URLTEMPLATE" => await SendUrlTemplateAsync(http, s, toPhone, body),
                 "MSG91"     => await SendMsg91Async(http, s, toPhone, body),
                 "TWILIO"    => await SendTwilioAsync(http, s, toPhone, body),
                 "TEXTLOCAL" => await SendTextLocalAsync(http, s, toPhone, body),
@@ -114,6 +121,49 @@ public class SmsSender : ISmsSender
     }
 
     // Catch-all: POST JSON with conventional field names. Configure a real provider before relying on this.
+    private static bool IsUrlTemplate(string? provider) =>
+        string.Equals(provider, "URLTEMPLATE", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Country code substituted into #COUNTRYCODE#. These gateways are domestic-only;
+    /// for anything else, write the code straight into the template instead of the token.</summary>
+    private const string DefaultCountryCode = "91";
+
+    /// <summary>
+    /// Plain GET endpoints that carry every parameter - apikey, entityId, templateId, sender - in
+    /// the query string, with #TOKEN# placeholders for the per-message parts. Common across Indian
+    /// DLT resellers (Sevenomedia and friends).
+    ///
+    /// The whole endpoint is admin-configured (BaseUrl); nothing is hardcoded here, so the API key
+    /// never enters source control. The URL is deliberately NEVER logged - it contains the key.
+    /// </summary>
+    private async Task<bool> SendUrlTemplateAsync(HttpClient http, SmsSettings s, string toPhone, string body)
+    {
+        if (string.IsNullOrWhiteSpace(s.BaseUrl)) return false;
+
+        var local = NormalizePhone(toPhone);
+        var url = s.BaseUrl
+            .Replace("#COUNTRYCODE#", DefaultCountryCode, StringComparison.OrdinalIgnoreCase)
+            .Replace("#MOBILENUMBER#", Uri.EscapeDataString(local), StringComparison.OrdinalIgnoreCase)
+            .Replace("#MOBILE#", Uri.EscapeDataString(local), StringComparison.OrdinalIgnoreCase)
+            .Replace("#MESSAGE#", Uri.EscapeDataString(body), StringComparison.OrdinalIgnoreCase)
+            .Replace("#SENDER#", Uri.EscapeDataString(s.SenderId ?? string.Empty), StringComparison.OrdinalIgnoreCase);
+
+        using var res = await http.GetAsync(url);
+        var text = (await res.Content.ReadAsStringAsync()) ?? string.Empty;
+        var trimmed = text.Length > 300 ? text[..300] : text;
+
+        // These gateways routinely answer HTTP 200 with a failure string in the body ("invalid
+        // apikey", "template mismatch"), so the status code alone is not a success signal.
+        var rejected =
+            trimmed.Contains("error", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("invalid", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("denied", StringComparison.OrdinalIgnoreCase);
+
+        _log.LogInformation("📱 [SMS·urltemplate] status={Status} response={Body}", (int)res.StatusCode, trimmed);
+        return res.IsSuccessStatusCode && !rejected;
+    }
+
     private static async Task<bool> SendGenericAsync(HttpClient http, SmsSettings s, string toPhone, string body)
     {
         if (string.IsNullOrWhiteSpace(s.BaseUrl)) return false;

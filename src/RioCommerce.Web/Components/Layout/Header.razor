@@ -65,10 +65,11 @@
                 <NotAuthorized Context="cartCtx">
                     <a href="/cart" class="header__icon header__cart" data-tip="Cart" aria-label="Cart">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>
-                        @* Always rendered so the mobile header can show a live "0". The
-                           is-zero variant stays hidden on desktop/tablet, so their badge
-                           behaviour (nothing at zero) is unchanged. Count comes from
-                           ICartService — never hardcoded. *@
+                        @* Count comes from ICartService — never hardcoded. The is-zero
+                           variant is hidden everywhere, so the badge appears only once
+                           there is something in the cart. The whole cart link is hidden
+                           below 768px (see home-premium.css) — markup is unchanged so
+                           desktop/tablet and every other cart entry point still work. *@
                         <span class="header__cart-badge @(cartCount == 0 ? "is-zero" : "")">@cartCount</span>
                     </a>
                 </NotAuthorized>
@@ -157,10 +158,41 @@
                 </Authorized>
                 <NotAuthorized>
                     <span class="header__divider"></span>
-                    <a href="/school/register" class="header__chip" title="Register your school">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10.5V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-6.5"/></svg>
-                        Register School
-                    </a>
+                    @* Two audiences register here, so the single "Register School" chip became a
+                       menu. Kept as ONE control rather than two buttons on purpose: the row only
+                       has ~44px of slack at 1280px, and a second chip would push it back out of
+                       the pill (the overflow this header was just fixed for). *@
+                    <div class="header__profile header__reg">
+                        <button type="button" class="header__chip header__reg-btn @(registerOpen ? "is-open" : "")"
+                                @onclick="ToggleRegister" aria-haspopup="true" aria-expanded="@registerOpen"
+                                title="Register">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10.5V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-6.5"/></svg>
+                            Register
+                            <svg class="header__reg-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        @if (registerOpen)
+                        {
+                            <div class="header__menu-backdrop" @onclick="CloseRegister"></div>
+                            <div class="header__menu header__reg-menu">
+                                <a href="/school/register" class="header__menu-item" @onclick="CloseRegister">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10.5V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-6.5"/></svg>
+                                    <span class="header__reg-txt">
+                                        <span class="header__reg-title">Register School</span>
+                                        <span class="header__reg-sub">For principals &amp; coordinators</span>
+                                    </span>
+                                </a>
+                                @* The student form already exists as the Register tab on /login;
+                                   ?tab=register opens it directly. *@
+                                <a href="/student/register" class="header__menu-item" @onclick="CloseRegister">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                                    <span class="header__reg-txt">
+                                        <span class="header__reg-title">Register as Student</span>
+                                        <span class="header__reg-sub">Create your student account</span>
+                                    </span>
+                                </a>
+                            </div>
+                        }
+                    </div>
                     <a href="/login" class="btn btn-primary btn-sm header__login">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/></svg>
                         Login
@@ -168,7 +200,8 @@
                 </NotAuthorized>
             </AuthorizeView>
         </div>
-        <button class="header__hamburger @(MenuOpen ? "is-open" : "")" @onclick="ToggleMenu" aria-label="Menu">
+        <button class="header__hamburger @(MenuOpen ? "is-open" : "")" @onclick="ToggleMenu"
+                aria-label="@(MenuOpen ? "Close menu" : "Open menu")" aria-expanded="@MenuOpen">
             <span></span><span></span><span></span>
         </button>
     </div>
@@ -179,10 +212,19 @@
     <aside class="drawer">
         <div class="drawer__header">
             <img src="@LogoSrc" alt="Vijaypath" class="drawer__logo" />
-            <button class="drawer__close" @onclick="ToggleMenu">✕</button>
+            @* Real vector icon: the old "✕" was a text glyph whose weight and metrics
+               varied by platform font. *@
+            <button type="button" class="drawer__close" @onclick="ToggleMenu" aria-label="Close menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
         </div>
         <nav class="drawer__nav">
-            <a href="/" @onclick="ToggleMenu">Home</a>
+            @* Rendered only when the CMS menu does not already start with Home — otherwise
+               the drawer listed Home twice. Search is not part of that menu, so it stays. *@
+            @if (!MenuHasHome)
+            {
+                <a href="/" @onclick="ToggleMenu">Home</a>
+            }
             <a href="/search" @onclick="ToggleMenu">Search</a>
             @if (menu is { Count: > 0 })
             {
@@ -211,6 +253,7 @@
                 </Authorized>
                 <NotAuthorized>
                     <a href="/school/register" @onclick="ToggleMenu">Register your School</a>
+                    <a href="/student/register" @onclick="ToggleMenu">Register as Student</a>
                     <a href="/login" class="btn btn-primary" @onclick="ToggleMenu">Login / Register</a>
                 </NotAuthorized>
             </AuthorizeView>
@@ -220,6 +263,7 @@
 @code {
     private bool MenuOpen;
     private bool profileOpen;
+    private bool registerOpen;
     private bool searchOpen;
     private bool _focusSearch;
     private string searchTerm = "";
@@ -231,8 +275,16 @@
     private const string FallbackLogo = "_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo.svg";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
     private void ToggleMenu() => MenuOpen = !MenuOpen;
-    private void ToggleProfile() => profileOpen = !profileOpen;
+
+    /// <summary>True when the CMS menu already provides a Home entry, so the drawer's own
+    /// hardcoded one would be a duplicate. Matched on the URL, not the title, because the
+    /// title is editable in Admin.</summary>
+    private bool MenuHasHome => menu is { Count: > 0 }
+        && menu.Any(m => (m.Url ?? string.Empty).Trim().TrimEnd('/') is "" or "/");
+    private void ToggleProfile() { profileOpen = !profileOpen; registerOpen = false; }
     private void CloseProfile() => profileOpen = false;
+    private void ToggleRegister() { registerOpen = !registerOpen; profileOpen = false; }
+    private void CloseRegister() => registerOpen = false;
 
     private void ToggleSearch()
     {
@@ -338,7 +390,7 @@
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         // Close any open menus when the user navigates.
-        if (MenuOpen || profileOpen || searchOpen) { MenuOpen = false; profileOpen = false; searchOpen = false; InvokeAsync(StateHasChanged); }
+        if (MenuOpen || profileOpen || searchOpen || registerOpen) { MenuOpen = false; profileOpen = false; searchOpen = false; registerOpen = false; InvokeAsync(StateHasChanged); }
         else InvokeAsync(StateHasChanged);   // refresh active-link highlight
 
         // The desktop dropdowns are CSS-only (:hover / :focus-within), so no

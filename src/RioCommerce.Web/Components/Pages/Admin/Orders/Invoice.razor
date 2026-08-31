@@ -8,7 +8,7 @@
 <PageTitle>Invoice @inv?.InvoiceNumber</PageTitle>
 
 <style>
-    .inv-wrap{max-width:820px;margin:0 auto;padding:24px;font-family:Inter,system-ui,sans-serif;color:#1f2937}
+    .inv-wrap{max-width:820px;margin:0 auto;padding:24px;font-family:var(--font-primary);color:#1f2937}
     .inv-toolbar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px}
     .inv-paper{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:36px}
     .inv-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1f2937;padding-bottom:18px}
@@ -67,8 +67,14 @@
             <div class="inv-head">
                 <div class="inv-brand">
                     <img src="@LogoSrc" alt="Vijaypath" />
-                    <h2>RioCommerce</h2>
-                    <p>CA Coaching · Shukrawar Peth, Pune, Maharashtra<br />GSTIN: 27ABCDE1234F1Z5 · support@riocommerce.com</p>
+                    @* Company name, address and contact email come from the central SiteSettings.
+                       These were hard-coded to the old RioCommerce identity (wrong company, wrong
+                       city, placeholder GSTIN) and this document is sent to customers. *@
+                    <h2>@(cfg?.CompanyName ?? "Vijaypath")</h2>
+                    <p>
+                        @if (!string.IsNullOrWhiteSpace(cfg?.Address)) { @cfg.Address<br /> }
+                        @if (!string.IsNullOrWhiteSpace(cfg?.ContactEmail)) { @cfg.ContactEmail }
+                    </p>
                 </div>
                 <div class="inv-title">
                     <h1>TAX INVOICE</h1>
@@ -218,12 +224,18 @@
         inv = await Svc.GetOrCreateInvoiceAsync(Id, actorId, actorName);
         notFound = inv == null;
         // Never let a settings hiccup keep an invoice from rendering or printing.
-        try { customLogoUrl = (await Settings.GetAsync()).LogoUrl; } catch { }
+        try
+        {
+            cfg = await Settings.GetAsync();
+            customLogoUrl = cfg.LogoUrl;
+        }
+        catch { }
     }
 
     // Same source as the storefront header, footer and sign-in page: whatever the admin uploaded on
     // Admin › Settings, falling back to the bundled asset when nothing has been.
     private string? customLogoUrl;
+    private RioCommerce.Core.DTOs.Admin.SiteSettings? cfg;
     private const string FallbackLogo = "_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo.svg";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
 

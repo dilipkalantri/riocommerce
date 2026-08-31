@@ -30,11 +30,6 @@
                 <span class="course-card__illustration-label">@LevelLabel</span>
             </div>
         }
-        @* Batch Status badge — overlay variant, top-left corner. Reads Product.BatchStatus (live DB value);
-           label comes from Product.BatchStatusText (single source of truth — DO NOT hardcode strings here). *@
-        <div class="bs-badge bs-badge--overlay bs-badge--@BatchStatusClass(Product.BatchStatus)">
-            <span class="bs-badge__dot"></span>@Product.BatchStatusText
-        </div>
         @if (!string.IsNullOrEmpty(Product.Badge))
         {
             <div class="course-card__badge course-card__badge--@BadgeClass">@Product.Badge</div>
@@ -42,7 +37,6 @@
     </div>
 
     <div class="course-card__body">
-        <span class="course-card__level">@LevelLabel</span>
         <h3 class="course-card__title">@Product.Title</h3>
         @if (!string.IsNullOrEmpty(Product.FacultyName))
         {
@@ -96,17 +90,6 @@
     private string LevelLabel => Product.Level.Label();
 
     private string LevelClass => Product.Level.CssClass();
-
-    // Enum -> CSS variant. Display text comes from Product.BatchStatusText so the label is centralised.
-    private static string BatchStatusClass(BatchStatus s) => s switch
-    {
-        BatchStatus.Upcoming => "upcoming",
-        BatchStatus.Ongoing => "ongoing",
-        BatchStatus.PreRecorded => "prerec",
-        BatchStatus.OutOfStock => "oos",
-        BatchStatus.ComingSoon => "soon",
-        _ => "upcoming"
-    };
 
     // Maps the admin-entered Badge text to a colour variant — LIVE pulses, BESTSELLER is gold, etc.
     private string BadgeClass

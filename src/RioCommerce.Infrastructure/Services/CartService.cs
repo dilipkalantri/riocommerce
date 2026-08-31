@@ -34,6 +34,11 @@ public class CartService : ICartService
         var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == productId);
         if (product == null) return (false, "Product not found.");
 
+        // Server-side purchase gate. Both Add To Cart AND Buy Now come through here, so a crafted
+        // request cannot add a withdrawn product by skipping the UI — the buttons being hidden is
+        // presentation only; THIS is the boundary.
+        if (!product.AllowCustomerPurchase) return (false, "This product is currently not available for purchase.");
+
         // ── Duplicate guard: reject if this product (any mode/attribute combo) is already in the cart. ──
         var alreadyInCart = await _db.CartItems.AnyAsync(c => c.UserId == userId && c.ProductId == productId);
         if (alreadyInCart) return (false, "This product is already in your cart.");
@@ -196,6 +201,13 @@ public class CartService : ICartService
             .Include(c => c.Product).Include(c => c.ProductMode)
             .ToListAsync();
         if (rows.Count == 0) throw new InvalidOperationException("Your cart is empty.");
+
+        // A product can be withdrawn from sale AFTER it was added to a cart, so availability is
+        // re-checked here rather than trusted from add-time.
+        var blocked = rows.Where(r => !r.Product.AllowCustomerPurchase).Select(r => r.Product.Title).ToList();
+        if (blocked.Count > 0)
+            throw new InvalidOperationException(
+                $"{string.Join(", ", blocked)} is currently not available for purchase. Please remove it from your cart to continue.");
 
         var summary = await GetAsync(userId, couponCode);
         var user = await _db.Users.FirstAsync(u => u.Id == userId);

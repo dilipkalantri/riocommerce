@@ -277,3 +277,49 @@
   .rc-app .header__actions .header__chip:hover,
   .rc-app .header__actions .header__login:hover{transform:none}
 }
+
+/* ============================================================
+   8. REGISTER MENU — one control, two audiences
+   ------------------------------------------------------------
+   Replaces the old "Register School" chip. Deliberately a menu rather than
+   a second button: at 1280px the row has only ~44px of slack, and another
+   chip would push it back outside the pill.
+   ============================================================ */
+@media (min-width:768px){
+  .rc-app .header__reg{position:relative;display:inline-flex}
+
+  .rc-app .header__actions .header__reg-btn{
+    cursor:pointer;
+    border:none;
+    font-family:inherit;
+    gap:7px;
+  }
+  .rc-app .header__reg-caret{
+    width:14px;height:14px;margin-left:1px;
+    transition:transform .25s var(--p-ease);
+  }
+  .rc-app .header__actions .header__reg-btn.is-open .header__reg-caret{transform:rotate(180deg)}
+
+  /* panel */
+  .rc-app .header__reg-menu{
+    right:0;
+    min-width:270px;
+    padding:8px;
+  }
+  .rc-app .header__reg-menu .header__menu-item{
+    align-items:flex-start;
+    gap:12px;
+    padding:11px 12px;
+  }
+  .rc-app .header__reg-menu .header__menu-item svg{
+    width:19px;height:19px;margin-top:2px;
+    color:var(--navy, #5d38de);
+    flex:0 0 auto;
+  }
+  .rc-app .header__reg-menu .header__menu-item:hover svg{color:var(--orange, #ff5028)}
+
+  .rc-app .header__reg-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .rc-app .header__reg-title{font-size:14px;font-weight:600;color:var(--vp-ink, #1e272f);line-height:1.3}
+  .rc-app .header__reg-sub{font-size:12px;font-weight:500;color:#8b93a1;line-height:1.35}
+  .rc-app .header__reg-menu .header__menu-item:hover .header__reg-title{color:var(--navy, #5d38de)}
+}

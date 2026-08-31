@@ -8,33 +8,97 @@
 <HeroBanner />
 
 <!-- Hero -->
+@* Premium hero. Structure only changed inside this section: routes, CTAs and the three existing
+   student images are the same, re-composed rather than replaced. All new styling lives in
+   vijaypath.css under the .hero block. *@
 <section class="hero">
+    @* Decorative only — blurred colour fields + dot grid for depth. aria-hidden so screen
+       readers skip them entirely. *@
+    <div class="hero__glow" aria-hidden="true">
+        <span class="hero__blob hero__blob--purple"></span>
+        <span class="hero__blob hero__blob--orange"></span>
+        <span class="hero__blob hero__blob--cyan"></span>
+        <span class="hero__dots"></span>
+    </div>
+
     <div class="hero__inner">
         <div class="hero__content">
-            <h1 class="hero__title reveal" data-delay="1">Your Path to <span class="highlight">Scholarship</span> Success</h1>
-            <p class="hero__subtitle reveal" data-delay="2">
-                India's trusted platform for scholarship preparation. Expert faculty, live classes, study material &amp; personalised mentorship.
+            <span class="hero__eyebrow">
+                <span class="hero__eyebrow-dot"></span>
+                Scholarship Exam Preparation
+            </span>
+
+            <h1 class="hero__title">
+                Your Path to<br />
+                <span class="highlight">Scholarship</span><br />
+                Success
+            </h1>
+
+            <p class="hero__subtitle">
+                India's trusted platform for scholarship preparation. Expert faculty, live classes,
+                study material &amp; personalised mentorship.
             </p>
-            <div class="hero__course-btns reveal" data-delay="3">
-                <a href="/courses" class="hero__course-btn hero__course-btn--primary">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
-                    View Courses
+
+            <div class="hero__course-btns">
+                <a href="/student/register" class="hero__course-btn hero__course-btn--primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                    Register as Student
+                    <svg class="hero__course-btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
                 </a>
-                <a href="/about" class="hero__course-btn hero__course-btn--outline">
-                    About Us
+                <a href="/school/register" class="hero__course-btn hero__course-btn--outline">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M10 21v-5h4v5"/></svg>
+                    Register Your School
+                </a>
+                <a href="/courses" class="hero__course-btn hero__course-btn--ghost">
+                    View Courses
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
                 </a>
             </div>
+
+            @* Qualitative only — no invented counts. The real figures live in the Impact band. *@
+            <ul class="hero__trust">
+                @foreach (var t in new[] { "Scholarship Focused", "Expert Faculty", "Live Learning", "Personalised Mentorship" })
+                {
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>
+                        @t
+                    </li>
+                }
+            </ul>
         </div>
+
+        @* One dominant portrait with two supporting cards overlapping it, plus two badges. *@
         <div class="hero__photos">
-            <div class="hero__photo-card hero__photo-card--girl">
-                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-girl.jpg" alt="Student preparing for scholarship exam" loading="eager" />
+            <figure class="hero__photo-card hero__photo-card--main">
+                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-girl.jpg"
+                     alt="Student preparing for a scholarship exam" loading="eager" fetchpriority="high" />
+            </figure>
+
+            <figure class="hero__photo-card hero__photo-card--boy">
+                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-boy.jpg"
+                     alt="Student holding a globe" loading="eager" />
+            </figure>
+
+            <figure class="hero__photo-card hero__photo-card--grp">
+                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-group.jpg"
+                     alt="Students learning together" loading="lazy" />
+            </figure>
+
+            <div class="hero__badge hero__badge--trophy">
+                <span class="hero__badge-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                </span>
+                <span class="hero__badge-txt">
+                    <strong>Scholarship</strong>
+                    <small>Success Journey</small>
+                </span>
             </div>
-            <div class="hero__photo-card hero__photo-card--boy" style="grid-row: span 2">
-                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-boy.jpg" alt="Student with globe" loading="eager" />
-            </div>
-            <div class="hero__photo-card hero__photo-card--grp">
-                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-group.jpg" alt="Students studying together" loading="eager" />
+
+            <div class="hero__badge hero__badge--book">
+                <span class="hero__badge-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </span>
+                <span class="hero__badge-txt"><strong>Smart Learning</strong></span>
             </div>
         </div>
     </div>
@@ -46,10 +110,29 @@
 </div>
 
 <!-- Founder / vision -->
+@* Leadership section. Content, image asset and copy are unchanged from before — this is a
+   presentation upgrade only. Scroll-reveal reuses the shared .reveal / rc.homeFx observer;
+   the directional variants just override the starting transform, since .reveal--in resets
+   transform to none either way. *@
 <section class="vp-founder">
-    <div class="vp-founder__card reveal">
-        <div class="vp-founder__media">
+    <div class="vp-founder__glow" aria-hidden="true">
+        <span class="vp-founder__aura vp-founder__aura--purple"></span>
+        <span class="vp-founder__aura vp-founder__aura--orange"></span>
+        <span class="vp-founder__grid"></span>
+    </div>
+
+    <div class="vp-founder__intro">
+        <span class="vp-founder__eyebrow reveal">Meet the vision behind Vijaypath</span>
+        <h2 class="vp-founder__heading reveal" data-delay="1">Our Visionary Leader</h2>
+        <p class="vp-founder__lead reveal" data-delay="2">
+            Building meaningful learning and scholarship opportunities for students across India.
+        </p>
+    </div>
+
+    <div class="vp-founder__card">
+        <div class="vp-founder__media reveal vp-founder__media--in">
             <span class="vp-founder__blob" aria-hidden="true"></span>
+            <span class="vp-founder__ring" aria-hidden="true"></span>
             <span class="vp-founder__dots vp-founder__dots--left" aria-hidden="true"></span>
             @* Transparent PNG generated from the supplied JPEG by flood-filling the
                connected background white (the shirt is enclosed by darker pixels, so
@@ -58,19 +141,20 @@
             <img class="vp-founder__photo"
                  src="_content/RioCommerce.Web.Storefront/images/vijaypath-founder.png"
                  alt="Dr. Vijay Bhatkar" loading="lazy" decoding="async" />
+            <span class="vp-founder__chip">Vision &bull; Leadership &bull; Education</span>
         </div>
 
         <div class="vp-founder__body">
             <span class="vp-founder__dots vp-founder__dots--right" aria-hidden="true"></span>
-            <span class="vp-founder__badge">Founder &amp; Visionary</span>
-            <h2 class="vp-founder__name">Dr. Vijay Bhatkar</h2>
-            <p class="vp-founder__role">Founder, Vijaypath</p>
-            <p class="vp-founder__text">
+            <span class="vp-founder__badge reveal vp-founder__body--in">Founder &amp; Visionary</span>
+            <h3 class="vp-founder__name reveal vp-founder__body--in" data-delay="1">Dr. Vijay Bhatkar</h3>
+            <p class="vp-founder__role reveal vp-founder__body--in" data-delay="2">Founder, Vijaypath</p>
+            <p class="vp-founder__text reveal vp-founder__body--in" data-delay="3">
                 A visionary leader and educationist, Dr. Vijay Bhatkar founded Vijaypath with a
                 mission to make quality learning and scholarship opportunities accessible to
                 every deserving student across India.
             </p>
-            <figure class="vp-founder__quote">
+            <figure class="vp-founder__quote reveal" data-delay="4">
                 <blockquote>
                     Our mission is to empower every student with the right guidance,
                     opportunities, and resources to achieve their dreams.
@@ -162,7 +246,7 @@
         </div>
         <div class="feature-card">
             <div class="feature-ico">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></svg>
             </div>
             <div>
                 <h5>Personalised Mentorship</h5>
@@ -226,46 +310,56 @@
 </section>
 
 <!-- Why Vijaypath -->
+@* Presentation-only upgrade. All four feature names and descriptions — including the
+   "95%+ success rate" and "500+ schools" claims — are carried over VERBATIM. *@
 <section class="vp-why">
-    <div style="max-width:1200px;margin:0 auto">
-        <h2 class="reveal">Why Choose Us</h2>
-        <p class="why-sub reveal">What makes our platform the preferred choice for scholarship aspirants</p>
-        <div class="why-grid reveal">
-            <div class="why-item">
+    <div class="vp-why__glow" aria-hidden="true">
+        <span class="vp-why__aura vp-why__aura--purple"></span>
+        <span class="vp-why__aura vp-why__aura--orange"></span>
+        <span class="vp-why__grid-dots"></span>
+        <span class="vp-why__arc"></span>
+    </div>
+
+    <div class="vp-why__inner">
+        <div class="vp-why__head">
+            <span class="vp-why__eyebrow reveal">Why Vijaypath</span>
+            <h2 class="reveal" data-delay="1">Why <span class="vp-why__accent">Choose Us</span></h2>
+            <p class="why-sub reveal" data-delay="2">What makes our platform the preferred choice for scholarship aspirants</p>
+        </div>
+
+        <div class="why-grid">
+            <div class="why-item reveal" data-delay="1">
                 <div class="why-ico">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 </div>
-                <div>
-                    <h5>Expert Faculty</h5>
-                    <p>Learn from India's top educators with decades of experience in scholarship exams.</p>
-                </div>
+                <h5>Expert Faculty</h5>
+                <p>Learn from India's top educators with decades of experience in scholarship exams.</p>
             </div>
-            <div class="why-item">
+
+            <div class="why-item reveal" data-delay="2">
                 <div class="why-ico">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
+                    @* trending-up reads as a track record far better than a plain axis chart *@
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></svg>
                 </div>
-                <div>
-                    <h5>Proven Track Record</h5>
-                    <p>95%+ success rate with thousands of scholarship winners across the country.</p>
-                </div>
+                <h5>Proven Track Record</h5>
+                <p>95%+ success rate with thousands of scholarship winners across the country.</p>
             </div>
-            <div class="why-item">
+
+            <div class="why-item reveal" data-delay="3">
                 <div class="why-ico">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                 </div>
-                <div>
-                    <h5>Quality Study Material</h5>
-                    <p>Comprehensive notes and practice sets designed specifically for each exam pattern.</p>
-                </div>
+                <h5>Quality Study Material</h5>
+                <p>Comprehensive notes and practice sets designed specifically for each exam pattern.</p>
             </div>
-            <div class="why-item">
+
+            <div class="why-item reveal" data-delay="4">
                 <div class="why-ico">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                    @* school building, not a graduation cap — this card is about institutions *@
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M10 21v-5h4v5"/><path d="M9.5 11h1M13.5 11h1"/></svg>
                 </div>
-                <div>
-                    <h5>School Partnerships</h5>
-                    <p>Integrated with 500+ schools for seamless student enrollment and talent discovery.</p>
-                </div>
+                <h5>School Partnerships</h5>
+                <p>Integrated with 500+ schools for seamless student enrollment and talent discovery.</p>
             </div>
         </div>
     </div>

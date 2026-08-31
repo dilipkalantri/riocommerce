@@ -217,6 +217,8 @@ builder.Services.AddScoped<IAcademicYearService, AcademicYearService>();
 builder.Services.AddScoped<IGeographyService, GeographyService>();
 builder.Services.AddScoped<ISchoolService, SchoolService>();
 builder.Services.AddScoped<ISchoolRegistrationService, SchoolRegistrationService>();
+builder.Services.AddScoped<ISchoolStudentService, SchoolStudentService>();
+builder.Services.AddScoped<ISchoolEnrollmentService, SchoolEnrollmentService>();
 builder.Services.AddScoped<RioCommerce.Web.Services.ToastService>();
 // Per-circuit list-screen state (filters survive an order detail, clear on leaving the section).
 builder.Services.AddScoped<RioCommerce.Web.Services.AdminScreenState>();
@@ -637,6 +639,16 @@ app.MapPost("/account/register", async (HttpContext http, RioCommerceDbContext d
     var phone = form["phone"].ToString();
     var password = form["password"].ToString();
     var city = form["city"].ToString();
+    // Optional student-profile fields. Left nullable so the endpoint keeps accepting the
+    // original four required fields unchanged.
+    var gender = form["gender"].ToString();
+    var state = form["state"].ToString();
+    var district = form["district"].ToString();
+    var schoolName = form["schoolName"].ToString();
+    var studentClass = form["studentClass"].ToString();
+    var board = form["board"].ToString();
+    DateTime? dob = DateTime.TryParse(form["dob"].ToString(), out var dobParsed)
+        ? DateTime.SpecifyKind(dobParsed, DateTimeKind.Utc) : null;
 
     if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email) ||
         string.IsNullOrWhiteSpace(phone) || string.IsNullOrWhiteSpace(password))
@@ -668,6 +680,13 @@ app.MapPost("/account/register", async (HttpContext http, RioCommerceDbContext d
         Phone = phone.Trim(),
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
         City = string.IsNullOrWhiteSpace(city) ? null : city.Trim(),
+        Gender = string.IsNullOrWhiteSpace(gender) ? null : gender.Trim(),
+        State = string.IsNullOrWhiteSpace(state) ? null : state.Trim(),
+        District = string.IsNullOrWhiteSpace(district) ? null : district.Trim(),
+        SchoolName = string.IsNullOrWhiteSpace(schoolName) ? null : schoolName.Trim(),
+        StudentClass = string.IsNullOrWhiteSpace(studentClass) ? null : studentClass.Trim(),
+        Board = string.IsNullOrWhiteSpace(board) ? null : board.Trim(),
+        DateOfBirth = dob,
         IsActive = false,
         IsVerified = false
     };
@@ -690,15 +709,161 @@ app.MapPost("/account/register", async (HttpContext http, RioCommerceDbContext d
         return Results.Redirect($"/login?tab=register&error={key}");
     }
 
-    // Send a 6-digit OTP to the EMAIL only, then hand off to the interactive verify screen.
-    await verify.SendAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup,
-        RioCommerce.Core.Enums.VerificationChannel.Email, user.Email!, user.Id, user.FullName);
+    // One 6-digit OTP delivered to BOTH email and phone, then hand off to the verify screen.
+    // The student supplies a phone, so email-only delivery was leaving that channel unused;
+    // SendBothAsync shares a single hash across the two channel rows, so the code entered on
+    // the verify screen matches whichever one it arrived on.
+    await verify.SendBothAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup,
+        user.Email, user.Phone, user.Id, user.FullName);
 
     return Results.Redirect($"/account/verify?email={Uri.EscapeDataString(user.Email!)}");
 }).DisableAntiforgery();
 
 // ── OTP: verify a registration code (email). On success activates the account and returns a
 //    short-lived one-time token the verify page uses to complete cookie sign-in via the bridge. ──
+// ── Student registration (JSON) for the /student/register wizard ──────────────────────────────
+// Mirrors /account/register but answers JSON instead of redirecting, so step 3 can hand over to
+// step 4 IN PAGE. Reuses the same collaborators as every other entry point - no second auth
+// system, no second duplicate checker, no second OTP infrastructure:
+//   • ICustomerDuplicateService - email (case-insensitive) + phone (normalised) uniqueness
+//   • IVerificationService.SendBothAsync - one code to email AND mobile
+//   • the "student" role row - never school_principal / admin / coordinator
+app.MapPost("/api/student/register", async (HttpContext http, RioCommerceDbContext db,
+    ICustomerDuplicateService dupes, IVerificationService verify) =>
+{
+    var form = await http.Request.ReadFormAsync();
+    string F(string k) => form[k].ToString().Trim();
+
+    var fullName = F("fullName");
+    var email = F("email");
+    var phone = F("phone");
+    var password = F("password");
+
+    if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email) ||
+        string.IsNullOrWhiteSpace(phone) || string.IsNullOrWhiteSpace(password))
+        return Results.Json(new { success = false, error = "Please complete every required field." });
+
+    // ── Education details are mandatory for a student signup, and re-checked HERE rather than
+    //    trusted from the wizard: a crafted POST straight at this endpoint must not be able to
+    //    create a half-populated student. Checked BEFORE any account is created, so an
+    //    incomplete request never leaves a pending row behind. ──
+    var eduState = F("state");
+    var eduDistrict = F("district");
+    var eduClass = F("studentClass");
+    var eduBoard = F("board");
+    var eduSchool = F("schoolName");
+
+    if (string.IsNullOrWhiteSpace(eduState) || string.IsNullOrWhiteSpace(eduDistrict) ||
+        string.IsNullOrWhiteSpace(eduClass) || string.IsNullOrWhiteSpace(eduBoard) ||
+        string.IsNullOrWhiteSpace(eduSchool))
+        return Results.Json(new { success = false, error = "Please complete all required education details." });
+
+    // ── Duplicate check: SERVER-SIDE and authoritative. Covers the cross-account case too -
+    //    CheckAsync probes email and phone independently, so an email on account A plus a phone
+    //    on account B reports Both and is refused. ──
+    var ip = http.Connection.RemoteIpAddress?.ToString();
+    var dup = await dupes.CheckAsync(email, phone);
+    if (dup.HasDuplicate)
+    {
+        await dupes.LogDuplicateAttemptAsync(email, phone, "Website-StudentWizard", null, fullName, ip, dup.FieldName);
+        var msg = dup.Field switch
+        {
+            RioCommerce.Core.DTOs.Customers.DuplicateField.Email =>
+                "This email address is already registered. Please login or use a different email address.",
+            RioCommerce.Core.DTOs.Customers.DuplicateField.Phone =>
+                "This mobile number is already registered. Please login or use a different mobile number.",
+            _ => "An account with this email address and mobile number already exists. Please login instead.",
+        };
+        return Results.Json(new { success = false, error = msg, duplicate = true });
+    }
+
+    DateTime? dob = DateTime.TryParse(F("dob"), out var d)
+        ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : null;
+
+    // Created PENDING: IsActive=false blocks login until the OTP is confirmed, so an unverified
+    // signup is never a usable account.
+    var user = new User
+    {
+        Id = Guid.NewGuid(),
+        FullName = fullName,
+        Email = email,
+        Phone = phone,
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+        DateOfBirth = dob,
+        Gender = string.IsNullOrWhiteSpace(F("gender")) ? null : F("gender"),
+        State = eduState,
+        District = eduDistrict,
+        SchoolName = eduSchool,
+        StudentClass = eduClass,
+        Board = eduBoard,
+        IsActive = false,
+        IsVerified = false,
+    };
+    db.Users.Add(user);
+
+    // ONLY the student role. Never school_principal, admin or coordinator.
+    var studentRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "student");
+    if (studentRole != null)
+        db.UserRoles.Add(new UserRole { User = user, RoleId = studentRole.Id, IsActive = true });
+
+    try
+    {
+        await db.SaveChangesAsync();
+    }
+    catch (DbUpdateException)
+    {
+        // Race: two signups for the same email/phone in flight. The partial unique indexes
+        // IX_users_Email / IX_users_Phone reject the loser at the database, so a duplicate cannot
+        // be created even under concurrency. Re-probe to report which field actually collided.
+        var race = await dupes.CheckAsync(email, phone);
+        await dupes.LogDuplicateAttemptAsync(email, phone, "Website-StudentWizard-Race", null, fullName, ip, race.FieldName);
+        var msg = race.Field switch
+        {
+            RioCommerce.Core.DTOs.Customers.DuplicateField.Email =>
+                "This email address is already registered. Please login or use a different email address.",
+            RioCommerce.Core.DTOs.Customers.DuplicateField.Phone =>
+                "This mobile number is already registered. Please login or use a different mobile number.",
+            _ => "The email address or mobile number is already associated with another account. Please use different contact details or login to your existing account.",
+        };
+        return Results.Json(new { success = false, error = msg, duplicate = true });
+    }
+
+    // One 6-digit code to BOTH channels. Never returned to the browser or logged.
+    var send = await verify.SendBothAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup,
+        user.Email, user.Phone, user.Id, user.FullName);
+
+    if (!send.Success)
+    {
+        // Nothing was delivered, so do NOT strand the user in a verification state they can never
+        // clear. Undo the pending account and keep them on step 3 to retry cleanly.
+        db.Users.Remove(user);
+        try { await db.SaveChangesAsync(); } catch { /* best effort rollback */ }
+        return Results.Json(new { success = false, error = "We couldn't send the verification code. Please try again." });
+    }
+
+    // Masked for the step-4 subtitle. The code itself is never sent to the client.
+    static string MaskEmail(string e)
+    {
+        var at = e.IndexOf('@');
+        if (at <= 1) return e;
+        var head = e[..Math.Min(3, at)];
+        return head + new string('*', Math.Max(1, at - head.Length)) + e[at..];
+    }
+    static string MaskPhone(string p)
+    {
+        var digits = new string(p.Where(char.IsDigit).ToArray());
+        return digits.Length < 4 ? p : "+91 " + new string('*', Math.Max(0, digits.Length - 4)) + digits[^4..];
+    }
+
+    return Results.Json(new
+    {
+        success = true,
+        email = user.Email,
+        maskedEmail = MaskEmail(user.Email!),
+        maskedPhone = MaskPhone(user.Phone!),
+    });
+}).DisableAntiforgery();
+
 app.MapPost("/api/account/verify-otp", async (HttpContext http, RioCommerceDbContext db, IVerificationService verify,
     IDataProtectionProvider dp) =>
 {
@@ -736,8 +901,10 @@ app.MapPost("/api/account/resend-otp", async (HttpContext http, RioCommerceDbCon
     var user = await db.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == email.ToLower());
     if (user == null) return Results.Json(new { success = true });   // don't reveal non-existence
 
-    var send = await verify.SendAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup,
-        RioCommerce.Core.Enums.VerificationChannel.Email, user.Email!, user.Id, user.FullName);
+    // Both channels, matching what registration sent - resending on email only would contradict
+    // the "sent to your email and mobile" wording the user was just shown.
+    var send = await verify.SendBothAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup,
+        user.Email, user.Phone, user.Id, user.FullName);
     return Results.Json(new { success = send.Success, error = send.ErrorMessage });
 }).DisableAntiforgery().RequireRateLimiting(OtpSendRateLimitPolicy);
 
@@ -838,15 +1005,25 @@ app.MapGet("/account/complete-signin", async (HttpContext http, RioCommerceDbCon
 app.MapPost("/api/account/forgot-otp", async (HttpContext http, RioCommerceDbContext db, IVerificationService verify) =>
 {
     var form = await http.Request.ReadFormAsync();
-    var email = form["email"].ToString().Trim();
-    if (string.IsNullOrWhiteSpace(email)) return Results.Json(new { success = false, error = "Enter your email." });
+    // Accepts an email OR a mobile number. This is also the ACTIVATION path for a student a
+    // School Principal created: that account has no password, and nothing here requires one, so
+    // the same flow claims a brand-new account and resets a forgotten one. No second OTP system.
+    var id = form["email"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(id))
+        return Results.Json(new { success = false, error = "Enter your email or mobile number." });
 
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == email.ToLower());
+    var idLower = id.ToLower();
+    var idDigits = new string(id.Where(char.IsDigit).ToArray());
+    var user = await db.Users.FirstOrDefaultAsync(u =>
+        (u.Email != null && u.Email.ToLower() == idLower) ||
+        (idDigits.Length >= 10 && u.Phone != null && u.Phone == idDigits));
+
     if (user != null)
-        await verify.SendAsync(RioCommerce.Core.Enums.VerificationPurpose.PasswordReset,
-            RioCommerce.Core.Enums.VerificationChannel.Email, user.Email!, user.Id, user.FullName);
+        // Both channels, so a student who typed their mobile receives it there.
+        await verify.SendBothAsync(RioCommerce.Core.Enums.VerificationPurpose.PasswordReset,
+            user.Email, user.Phone, user.Id, user.FullName);
 
-    // Uniform response — never reveal whether the email is registered.
+    // Uniform response — never reveal whether the identifier is registered.
     return Results.Json(new { success = true });
 }).DisableAntiforgery().RequireRateLimiting(OtpSendRateLimitPolicy);
 
@@ -880,10 +1057,23 @@ app.MapPost("/api/account/reset-otp", async (HttpContext http, RioCommerceDbCont
     if (!check.Success)
         return Results.Json(new { success = false, error = check.ErrorMessage ?? "Invalid or expired code." });
 
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == email.ToLower());
+    var idLower = email.ToLower();
+    var idDigits = new string(email.Where(char.IsDigit).ToArray());
+    var user = await db.Users.FirstOrDefaultAsync(u =>
+        (u.Email != null && u.Email.ToLower() == idLower) ||
+        (idDigits.Length >= 10 && u.Phone != null && u.Phone == idDigits));
     if (user == null) return Results.Json(new { success = false, error = "Account not found." });
 
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+
+    // Completing the OTP proves the holder owns that mailbox / handset, which is exactly the
+    // evidence IsVerified was waiting for. Without this a principal-created student would set a
+    // password and still show as Pending forever.
+    //
+    // IsActive is deliberately NOT touched: flipping it here would silently re-enable an account
+    // an admin had disabled on purpose. Principal-created students are already IsActive = true.
+    user.IsVerified = true;
+
     await db.SaveChangesAsync();
     return Results.Json(new { success = true });
 }).DisableAntiforgery();

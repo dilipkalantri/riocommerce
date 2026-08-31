@@ -3,6 +3,7 @@
 @inject ICheckoutService CheckoutSvc
 @inject IReferralService ReferralSvc
 @inject IIntegrationSettingsService IntegrationSvc
+@inject ISiteSettingsService SiteSvc
 @inject AuthenticationStateProvider AuthProvider
 @inject IFranchisePortalService FranchisePortal
 @inject NavigationManager Nav
@@ -500,18 +501,31 @@
                         <svg class="co-help__title-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
                         Need Help?
                     </div>
-                    <a href="tel:9975242929" class="co-help__line">
+                    @* Phone, WhatsApp and hours come from the central SiteSettings (admin →
+                       Settings), the same source Footer and Contact use. They were hard-coded
+                       here, which is how this card ended up showing a different number from the
+                       rest of the site. Each line hides when its setting is blank. *@
+                    @if (!string.IsNullOrWhiteSpace(siteCfg?.ContactPhone1))
+                    {
+                    <a href="tel:@siteCfg.ContactPhone1" class="co-help__line">
                         <span class="co-help__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
-                        <span class="co-help__txt"><strong>Call Support</strong><small>9975242929</small></span>
+                        <span class="co-help__txt"><strong>Call Support</strong><small>@siteCfg.ContactPhone1</small></span>
                     </a>
-                    <a href="https://wa.me/919975242929" target="_blank" rel="noopener" class="co-help__line">
+                    }
+                    @if (!string.IsNullOrWhiteSpace(siteCfg?.WhatsappNumber))
+                    {
+                    <a href="https://wa.me/@(new string(siteCfg.WhatsappNumber.Where(char.IsDigit).ToArray()))" target="_blank" rel="noopener" class="co-help__line">
                         <span class="co-help__ico co-help__ico--wa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
                         <span class="co-help__txt"><strong>WhatsApp Support</strong><small>Chat with us instantly</small></span>
                     </a>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(siteCfg?.BusinessHours))
+                    {
                     <div class="co-help__hours">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                        10 AM – 8 PM (Mon–Sat)
+                        @siteCfg.BusinessHours
                     </div>
+                    }
                 </aside>
             </div>
         </div>
@@ -925,8 +939,12 @@
         "Uttarakhand", "West Bengal", "Other"
     };
 
+    private RioCommerce.Core.DTOs.Admin.SiteSettings? siteCfg;
+
     protected override async Task OnInitializedAsync()
     {
+        // Never let a settings hiccup break checkout — the help card just hides.
+        try { siteCfg = await SiteSvc.GetAsync(); } catch { }
         var state = await AuthProvider.GetAuthenticationStateAsync();
         var id = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         isFranchisee = state.User.IsInRole("franchise_admin");

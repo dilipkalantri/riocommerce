@@ -53,8 +53,8 @@
   --stat-card-grain:   linear-gradient(180deg, #f5f5f2 -56.07%, #fff 44.61%, #ffe2e2 100%);
 
   /* ── Typography ── */
-  --font-primary:   "Google Sans Flex", system-ui, -apple-system, sans-serif;
-  --font-secondary: "Google Sans Flex", system-ui, -apple-system, sans-serif;
+  --font-primary:   'Poppins','Noto Sans Devanagari',system-ui,-apple-system,sans-serif;
+  --font-secondary: 'Poppins','Noto Sans Devanagari',system-ui,-apple-system,sans-serif;
 
   /* ── Shape ── */
   --radius-sm: 8px;
@@ -97,9 +97,9 @@
 .rc-app .footer h4 { color: #fff }
 .rc-app .footer a { color: #cfcadf }
 .rc-app .footer a:hover { color: #fff }
-.rc-app .footer__social a:hover,
-.rc-app .footer__phones svg,
-.rc-app .footer__col a[href^="mailto"] svg { color: var(--brand-accent) }
+/* .footer__social hover, contact icon colours and the rest of the footer's
+   premium treatment now live in footer-premium.css. */
+.rc-app .footer__social a:hover { color: var(--brand-accent) }
 
 /* ── Input focus rings ── */
 .rc-app .form-input:focus,

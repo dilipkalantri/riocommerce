@@ -1,75 +1,167 @@
 @inject INewsletterService Newsletter
 @inject ISiteSettingsService Settings
 
+@*
+    Premium footer. Presentation-only rework — the newsletter path below still
+    calls INewsletterService.SubscribeAsync with the same SubscribeRequest and
+    handles the same (ok, message) tuple as before.
+
+    Contact details come from the central ISiteSettingsService (Admin → Settings)
+    whenever a value is configured; the official public details act as a fallback
+    so the footer is never blank. Fill the settings screen and the DB values win
+    automatically — no code change needed.
+*@
+
 <footer class="footer">
-    <div class="footer__newsletter">
-        <div class="footer__newsletter-text">
-            <h4><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg> Stay in the loop</h4>
-            <p>New batch alerts, offers &amp; exam tips — straight to your inbox.</p>
-        </div>
-        <div class="footer__newsletter-form">
-            @if (subscribed)
-            {
-                <span class="footer__newsletter-done">@message</span>
-            }
-            else
-            {
-                <input type="email" placeholder="Your email address" value="@email" @oninput="e => email = e.Value?.ToString() ?? string.Empty" @onkeydown="OnKey" />
-                <button class="btn btn-primary" disabled="@busy" @onclick="Subscribe">@(busy ? "…" : "Subscribe")</button>
-            }
-        </div>
-        @if (!subscribed && message != null) { <div class="footer__newsletter-msg">@message</div> }
+    @* 28. Decorative depth — behind all content, aria-hidden *@
+    <div class="footer__decor" aria-hidden="true">
+        <span class="footer__decor-aura footer__decor-aura--purple"></span>
+        <span class="footer__decor-aura footer__decor-aura--orange"></span>
+        <span class="footer__decor-dots"></span>
+        <span class="footer__decor-arc"></span>
     </div>
 
-    <div class="footer__inner">
-        <div class="footer__col">
-            <img src="@LogoSrc" alt="@(cfg?.CompanyName ?? "Vijaypath")" class="footer__logo" />
-            <p class="footer__tagline">Synthesis of Science and Spirituality in the Service of Mankind.</p>
-        </div>
-        <div class="footer__col">
-            <h4>Quick Links</h4>
-            <a href="/">Home</a>
-            <a href="/about">About Us</a>
-            <a href="/courses">Courses</a>
-            <a href="/scholarship-exam">Scholarship Exam</a>
-            <a href="/contact">Contact Us</a>
-        </div>
-        <div class="footer__col">
-            <h4>Information</h4>
-            <a href="/page/terms-and-conditions">Terms &amp; Conditions</a>
-            <a href="/page/privacy-policy">Privacy Policy</a>
-            <a href="/page/refund-policy">Refund Policy</a>
-            @if (!string.IsNullOrWhiteSpace(cfg?.ContactEmail))
-            {
-                <a href="mailto:@cfg.ContactEmail">
+    <div class="footer__shell">
+        <section class="footer__newsletter" aria-labelledby="footer-newsletter-title">
+            <div class="footer__newsletter-text">
+                <span class="footer__newsletter-badge" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
-                    @cfg.ContactEmail
-                </a>
-            }
-        </div>
-        <div class="footer__col">
-            <h4>Find Us</h4>
-            @if (!string.IsNullOrWhiteSpace(cfg?.Address))
+                </span>
+                <div>
+                    <h4 id="footer-newsletter-title">Stay in the loop</h4>
+                    <p>New batch alerts, offers &amp; exam tips — straight to your inbox.</p>
+                </div>
+            </div>
+            <div class="footer__newsletter-form">
+                @if (subscribed)
+                {
+                    <span class="footer__newsletter-done" role="status">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                        @message
+                    </span>
+                }
+                else
+                {
+                    <input id="footer-newsletter-email" type="email" autocomplete="email" aria-label="Your email address" placeholder="Your email address" value="@email" @oninput="e => email = e.Value?.ToString() ?? string.Empty" @onkeydown="OnKey" />
+                    <button class="btn btn-primary" disabled="@busy" @onclick="Subscribe">
+                        @(busy ? "…" : "Subscribe")
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </button>
+                }
+            </div>
+            @if (!subscribed && message != null)
             {
-                <p>@cfg.Address</p>
+                <p class="footer__newsletter-msg" role="alert">@message</p>
             }
-            <div class="footer__phones">
-                @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone1)) { <a href="tel:@cfg.ContactPhone1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>@cfg.ContactPhone1</a> }
-                @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone2)) { <a href="tel:@cfg.ContactPhone2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>@cfg.ContactPhone2</a> }
-                @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone3)) { <a href="tel:@cfg.ContactPhone3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>@cfg.ContactPhone3</a> }
+        </section>
+
+        <div class="footer__inner">
+            @* ── Brand + contact ── *@
+            <div class="footer__col">
+                <span class="footer__brand-mark">
+                    <img src="@LogoSrc" alt="@CompanyName" class="footer__logo" width="253" height="31" />
+                </span>
+                <p class="footer__tagline">Synthesis of Science and Spirituality in the Service of Mankind.</p>
+
+                <address class="footer__contact">
+                    <div class="footer__contact-row">
+                        <span class="footer__contact-ico" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                        </span>
+                        <span>
+                            <span class="footer__contact-label">Office Address</span>
+                            @if (!string.IsNullOrWhiteSpace(cfg?.GoogleMapsUrl))
+                            {
+                                <a href="@cfg.GoogleMapsUrl" target="_blank" rel="noopener noreferrer">@Address</a>
+                            }
+                            else
+                            {
+                                @Address
+                            }
+                        </span>
+                    </div>
+
+                    <div class="footer__contact-row">
+                        <span class="footer__contact-ico" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
+                        </span>
+                        <span>
+                            <span class="footer__contact-label">Phone</span>
+                            <a href="tel:@TelHref(Phone)">@Phone</a>
+                        </span>
+                    </div>
+
+                    <div class="footer__contact-row">
+                        <span class="footer__contact-ico" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg>
+                        </span>
+                        <span>
+                            <span class="footer__contact-label">Email</span>
+                            <a href="mailto:@Email">@Email</a>
+                        </span>
+                    </div>
+
+                    <div class="footer__contact-row">
+                        <span class="footer__contact-ico" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        </span>
+                        <span>
+                            <span class="footer__contact-label">Working Hours</span>
+                            @Hours
+                        </span>
+                    </div>
+                </address>
             </div>
-            <div class="footer__social">
-                <a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37Z"/><path d="M17.5 6.5h.01"/></svg></a>
-                <a href="#" aria-label="LinkedIn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6Z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg></a>
-                <a href="#" aria-label="YouTube"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17Z"/><path d="m10 15 5-3-5-3z"/></svg></a>
+
+            @* ── Quick Links ── *@
+            <nav class="footer__col" aria-labelledby="footer-quick-title">
+                <h4 id="footer-quick-title">Quick Links</h4>
+                <div class="footer__links">
+                    <a href="/">Home <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                    <a href="/about">About Us <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                    <a href="/courses">Courses <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                    <a href="/scholarship-exam">Scholarship Exam <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                    <a href="/talent-test">Talent Test <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                    <a href="/contact">Contact Us <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                </div>
+            </nav>
+
+            @* ── Information ── *@
+            <nav class="footer__col" aria-labelledby="footer-info-title">
+                <h4 id="footer-info-title">Information</h4>
+                <div class="footer__links">
+                    <a href="/page/terms-and-conditions">Terms &amp; Conditions <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                    <a href="/page/privacy-policy">Privacy Policy <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                    <a href="/page/refund-policy">Refund Policy <span class="footer__arrow" aria-hidden="true">@ArrowIcon</span></a>
+                </div>
+            </nav>
+
+            @* ── Find Us ── *@
+            <div class="footer__col">
+                <h4 id="footer-social-title">Find Us</h4>
+                <div class="footer__social" role="list" aria-labelledby="footer-social-title">
+                    <a href="@InstagramUrl" role="listitem" aria-label="Vijaypath on Instagram" target="@ExtTarget(InstagramUrl)" rel="@ExtRel(InstagramUrl)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37Z"/><path d="M17.5 6.5h.01"/></svg>
+                    </a>
+                    <a href="@LinkedInUrl" role="listitem" aria-label="Vijaypath on LinkedIn" target="@ExtTarget(LinkedInUrl)" rel="@ExtRel(LinkedInUrl)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6Z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+                    </a>
+                    <a href="@YoutubeUrl" role="listitem" aria-label="Vijaypath on YouTube" target="@ExtTarget(YoutubeUrl)" rel="@ExtRel(YoutubeUrl)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17Z"/><path d="m10 15 5-3-5-3z"/></svg>
+                    </a>
+                </div>
+                <p class="footer__social-note">Follow us for exam updates, results and preparation tips.</p>
             </div>
         </div>
     </div>
-    @* VIJAYPATH decorative watermark *@
-    <div class="footer__watermark" aria-hidden="true">
-        <svg viewBox="0 0 700 80" xmlns="http://www.w3.org/2000/svg"><text x="50%" y="65" text-anchor="middle" font-family="'Google Sans Flex', system-ui, sans-serif" font-size="120" font-weight="700" fill="#2a2f35">VIJAYPATH</text></svg>
+
+    <div class="footer__bottom">
+        <p>&copy; @DateTime.Now.Year @CopyrightName. All Rights Reserved.</p>
+        <p class="footer__credit">
+            Developed by
+            <a href="https://antargyan.ai/" target="_blank" rel="noopener noreferrer">Antargyan AI</a>
+        </p>
     </div>
-    <div class="footer__bottom"><p>&copy; @DateTime.Now.Year @(cfg?.CopyrightText ?? cfg?.CompanyName ?? "Vijaypath"). All Rights Reserved.</p></div>
 </footer>
 
 @code {
@@ -77,8 +169,47 @@
     private bool busy, subscribed;
     private string? message;
     private SiteSettings? cfg;
+
     private const string FallbackLogo = "_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo.svg";
+
+    // Official public contact details. These are fallbacks only — anything set in
+    // Admin → Settings (the central ISiteSettingsService config) takes precedence,
+    // so the settings screen stays the single source of truth.
+    private const string OfficialAddress = "India International Multiversity, 1A, I Space, Off Mumbai-Pune Bypass Road, Bavdhan Khurd, Pune – 411021, Maharashtra, India";
+    private const string OfficialPhone = "+91 84118 82618";
+    private const string OfficialEmail = "contact@vijaypath.org";
+    private const string OfficialHours = "Monday – Saturday, 10:00 AM – 5:00 PM";
+
     private string LogoSrc => string.IsNullOrWhiteSpace(cfg?.LogoUrl) ? FallbackLogo : cfg!.LogoUrl!;
+    private string CompanyName => string.IsNullOrWhiteSpace(cfg?.CompanyName) ? "Vijaypath" : cfg!.CompanyName!;
+    private string CopyrightName => string.IsNullOrWhiteSpace(cfg?.CopyrightText) ? CompanyName : cfg!.CopyrightText!;
+
+    private string Address => string.IsNullOrWhiteSpace(cfg?.Address) ? OfficialAddress : cfg!.Address!;
+    private string Phone => string.IsNullOrWhiteSpace(cfg?.ContactPhone1) ? OfficialPhone : cfg!.ContactPhone1!;
+    private string Email => string.IsNullOrWhiteSpace(cfg?.ContactEmail) ? OfficialEmail : cfg!.ContactEmail!;
+    private string Hours => string.IsNullOrWhiteSpace(cfg?.BusinessHours) ? OfficialHours : cfg!.BusinessHours!;
+
+    // Social URLs stay whatever the site is configured with; "#" is the pre-existing
+    // placeholder and is kept when nothing is configured. No URLs are invented here.
+    private string InstagramUrl => string.IsNullOrWhiteSpace(cfg?.InstagramUrl) ? "#" : cfg!.InstagramUrl!;
+    private string YoutubeUrl => string.IsNullOrWhiteSpace(cfg?.YoutubeUrl) ? "#" : cfg!.YoutubeUrl!;
+    private const string LinkedInUrl = "#"; // no LinkedIn field exists in SiteSettings
+
+    // "#" is the pre-existing placeholder; only real URLs become new-tab external links.
+    private static bool IsExternal(string url) => url != "#" && !string.IsNullOrWhiteSpace(url);
+    private static string? ExtTarget(string url) => IsExternal(url) ? "_blank" : null;
+    private static string? ExtRel(string url) => IsExternal(url) ? "noopener noreferrer" : null;
+
+    // tel: needs the bare number — keep a leading +, drop spaces and separators.
+    private static string TelHref(string raw)
+    {
+        var digits = new System.Text.StringBuilder();
+        foreach (var ch in raw) { if (char.IsDigit(ch)) digits.Append(ch); }
+        return raw.TrimStart().StartsWith("+") ? "+" + digits : digits.ToString();
+    }
+
+    private static readonly MarkupString ArrowIcon = new(
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg>");
 
     protected override async Task OnInitializedAsync()
     {

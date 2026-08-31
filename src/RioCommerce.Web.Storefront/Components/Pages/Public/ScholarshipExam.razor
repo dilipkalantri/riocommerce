@@ -1,0 +1,195 @@
+@page "/scholarship-exam"
+@inject IJSRuntime JS
+
+@* The header has always linked to /scholarship-exam with nothing claiming the route, so it fell
+   through to the 404 component. Page-scoped styles behind an .se- prefix, matching the About
+   page convention and reusing the shared brand tokens. *@
+
+<SeoHead Seo="@seo" />
+
+<style>
+    .se { --se-ink: var(--vp-ink); --se-muted: var(--vp-muted); }
+
+    /* ── hero ── */
+    .se-hero { position: relative; overflow: hidden;
+        padding: clamp(46px, 6vw, 78px) clamp(20px, 4vw, 36px) clamp(44px, 5vw, 68px);
+        background: linear-gradient(180deg, #fbfaff 0%, #f4f0ff 55%, #fff6f3 100%); }
+    .se-hero::before, .se-hero::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
+    .se-hero::before { width: 380px; height: 380px; top: -150px; left: -110px;
+        background: radial-gradient(circle, rgba(93,56,222,.18), transparent 70%); }
+    .se-hero::after { width: 340px; height: 340px; bottom: -160px; right: -100px;
+        background: radial-gradient(circle, rgba(255,80,40,.16), transparent 70%); }
+    .se-hero__inner { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; text-align: center; }
+    .se-eyebrow { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 16px;
+        color: var(--orange); font-size: 12.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+    .se-eyebrow::before { content: ""; width: 26px; height: 2px; border-radius: 2px;
+        background: linear-gradient(90deg, var(--orange), var(--navy)); }
+    .se-hero h1 { font-size: clamp(29px, 4.4vw, 48px); font-weight: 600; line-height: 1.15;
+        color: var(--se-ink); margin: 0 0 18px; }
+    .se-hero__lead { color: var(--se-muted); font-size: clamp(15.5px, 1.5vw, 18px); line-height: 1.75;
+        margin: 0 auto; max-width: 72ch; }
+
+    /* meta chips */
+    .se-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;
+        margin: clamp(22px, 3vw, 30px) 0 0; }
+    .se-chip { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px;
+        background: #fff; color: var(--se-ink); font-size: 14px; font-weight: 600;
+        border: 1px solid rgba(93,56,222,.14);
+        box-shadow: 0 12px 26px -20px rgba(67,38,176,.7); }
+    .se-chip svg { width: 16px; height: 16px; color: var(--orange); }
+
+    .se-cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: clamp(24px, 3vw, 32px); }
+    .se-btn { display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 24px;
+        border-radius: 999px; font-size: 15px; font-weight: 600; text-decoration: none;
+        transition: transform .25s cubic-bezier(.22,.7,.24,1), box-shadow .25s; }
+    .se-btn--primary { color: #fff; background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+        box-shadow: 0 14px 28px -14px rgba(255,80,40,.95); }
+    .se-btn--ghost { color: var(--se-ink); background: #fff; border: 1px solid rgba(93,56,222,.18); }
+    .se-btn:hover { transform: translateY(-2px); }
+    .se-btn--primary:hover { box-shadow: 0 20px 36px -16px rgba(255,80,40,1); }
+
+    /* ── learn ── */
+    .se-learn { padding: clamp(52px, 6vw, 84px) clamp(20px, 4vw, 36px); background: #fff; }
+    .se-learn__inner { max-width: 1160px; margin: 0 auto; }
+    .se-learn__head { text-align: center; margin-bottom: clamp(30px, 4vw, 44px); }
+    .se-learn__head .se-eyebrow { justify-content: center; }
+    .se-h2 { font-size: clamp(26px, 3.4vw, 38px); font-weight: 600; line-height: 1.2;
+        color: var(--se-ink); margin: 0; }
+
+    .se-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    .se-card { position: relative; overflow: hidden; padding: clamp(26px, 3vw, 34px); border-radius: 22px;
+        background: linear-gradient(180deg, #fff, #faf8ff);
+        border: 1px solid rgba(93,56,222,.12);
+        transition: transform .3s cubic-bezier(.22,.7,.24,1), box-shadow .3s, border-color .3s; }
+    .se-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px;
+        background: linear-gradient(90deg, var(--orange), var(--navy));
+        transform: scaleX(0); transform-origin: left; transition: transform .38s cubic-bezier(.22,.7,.24,1); }
+    .se-card:hover { transform: translateY(-5px); border-color: rgba(93,56,222,.24);
+        box-shadow: 0 28px 54px -32px rgba(67,38,176,.6); }
+    .se-card:hover::before { transform: scaleX(1); }
+    .se-card__top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .se-card__icon { width: 50px; height: 50px; border-radius: 15px; display: grid; place-items: center;
+        color: #fff; background: linear-gradient(135deg, var(--navy-dark), var(--navy));
+        box-shadow: 0 14px 26px -14px rgba(67,38,176,.9);
+        transition: transform .3s cubic-bezier(.22,.7,.24,1); }
+    .se-card:nth-child(even) .se-card__icon { background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+        box-shadow: 0 14px 26px -14px rgba(255,80,40,.9); }
+    .se-card:hover .se-card__icon { transform: translateY(-2px) scale(1.05); }
+    .se-card__icon svg { width: 23px; height: 23px; }
+    .se-card__num { font-size: 30px; font-weight: 700; line-height: 1; color: rgba(93,56,222,.14); }
+    .se-card h3 { font-size: 20px; font-weight: 600; color: var(--se-ink); margin: 0 0 9px; }
+    .se-card p { color: var(--se-muted); font-size: 15.5px; line-height: 1.7; margin: 0; }
+
+    @@media (max-width: 820px) {
+        .se-grid { grid-template-columns: 1fr; }
+    }
+    @@media (max-width: 520px) {
+        .se-btn { width: 100%; justify-content: center; }
+        .se-card__num { font-size: 24px; }
+    }
+</style>
+
+<div class="se">
+
+    @* ── Hero ── *@
+    <section class="se-hero">
+        <div class="se-hero__inner">
+            <span class="se-eyebrow reveal">Scholarship Preparation</span>
+            <h1 class="reveal">Class 7 Scholarship Preparation Course</h1>
+            <p class="se-hero__lead reveal">
+                A structured learning course focused on scholarship exam preparation through guided
+                lessons, practice tests, academic support, and performance tracking.
+            </p>
+
+            <div class="se-chips reveal">
+                <span class="se-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Expert Teachers
+                </span>
+                <span class="se-chip">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                    Course
+                </span>
+            </div>
+
+            @* Both targets are live routes — deliberately not linking /courses, which currently 404s. *@
+            <div class="se-cta reveal">
+                <a href="/school/register" class="se-btn se-btn--primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10.5V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-6.5"/></svg>
+                    Register Your School
+                </a>
+                <a href="/contact" class="se-btn se-btn--ghost">Talk to Us</a>
+            </div>
+        </div>
+    </section>
+
+    @* ── What students will learn ── *@
+    <section class="se-learn">
+        <div class="se-learn__inner">
+            <div class="se-learn__head">
+                <span class="se-eyebrow reveal">Course Outcomes</span>
+                <h2 class="se-h2 reveal">What Students Will Learn</h2>
+            </div>
+
+            <div class="se-grid">
+                @{ var li = 0; }
+                @foreach (var o in outcomes)
+                {
+                    li++;
+                    <div class="se-card reveal">
+                        <div class="se-card__top">
+                            <div class="se-card__icon">
+                                @((MarkupString)o.Icon)
+                            </div>
+                            <div class="se-card__num">@li.ToString("00")</div>
+                        </div>
+                        <h3>@o.Title</h3>
+                        <p>@o.Body</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+</div>
+
+@code {
+    private readonly SeoMetadata seo = new()
+    {
+        Title = "Class 7 Scholarship Preparation Course — Vijaypath",
+        Description = "A structured scholarship exam preparation course with guided lessons, practice "
+                    + "tests, academic support and performance tracking.",
+        Keywords = "scholarship exam, class 7 scholarship, scholarship preparation, Vijaypath"
+    };
+
+    private record Outcome(string Title, string Body, string Icon);
+
+    private const string Svg = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">";
+
+    private readonly Outcome[] outcomes =
+    {
+        new("Stronger Understanding of Key Subjects",
+            "Build a solid foundation in Maths, Science, English and General Knowledge.",
+            Svg + "<path d=\"M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\"/><path d=\"M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\"/></svg>"),
+
+        new("Improved Problem-Solving Skills",
+            "Develop analytical thinking and reasoning abilities.",
+            Svg + "<path d=\"M9 18h6\"/><path d=\"M10 22h4\"/><path d=\"M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2Z\"/></svg>"),
+
+        new("Exam-Ready Confidence",
+            "Regular mock tests and practice build confidence for the real exam.",
+            Svg + "<path d=\"M12 2 4.5 6v6c0 4.4 3.2 8.4 7.5 9.5 4.3-1.1 7.5-5.1 7.5-9.5V6z\"/><path d=\"m9 12 2 2 4-4\"/></svg>"),
+
+        new("Guided Academic Support",
+            "Expert teachers provide step-by-step guidance throughout the course.",
+            Svg + "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/><path d=\"M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75\"/></svg>"),
+    };
+
+    // rc.homeFx drives the scroll-reveal. It fires on DOMContentLoaded for a fresh load, but
+    // Blazor's client-side navigation does not re-raise that, so arriving via the nav would
+    // otherwise leave every .reveal stuck at opacity 0. The helper is idempotent.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("rc.homeFx"); } catch { }
+    }
+}

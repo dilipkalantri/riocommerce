@@ -21,4 +21,5 @@ public class School : BaseEntity
     public District? District { get; set; }
     public State? State { get; set; }
     public ICollection<SchoolUser> SchoolUsers { get; set; } = new List<SchoolUser>();
+    public ICollection<SchoolStudent> SchoolStudents { get; set; } = new List<SchoolStudent>();
 }

@@ -100,9 +100,10 @@
         {
             <div class="sr-body">
                 <div class="sr-icon">✉️</div>
-                <h1>Verify Your Email</h1>
+                <h1>Verify Your Account</h1>
                 <p class="sr-sub">
-                    We've sent a 6-digit code to<br /><strong>@email</strong>.
+                    We've sent a 6-digit code to<br />
+                    <strong>@email</strong> and <strong>@phone</strong>.<br />
                     Enter it below to complete registration.
                 </p>
                 <div class="otp-boxes">
@@ -143,57 +144,8 @@
     </div>
 </div>
 
-<style>
-    .sr-wrap { min-height:70vh; display:flex; align-items:center; justify-content:center; padding:32px 16px; }
-    .sr-card { background:#fff; border:1px solid var(--gray-200); border-radius:18px; padding:32px; max-width:560px; width:100%; box-shadow:0 18px 48px -24px rgba(16,42,67,.35); }
-    .sr-body { text-align:center; }
-    .sr-icon { font-size:40px; margin-bottom:4px; }
-    .sr-body h1 { font-size:22px; font-weight:800; color:var(--navy); margin:8px 0 6px; }
-    .sr-sub { color:var(--gray-500); font-size:14px; line-height:1.6; margin-bottom:20px; }
-
-    .sr-steps { display:flex; align-items:center; justify-content:center; gap:0; margin-bottom:24px; }
-    .sr-step { display:flex; flex-direction:column; align-items:center; gap:4px; }
-    .sr-step__num { width:32px; height:32px; border-radius:50%; border:2px solid var(--gray-300); color:var(--gray-400);
-                    display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; }
-    .sr-step--active .sr-step__num { border-color:var(--orange); color:#fff; background:var(--orange); }
-    .sr-step--done .sr-step__num { border-color:var(--green,#16a34a); color:#fff; background:var(--green,#16a34a); }
-    .sr-step__label { font-size:11px; color:var(--gray-400); font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
-    .sr-step--active .sr-step__label { color:var(--navy); }
-    .sr-step__line { width:40px; height:2px; background:var(--gray-200); margin:0 6px; margin-bottom:18px; }
-    .sr-step__line--done { background:var(--green,#16a34a); }
-
-    .sr-field { text-align:left; margin-bottom:14px; }
-    .sr-field .form-input { width:100%; }
-    .sr-btn { width:100%; padding:13px; background:var(--orange); color:#fff; border:0; border-radius:12px;
-              font-size:15px; font-weight:700; cursor:pointer; transition:opacity .15s; margin-bottom:8px; }
-    .sr-btn:disabled { opacity:.5; cursor:not-allowed; }
-    .sr-btn--ghost { background:transparent; color:var(--gray-500); border:1px solid var(--gray-200); }
-    .sr-btn--ghost:hover { background:var(--gray-50,#f9fafb); }
-    .sr-actions { display:flex; flex-direction:column; gap:8px; }
-    .sr-back { display:inline-block; margin-top:12px; font-size:13px; color:var(--gray-500); text-decoration:none; }
-    .sr-alert--err { background:#FEF2F2; color:#991B1B; border:1px solid #FECACA; border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:16px; text-align:left; }
-
-    .sr-info { text-align:left; background:var(--gray-50,#f9fafb); border:1px solid var(--gray-200); border-radius:12px; padding:16px; margin-bottom:20px; }
-    .sr-info__row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--gray-100,#f3f4f6); font-size:14px; }
-    .sr-info__row:last-child { border-bottom:0; }
-    .sr-info__label { color:var(--gray-500); }
-    .sr-info__value { color:var(--navy); text-align:right; }
-
-    .otp-boxes { display:flex; gap:10px; justify-content:center; margin-bottom:22px; }
-    .otp-box { width:48px; height:56px; text-align:center; font-size:24px; font-weight:700; color:var(--navy);
-               border:2px solid var(--gray-200); border-radius:12px; outline:none; transition:border-color .15s; }
-    .otp-box:focus { border-color:var(--orange); }
-    .sr-resend { margin-top:12px; font-size:13.5px; color:var(--gray-500); }
-    .sr-link { background:none; border:0; color:var(--orange); font-weight:700; cursor:pointer; font-size:13.5px; }
-    .sr-link:disabled { opacity:.5; cursor:not-allowed; }
-
-    @@media (max-width:480px) {
-        .sr-card { padding:20px 16px; }
-        .sr-step__label { font-size:10px; }
-        .sr-step__line { width:24px; }
-        .otp-box { width:42px; height:50px; font-size:20px; }
-    }
-</style>
+@* Wizard styling (.sr-*) now lives in wwwroot/css/wizard.css so /student/register
+   can share the exact same design system rather than duplicating it. *@
 
 @code {
     private int step = 1;

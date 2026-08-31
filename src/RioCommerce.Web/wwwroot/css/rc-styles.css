@@ -35,8 +35,8 @@
   --info: #3b82f6;
 
   /* Typography */
-  --font-display: "Jost", sans-serif;
-  --font-body: "Jost", sans-serif;
+  --font-display: 'Poppins','Noto Sans Devanagari',system-ui,-apple-system,sans-serif;
+  --font-body: 'Poppins','Noto Sans Devanagari',system-ui,-apple-system,sans-serif;
 
   /* Spacing */
   --space-xs: 4px;

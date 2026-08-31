@@ -15,6 +15,12 @@
 <PageTitle>@(IsNew ? "Add" : "Edit") Product — RioCommerce Admin</PageTitle>
 
 <style>
+    .pe-purchase{margin-top:14px;padding:14px 16px;border:1px solid var(--gray-200);
+        border-radius:12px;background:var(--gray-50,#fafafa);max-width:640px}
+    .pe-purchase .pe-chk{font-weight:600}
+    .pe-purchase__hint{margin:6px 0 0 26px;font-size:12.5px;line-height:1.55;color:var(--gray-500)}
+    @@media (max-width:640px){ .pe-purchase{max-width:none} .pe-purchase__hint{margin-left:0} }
+
     .pe-bar{position:sticky;top:52px;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border:1px solid var(--gray-200);border-radius:14px;padding:10px 14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(15,23,42,.05),0 10px 24px -16px rgba(15,23,42,.35)}
     .pe-bar__title{min-width:0;display:flex;flex-direction:column;gap:2px}
     .pe-bar__title h1{font-size:clamp(15px,1.8vw,19px);font-weight:800;color:var(--navy);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:48vw}
@@ -318,6 +324,20 @@ else
                 <label class="pe-chk"><input type="checkbox" @bind="model.IsFeatured" /> Show on home page</label>
                 <label class="pe-chk"><input type="checkbox" @bind="model.MarkAsNew" /> Mark as new</label>
                 <label class="pe-chk"><input type="checkbox" @bind="model.AllowReviews" /> Allow customer reviews</label>
+            </div>
+
+            @* Purchase availability is its own thing, not a publishing flag — a product can stay
+               published, searchable and on the homepage while being unbuyable — so it gets its own
+               labelled block rather than a fifth checkbox in the row above. *@
+            <div class="pe-purchase">
+                <label class="pe-chk">
+                    <input type="checkbox" @bind="model.AllowCustomerPurchase" /> Allow Customer Purchase
+                </label>
+                <p class="pe-purchase__hint">
+                    Allow students/customers to purchase this product through the online store using
+                    Add To Cart or Buy Now. When off, the product stays published and browsable —
+                    only the purchase buttons are withdrawn.
+                </p>
             </div>
             @if (model.IsFeatured)
             {

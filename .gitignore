@@ -362,3 +362,10 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /docs
+
+# DTOs/Logs holds SOURCE (AppLogItem / AppLogFilter), not log output. The
+# [Ll]ogs/ rule above was written for build and runtime log directories and
+# was silently excluding it, so the solution would not compile from a fresh
+# clone. The directory must be re-included before its contents.
+!src/RioCommerce.Core/DTOs/Logs/
+!src/RioCommerce.Core/DTOs/Logs/**

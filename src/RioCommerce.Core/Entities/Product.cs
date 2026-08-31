@@ -59,6 +59,16 @@ public class Product : BaseEntity
     public DateTime? AvailableEndUtc { get; set; }
     public decimal ProductCost { get; set; }           // cost basis (for margin reporting)
     public bool AllowReviews { get; set; } = true;
+
+    /// <summary>
+    /// Whether customers may buy this product through the storefront (Add To Cart / Buy Now).
+    ///
+    /// Deliberately SEPARATE from <see cref="Status"/> and <see cref="IsFeatured"/>: a product can
+    /// stay published, searchable and on the homepage while being unpurchasable. Defaults to true
+    /// so nothing that exists today changes behaviour — the column is backfilled to true by
+    /// 0044_product_allow_customer_purchase.sql.
+    /// </summary>
+    public bool AllowCustomerPurchase { get; set; } = true;
     public string? SeoTitle { get; set; }
     public string? SeoDescription { get; set; }
     // Dedicated landscape image used ONLY by homepage featured/trending and category listing cards.

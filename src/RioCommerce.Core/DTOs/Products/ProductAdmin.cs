@@ -51,6 +51,8 @@ public class ProductEditModel
     public DateTime? AvailableEndUtc { get; set; }
     public decimal ProductCost { get; set; }
     public bool AllowReviews { get; set; } = true;
+    /// <summary>Offer Add To Cart / Buy Now on the storefront. Independent of Published.</summary>
+    public bool AllowCustomerPurchase { get; set; } = true;
     // ── Special Price (time-limited promotional price) ──
     public decimal? SpecialPrice { get; set; }
     public DateTime? SpecialPriceStartDateUtc { get; set; }

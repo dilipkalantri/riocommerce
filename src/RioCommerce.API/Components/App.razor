@@ -17,6 +17,10 @@
     @* Header fit + premium polish. Must load after theme.css / vijaypath.css,
        which both override header rules from home-premium.css. *@
     <link rel="stylesheet" href="_content/RioCommerce.Web/css/header-premium.css" />
+    <link rel="stylesheet" href="_content/RioCommerce.Web/css/wizard.css" />
+    @* Premium footer layer. Must load after theme.css / vijaypath.css / home-premium.css,
+       all of which style .footer, and before responsive-normalize.css. *@
+    <link rel="stylesheet" href="_content/RioCommerce.Web/css/footer-premium.css" />
     @* responsive-normalize.css must load LAST so its breakpoint defaults override
        any page-specific styles that aren't yet responsive. *@
     <link rel="stylesheet" href="_content/RioCommerce.Web/css/responsive-normalize.css" />
@@ -25,7 +29,7 @@
        the weight to this URL instead. *@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet" />
     @if (analytics.Length > 0) { @((MarkupString)analytics) }
     @if (themeOverride.Length > 0) { @((MarkupString)themeOverride) }

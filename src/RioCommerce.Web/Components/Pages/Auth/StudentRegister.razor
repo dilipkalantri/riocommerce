@@ -1,0 +1,460 @@
+@page "/student/register"
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IGeographyService Geo
+@using RioCommerce.Core.DTOs.Admin
+
+@* Individual student registration, as a 4-step wizard mirroring /school/register.
+   Replaces the long single-column form on /login?tab=register.
+
+   REUSE, NOT DUPLICATION — nothing about authentication is reimplemented here:
+     • Steps 1–3 collect and validate input in component state.
+     • "Create Account" POSTs to /api/student/register, which runs the server-side
+       duplicate check (ICustomerDuplicateService), creates a PENDING account
+       (IsActive=false), grants the "student" role and sends ONE OTP to email + mobile
+       via IVerificationService.SendBothAsync.
+     • Step 4 then opens IN PAGE and calls the EXISTING /api/account/verify-otp and
+       /api/account/resend-otp endpoints, finishing through the existing sign-in bridge.
+   No second auth path, no second duplicate checker, no second OTP infrastructure.
+
+   Styling comes from wwwroot/css/wizard.css — the same .sr-* system /school/register uses. *@
+
+<PageTitle>Student Registration — Vijaypath</PageTitle>
+
+<div class="sr-wrap">
+    <div class="sr-card">
+
+        <div class="sr-steps">
+            <div class="sr-step @(step >= 1 ? "sr-step--active" : "") @(step > 1 ? "sr-step--done" : "")"><span class="sr-step__num">1</span><span class="sr-step__label">Student</span></div>
+            <div class="sr-step__line @(step > 1 ? "sr-step__line--done" : "")"></div>
+            <div class="sr-step @(step >= 2 ? "sr-step--active" : "") @(step > 2 ? "sr-step--done" : "")"><span class="sr-step__num">2</span><span class="sr-step__label">Education</span></div>
+            <div class="sr-step__line @(step > 2 ? "sr-step__line--done" : "")"></div>
+            <div class="sr-step @(step >= 3 ? "sr-step--active" : "") @(step > 3 ? "sr-step--done" : "")"><span class="sr-step__num">3</span><span class="sr-step__label">Account</span></div>
+            <div class="sr-step__line @(step > 3 ? "sr-step__line--done" : "")"></div>
+            <div class="sr-step @(step >= 4 ? "sr-step--active" : "")"><span class="sr-step__num">4</span><span class="sr-step__label">Verify</span></div>
+        </div>
+
+        @if (error != null) { <div class="sr-alert sr-alert--err">@error</div> }
+
+        @* ── Step 1: Student details ── *@
+        @if (step == 1)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">🎓</div>
+                <h1>Student Registration</h1>
+                <p class="sr-sub">Create your Vijaypath student account and start your journey.</p>
+
+                <div class="sr-grid">
+                    <div class="sr-field">
+                        <label class="sr-field__label">Full Name <span class="req">*</span></label>
+                        <input class="form-input" @bind="fullName" placeholder="Your full name" />
+                    </div>
+                    <div class="sr-field">
+                        <label class="sr-field__label">Date of Birth <span class="req">*</span></label>
+                        <input class="form-input" type="date" @bind="dob" />
+                    </div>
+                    <div class="sr-field">
+                        <label class="sr-field__label">Gender <span class="req">*</span></label>
+                        <select class="form-input" @bind="gender">
+                            <option value="">Select…</option>
+                            <option>Male</option><option>Female</option><option>Other</option>
+                        </select>
+                    </div>
+                    <div class="sr-field">
+                        <label class="sr-field__label">Mobile Number <span class="req">*</span></label>
+                        <input class="form-input" @bind="phone" placeholder="10-digit mobile number" />
+                    </div>
+                </div>
+                <div class="sr-grid sr-grid--1" style="margin-top:12px">
+                    <div class="sr-field">
+                        <label class="sr-field__label">Email <span class="req">*</span></label>
+                        <input class="form-input" type="email" @bind="email" placeholder="your@email.com" />
+                    </div>
+                </div>
+
+                <button class="sr-btn" style="margin-top:18px" @onclick="() => Next(1)">Continue</button>
+                <p class="sr-alt">Already registered? <a href="/login?tab=login">Login here</a></p>
+            </div>
+        }
+
+        @* ── Step 2: Education ── *@
+        @if (step == 2)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">📚</div>
+                <h1>Education Details</h1>
+                <p class="sr-sub">Tell us where you study so we can tailor your preparation.</p>
+
+                <div class="sr-grid">
+                    @* State and District come from the existing Geography master (States /
+                       Districts tables, via IGeographyService) - no second hard-coded list. *@
+                    <div class="sr-field">
+                        <label class="sr-field__label">State <span class="req">*</span></label>
+                        <select class="form-input" value="@stateId"
+                                @onchange="OnStateChanged">
+                            <option value="">Select…</option>
+                            @foreach (var st in states)
+                            {
+                                <option value="@st.Id">@st.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="sr-field">
+                        <label class="sr-field__label">District <span class="req">*</span></label>
+                        <select class="form-input" @bind="districtId" disabled="@(string.IsNullOrEmpty(stateId))">
+                            <option value="">@(string.IsNullOrEmpty(stateId) ? "Select a state first" : "Select District")</option>
+                            @foreach (var d in districts)
+                            {
+                                <option value="@d.Id">@d.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="sr-field">
+                        <label class="sr-field__label">Class / Standard <span class="req">*</span></label>
+                        <select class="form-input" @bind="studentClass">
+                            <option value="">Select Class</option>
+                            @for (var c = 1; c <= 12; c++) { <option>@c</option> }
+                        </select>
+                    </div>
+                    <div class="sr-field">
+                        <label class="sr-field__label">Board <span class="req">*</span></label>
+                        <select class="form-input" @bind="board">
+                            <option value="">Select Board</option>
+                            <option>CBSE</option><option>ICSE</option>
+                            <option>State Board</option><option>Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="sr-grid sr-grid--1" style="margin-top:12px">
+                    <div class="sr-field">
+                        <label class="sr-field__label">School Name <span class="req">*</span></label>
+                        <input class="form-input" @bind="schoolName" placeholder="Enter your school name" />
+                    </div>
+                </div>
+
+                <div class="sr-actions" style="margin-top:18px">
+                    <button class="sr-btn sr-btn--ghost" @onclick="() => step = 1">Back</button>
+                    <button class="sr-btn" @onclick="() => Next(2)">Continue</button>
+                </div>
+            </div>
+        }
+
+        @* ── Step 3: Account → posts to the existing endpoint ── *@
+        @if (step == 3)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">🔐</div>
+                <h1>Create Your Account</h1>
+                <p class="sr-sub">Set a password. We'll send a verification code to your email and mobile.</p>
+
+                @* Everything collected in steps 1–2 rides along as hidden inputs, so the existing
+                   /account/register endpoint receives exactly the form it already expects. *@
+                <div class="sr-grid sr-grid--1">
+                    <div class="sr-field">
+                        <label class="sr-field__label">Mobile / Email</label>
+                        <input class="form-input" value="@email" readonly />
+                    </div>
+                    <div class="sr-field">
+                        <label class="sr-field__label">Password <span class="req">*</span></label>
+                        <input class="form-input" type="password" @bind="password" placeholder="Min 6 characters" />
+                    </div>
+                    <div class="sr-field">
+                        <label class="sr-field__label">Confirm Password <span class="req">*</span></label>
+                        <input class="form-input" type="password" @bind="confirm" placeholder="Re-enter password" />
+                    </div>
+                </div>
+
+                @* A duplicate is a dead end without a way out, so offer the login page. *@
+                @if (duplicate)
+                {
+                    <div style="margin-top:12px">
+                        <a class="sr-btn" style="display:block;text-align:center;text-decoration:none"
+                           href="/login?tab=login">Login Instead</a>
+                    </div>
+                }
+
+                <div class="sr-actions" style="margin-top:18px">
+                    <button class="sr-btn sr-btn--ghost" @onclick="() => step = 2" disabled="@busy">Back</button>
+                    <button class="sr-btn" @onclick="CreateAccount" disabled="@busy">
+                        @(busy ? "Creating…" : "Create Account")
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* ── Step 4: Verify (in page) ── *@
+        @if (step == 4)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">✉️</div>
+                <h1>Verify Your Account</h1>
+                <p class="sr-sub">
+                    We've sent a 6-digit verification code to your registered email and mobile number.<br />
+                    <strong>@maskedEmail</strong> &nbsp;·&nbsp; <strong>@maskedPhone</strong>
+                </p>
+
+                <div class="otp-boxes">
+                    @for (var i = 0; i < 6; i++)
+                    {
+                        var idx = i;
+                        <input id="sd-otp-@idx" class="otp-box" type="text" inputmode="numeric" maxlength="1"
+                               autocomplete="off" value="@digits[idx]"
+                               @oninput="(e) => OnOtpInput(idx, e)" @onkeydown="(e) => OnOtpKeyDown(idx, e)" />
+                    }
+                </div>
+
+                <button class="sr-btn" disabled="@(busy || !OtpComplete)" @onclick="VerifyOtp">
+                    @(busy ? "Verifying…" : "Verify & Complete Registration")
+                </button>
+
+                <p class="sr-alt" style="margin-top:14px">
+                    Didn't receive the code?
+                    @if (cooldown > 0)
+                    {
+                        <span>Resend OTP in @cooldown seconds</span>
+                    }
+                    else
+                    {
+                        <button class="sr-link" disabled="@busy" @onclick="ResendOtp">Resend OTP</button>
+                    }
+                </p>
+            </div>
+        }
+
+    </div>
+</div>
+
+@code {
+    private int step = 1;
+    private string? error;
+
+    // Step 1
+    private string fullName = "", gender = "", phone = "", email = "";
+    private DateTime? dob;
+    // Step 2 — the wizard keeps the selected IDs, and resolves the NAMES on submit because
+    // /api/student/register (and the users table) store State/District as plain text.
+    private string schoolName = "", studentClass = "", board = "";
+    private string stateId = "", districtId = "";
+    private List<StateItem> states = new();
+    private List<DistrictItem> districts = new();
+
+    private string state => states.FirstOrDefault(s => s.Id.ToString() == stateId)?.Name ?? "";
+    private string district => districts.FirstOrDefault(d => d.Id.ToString() == districtId)?.Name ?? "";
+    // Step 3
+    private string password = "", confirm = "";
+    private bool busy, duplicate;
+
+    // Step 4
+    private readonly string[] digits = { "", "", "", "", "", "" };
+    private string maskedEmail = "", maskedPhone = "";
+    private int cooldown;
+    private System.Threading.Timer? cooldownTimer;
+
+    private bool OtpComplete => digits.All(d => d.Length == 1 && char.IsDigit(d[0]));
+    private string Code => string.Concat(digits);
+
+    protected override async Task OnInitializedAsync()
+    {
+        states = await Geo.ListStatesAsync();
+
+        // Default to Maharashtra when the master contains it, then preload its districts so the
+        // dependent dropdown is usable immediately. Pune is NOT preselected - it is just one of
+        // the options the user picks from.
+        var mh = states.FirstOrDefault(s =>
+            s.Name.Equals("Maharashtra", StringComparison.OrdinalIgnoreCase) ||
+            s.Code.Equals("MH", StringComparison.OrdinalIgnoreCase));
+        if (mh is not null)
+        {
+            stateId = mh.Id.ToString();
+            districts = await Geo.ListDistrictsAsync(mh.Id);
+        }
+    }
+
+    /// <summary>Changing the state ALWAYS clears the district, so a stale selection from the
+    /// previous state can never be submitted.</summary>
+    private async Task OnStateChanged(ChangeEventArgs e)
+    {
+        stateId = e.Value?.ToString() ?? "";
+        districtId = "";
+        districts = Guid.TryParse(stateId, out var sid)
+            ? await Geo.ListDistrictsAsync(sid)
+            : new();
+    }
+
+    /// <summary>Per-step validation. A step cannot be left until it is valid, and moving
+    /// Back/Next never clears what was typed — all state lives on the component.</summary>
+    private void Next(int from)
+    {
+        error = null;
+
+        if (from == 1)
+        {
+            if (string.IsNullOrWhiteSpace(fullName)) { error = "Please enter your full name."; return; }
+            if (dob is null) { error = "Please select your date of birth."; return; }
+            if (dob > DateTime.Today.AddYears(-3)) { error = "Please check the date of birth."; return; }
+            if (string.IsNullOrWhiteSpace(gender)) { error = "Please select your gender."; return; }
+            var digits = new string(phone.Where(char.IsDigit).ToArray());
+            if (digits.Length != 10) { error = "Enter a valid 10-digit mobile number."; return; }
+            if (string.IsNullOrWhiteSpace(email) || !email.Contains('@') || !email.Contains('.'))
+            { error = "Enter a valid email address."; return; }
+            step = 2; return;
+        }
+
+        if (from == 2)
+        {
+            // Every education field is mandatory - there is no "independent student" path.
+            if (string.IsNullOrEmpty(stateId)) { error = "Please select your state."; return; }
+            if (string.IsNullOrEmpty(districtId)) { error = "Please select your district."; return; }
+            if (string.IsNullOrWhiteSpace(studentClass)) { error = "Please select your class / standard."; return; }
+            if (string.IsNullOrWhiteSpace(board)) { error = "Please select your board."; return; }
+            // Whitespace-only is not a school name.
+            if (string.IsNullOrWhiteSpace(schoolName)) { error = "Please enter your school name."; return; }
+            schoolName = schoolName.Trim();
+            step = 3; return;
+        }
+    }
+
+    /// <summary>
+    /// Step 3 → step 4. Calls /api/student/register, which does the authoritative server-side
+    /// duplicate check, creates the PENDING account and sends the OTP. Step 4 opens ONLY on a
+    /// successful response, so a failed send never leaves the user in a fake verified state.
+    /// </summary>
+    private async Task CreateAccount()
+    {
+        error = null; duplicate = false;
+
+        if (password.Length < 6) { error = "Password must be at least 6 characters."; return; }
+        if (password != confirm) { error = "Passwords do not match."; return; }
+
+        busy = true;
+        try
+        {
+            var resp = await JS.InvokeAsync<ApiResult>("rc.postForm", "/api/student/register",
+                new Dictionary<string, string>
+                {
+                    ["fullName"] = fullName,
+                    ["email"] = email,
+                    ["phone"] = phone,
+                    ["password"] = password,
+                    ["dob"] = dob?.ToString("yyyy-MM-dd") ?? "",
+                    ["gender"] = gender,
+                    ["state"] = state,
+                    ["district"] = district,
+                    ["schoolName"] = schoolName,
+                    ["studentClass"] = studentClass,
+                    ["board"] = board,
+                });
+
+            if (resp is null || !resp.success)
+            {
+                error = resp?.error ?? "Registration failed. Please try again.";
+                duplicate = resp?.duplicate ?? false;
+                return;   // stays on step 3
+            }
+
+            maskedEmail = resp.maskedEmail ?? email;
+            maskedPhone = resp.maskedPhone ?? phone;
+            step = 4;
+            StartCooldown();
+        }
+        catch
+        {
+            error = "Registration failed. Please try again.";
+        }
+        finally { busy = false; }
+    }
+
+    private async Task VerifyOtp()
+    {
+        if (!OtpComplete) return;
+        error = null; busy = true;
+        try
+        {
+            // The EXISTING signup verifier: consumes the code, activates the account, and hands
+            // back a one-time token for the existing sign-in bridge.
+            var resp = await JS.InvokeAsync<ApiResult>("rc.postForm", "/api/account/verify-otp",
+                new Dictionary<string, string> { ["email"] = email, ["code"] = Code });
+
+            if (resp is not null && resp.success && !string.IsNullOrEmpty(resp.token))
+            {
+                Nav.NavigateTo($"/account/complete-signin?token={Uri.EscapeDataString(resp.token!)}", forceLoad: true);
+                return;
+            }
+            error = resp?.error ?? "Invalid verification code. Please try again.";
+            foreach (var i in Enumerable.Range(0, 6)) digits[i] = "";
+        }
+        catch { error = "Verification failed. Please try again."; }
+        finally { busy = false; }
+    }
+
+    private async Task ResendOtp()
+    {
+        error = null; busy = true;
+        try
+        {
+            var resp = await JS.InvokeAsync<ApiResult>("rc.postForm", "/api/account/resend-otp",
+                new Dictionary<string, string> { ["email"] = email });
+            if (resp is null || !resp.success)
+                error = resp?.error ?? "We couldn't send the verification code. Please try again.";
+            else
+                StartCooldown();
+        }
+        catch { error = "We couldn't send the verification code. Please try again."; }
+        finally { busy = false; }
+    }
+
+    /// <summary>45s resend lock-out. The service applies its own send throttle server-side;
+    /// this only stops the button being hammered.</summary>
+    private void StartCooldown()
+    {
+        cooldown = 45;
+        cooldownTimer?.Dispose();
+        cooldownTimer = new System.Threading.Timer(_ =>
+        {
+            if (cooldown > 0) cooldown--;
+            InvokeAsync(StateHasChanged);
+        }, null, 1000, 1000);
+    }
+
+    private void OnOtpInput(int idx, ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var clean = new string(raw.Where(char.IsDigit).ToArray());
+        if (clean.Length > 1)
+        {
+            // Pasting the whole code fills every box.
+            for (var i = 0; i < 6 && i < clean.Length; i++) digits[i] = clean[i].ToString();
+            _ = Focus(Math.Min(clean.Length, 5));
+            return;
+        }
+        digits[idx] = clean;
+        if (digits[idx].Length == 1 && idx < 5) _ = Focus(idx + 1);
+    }
+
+    private async Task OnOtpKeyDown(int idx, KeyboardEventArgs e)
+    {
+        if (e.Key == "Backspace" && digits[idx].Length == 0 && idx > 0)
+        {
+            digits[idx - 1] = "";
+            await Focus(idx - 1);
+        }
+    }
+
+    private async Task Focus(int idx)
+    {
+        try { await JS.InvokeVoidAsync("rc.focusEl", $"sd-otp-{idx}"); } catch { }
+    }
+
+    /// <summary>Shape of every rc.postForm reply used here. `token` is the sign-in bridge
+    /// handoff; the OTP itself is never returned by any of these endpoints.</summary>
+    private class ApiResult
+    {
+        public bool success { get; set; }
+        public string? error { get; set; }
+        public string? token { get; set; }
+        public bool duplicate { get; set; }
+        public string? maskedEmail { get; set; }
+        public string? maskedPhone { get; set; }
+    }
+}

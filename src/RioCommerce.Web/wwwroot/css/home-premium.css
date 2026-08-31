@@ -168,6 +168,18 @@
   background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);transition:transform .25s var(--p-ease),background .25s,box-shadow .25s}
 .rc-app .contact-strip__social a:hover{transform:translateY(-2px);background:linear-gradient(135deg,var(--p-orange),#5AD9EF);border-color:transparent;box-shadow:0 8px 18px -8px rgba(10,199,229,.85)}
 .rc-app .contact-strip__social svg{width:15px;height:15px}
+/* ── contact items: icon + value, phone | email ────────────────────────────
+   Icons live INSIDE each anchor so every item carries its own, and the whole
+   thing (icon + text) is one tap target for tel:/mailto:. */
+.rc-app .contact-strip__phones{display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0}
+.rc-app .contact-strip__item{display:inline-flex;align-items:center;gap:7px;
+  color:rgba(255,255,255,.86);font-weight:500;text-decoration:none;white-space:nowrap;
+  transition:color .2s}
+.rc-app .contact-strip__item svg{width:14px;height:14px;flex:none;color:var(--p-orange2)}
+.rc-app .contact-strip__item:hover{color:#fff}
+.rc-app .contact-strip__item:hover svg{color:#fff}
+.rc-app .contact-strip__item:focus-visible{outline:2px solid var(--p-orange2);outline-offset:3px;border-radius:4px}
+.rc-app .contact-strip__sep{width:1px;height:14px;background:rgba(255,255,255,.28);flex:none}
 
 /* glass header */
 /* position is handled by the fixed .site-topbar wrapper (app.css); the header
@@ -310,10 +322,39 @@
 .rc-app .drawer{width:min(320px,86vw);background:linear-gradient(180deg,#0e2647,#081726);color:#fff;border-left:1px solid rgba(255,255,255,.08);
   box-shadow:-26px 0 70px -24px rgba(0,0,0,.7);animation:p-drawerIn .38s var(--p-ease)}
 @keyframes p-drawerIn{from{transform:translateX(105%)}to{transform:none}}
-.rc-app .drawer__header{border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:16px;margin-bottom:14px}
-.rc-app .drawer__close{width:40px;height:40px;border-radius:11px;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
-  display:flex;align-items:center;justify-content:center;font-size:17px;transition:background .2s,transform .3s var(--p-ease)}
-.rc-app .drawer__close:hover{background:linear-gradient(135deg,var(--p-orange),#5AD9EF);border-color:transparent;transform:rotate(90deg)}
+/* White logo bar. The wordmark asset is dark ink (#1E272F) + orange, drawn for light
+   backgrounds, so on the navy drawer it was almost unreadable. Giving the header its
+   own white band is what makes the logo legible without touching the asset or
+   recolouring it. Negative margins cancel the drawer's 20px padding so the band spans
+   the full drawer width and reads as a deliberate header, not a floating white box. */
+.rc-app .drawer__header{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin:-20px -20px 16px; padding:14px 16px;
+  background:#fff;
+  border-bottom:1px solid rgba(11,31,58,.10);
+  box-shadow:0 6px 18px -12px rgba(8,18,32,.5);
+}
+/* Both dimensions auto with max-* caps: the browser then applies the replaced-element
+   constraint algorithm and preserves the 253x31 ratio whichever cap binds. A fixed
+   height plus a max-width squashes it instead (231x30 against a natural 253x31). */
+.rc-app .drawer__header .drawer__logo{
+  width:auto; height:auto;
+  max-height:30px; max-width:calc(100% - 56px);
+  display:block; flex:0 1 auto;
+}
+/* Dark-on-white to match the band it now sits in; 40px keeps the tap target honest. */
+.rc-app .drawer__close{
+  flex:0 0 auto;
+  width:40px; height:40px; border-radius:11px;
+  color:var(--p-navy,#0e2647);
+  background:rgba(11,31,58,.06);
+  border:1px solid rgba(11,31,58,.12);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:background .2s,color .2s,border-color .2s,transform .3s var(--p-ease);
+}
+.rc-app .drawer__close svg{width:19px;height:19px;display:block}
+.rc-app .drawer__close:hover{background:var(--p-orange);color:#fff;border-color:transparent;transform:rotate(90deg)}
+.rc-app .drawer__close:focus-visible{outline:2px solid var(--p-orange);outline-offset:2px}
 .rc-app .drawer__nav{gap:3px}
 .rc-app .drawer__nav > a{position:relative;color:rgba(255,255,255,.84);font-weight:600;border-radius:12px;padding:13px 16px;
   opacity:0;transform:translateX(22px);animation:p-drawerItem .45s var(--p-ease) forwards;transition:background .2s,color .2s,padding-left .2s}
@@ -968,8 +1009,6 @@
 .rc-app .footer__col h4{position:relative;padding-bottom:8px}
 .rc-app .footer__col a{position:relative;width:fit-content;transition:color .2s,transform .2s,padding-left .2s}
 .rc-app .footer__col a:hover{color:#fff;transform:translateX(3px)}
-.rc-app .footer__phones a,.rc-app .footer__col a[href^="mailto"]{display:inline-flex;align-items:center;gap:7px}
-.rc-app .footer__phones svg,.rc-app .footer__col a[href^="mailto"] svg{width:14px;height:14px;color:var(--p-orange2)}
 .rc-app .footer__bottom a{color:var(--p-orange2)}
 
 /* ============================================================
@@ -1670,26 +1709,64 @@
   .rc-app .header__hamburger.is-open span:nth-child(1),
   .rc-app .header__hamburger.is-open span:nth-child(3){top:21px}
 
-  /* 2 ── logo */
-  .rc-app .header__logo{order:2;flex:0 0 auto;padding:0}
-  .rc-app .header__logo img{height:36px}      /* spec: 34–40px */
+  /* 2 ── logo.
+     Needs 3 classes: vijaypath.css sets .rc-app .header__logo img{height:28px} with no
+     media query and loads AFTER this file, so a 2-class rule ties and loses on order.
+
+     Sized by max-* with BOTH dimensions auto, so the browser's replaced-element
+     constraint algorithm preserves the 253x31 ratio whichever cap binds. max-width is
+     the one that actually binds (205 / 8.16 = 25px tall). That is deliberate: it keeps
+     one identical logo across the whole 320-767px range and still fits beside the 44px
+     hamburger at 320px, where the content box is only 288px wide. */
+  /* 2 ── logo.
+     ROOT CAUSE of the clipped "H": .header__logo carries overflow:hidden +
+     border-radius:12px (for the desktop hover shine), and this block used to set
+     padding:0. The wordmark's geometry runs edge to edge in its own viewBox — the
+     SVG spans x 0->252.95 of a "0 0 253" box, so there is no built-in margin — which
+     put the final glyph directly under the 12px corner arcs. The corners then sheared
+     the H's stem and serif. It was never a width problem: the image box measured 0px
+     of overflow, because the crop happened INSIDE the box.
+
+     Fixed by removing the clip on mobile rather than shrinking the logo: the shine is
+     a hover affordance with no meaning on touch, so the radius, the overflow clip and
+     the ::after overlay all come off here, and a little padding keeps the artwork off
+     the edges.
+
+     Sizing is now constraint-based instead of a magic pixel cap: the anchor is a
+     flex item that takes the space left over from the hamburger (min-width:0 lets it
+     shrink below the image's intrinsic width), and the image is capped at 100% of
+     that. Both dimensions stay auto so the browser's replaced-element constraint
+     algorithm preserves the 253x31 ratio whichever cap binds. The logo therefore
+     cannot exceed the space available at ANY width, including ones not tested. */
+  .rc-app .header__logo{
+    order:2;
+    /* Shrinks when space is tight (min-width:0 lets it go below the image's intrinsic
+       width) but never grows, so the link stays the size of the logo instead of
+       stretching the whole header width into one big tap target. */
+    flex:0 1 auto; min-width:0;
+    padding:2px 4px;
+    overflow:visible; border-radius:0;
+    box-shadow:none;
+  }
+  .rc-app .header__logo::after{display:none}      /* hover shine: desktop only */
+  .rc-app .header .header__logo img{
+    width:auto; height:auto;
+    max-width:100%; max-height:34px;
+    display:block;
+  }
 
   /* nav stays hidden on mobile (it lives in the drawer) */
   .rc-app .header__nav{display:none}
 
-  /* 3+4 ── actions row: search grows, cart pinned right.
-     app.css hides .header__actions entirely below 768px; re-shown here. */
-  .rc-app .header__actions{
-    order:3;
-    display:flex; align-items:center; gap:8px;
-    flex:1 1 auto; min-width:0; margin-left:0;
-  }
-
-  /* everything except search + cart belongs in the drawer on mobile */
-  .rc-app .header__actions .header__chip,
-  .rc-app .header__actions .header__divider,
-  .rc-app .header__actions .header__profile,
-  .rc-app .header__actions .header__login{display:none}
+  /* 3+4 ── actions rail: not shown on mobile.
+     Everything it holds now lives in the drawer — chip, divider, profile and login
+     were already hidden here, the cart was removed, and search follows. With no
+     visible child left, the rail is hidden as a whole rather than kept as an empty
+     flex:1 column, so no gap or reserved slot survives where they used to sit.
+     app.css already hides it below 768px; this simply stops re-showing it.
+     Search itself is untouched: /search still works, the drawer still links it,
+     and desktop/tablet keep the header search box. */
+  .rc-app .header__actions{display:none}
 
   /* 3 ── search: always expanded, icon on the left */
   .rc-app .header__search{
@@ -1760,44 +1837,22 @@
   .rc-app .header__search-clear:active{background:var(--p-orange);color:#fff}
   .rc-app .header__search-clear svg{width:13px;height:13px}
 
-  /* 4 ── cart (far right) */
-  .rc-app .header__actions .header__cart{
-    order:9; flex:0 0 auto;
-    display:inline-flex; align-items:center; justify-content:center;
-    width:46px; height:46px; border-radius:14px;
-    background:#fff; border:1px solid rgba(11,31,58,.08);
-    color:var(--p-navy);
-    box-shadow:0 6px 16px -10px rgba(11,31,58,.45), 0 1px 2px rgba(11,31,58,.05);
-    transition:transform .18s var(--p-ease), box-shadow .18s;
-  }
-  .rc-app .header__actions .header__cart:active{transform:scale(.95)}
-  .rc-app .header__actions .header__cart svg{width:20px;height:20px;display:block}
-
-  /* badge is always visible on mobile, including the empty "0" */
-  .rc-app .header__cart-badge.is-zero{display:inline-flex}
-  .rc-app .header__cart-badge{
-    top:-6px; right:-6px;
-    min-width:20px; height:20px; padding:0 5px;
-    border-radius:999px;
-    font-size:11px; font-weight:800; color:#fff;
-    background:linear-gradient(135deg,var(--p-orange),#38D4EE);
-    box-shadow:0 0 0 2px #fff, 0 4px 10px -3px rgba(10,199,229,.8);
-    animation:none;                       /* no pulse on mobile — calmer */
-  }
+  /* 4 ── cart: not shown on mobile.
+     display:none on the anchor takes the icon, its container AND the count badge
+     (a child) out of the flex row together, so no gap or reserved slot is left
+     behind. The cart itself is untouched — /cart, checkout and every other entry
+     point still work, and the header still shows it from 768px up. Dropping it
+     here also reclaims the ~54px that used to push the 320px header into
+     horizontal overflow. */
+  .rc-app .header__actions .header__cart{display:none}
 }
 
-/* Small phones (≤400px): claw back a little width so the full
-   "Search Courses..." placeholder fits instead of clipping mid-word. */
-@media (max-width:400px){
-  .rc-app .header__inner{gap:7px;padding:0 8px;margin:8px 8px 10px}
-  /* padding stays constant in both states here too — only the left inset and font
-     tighten for small phones. */
-  .rc-app .header__search-input,
-  .rc-app .header__search.is-open .header__search-input{font-size:13.5px;padding-left:38px;padding-right:36px}
-  .rc-app .header__search-clear{right:4px;width:26px;height:26px}
-  .rc-app .header__search-btn,
-  .rc-app .header__search.is-open .header__search-btn{left:3px;width:32px;height:32px}
-}
+/* The ≤400px block that used to live here is gone. Every rule in it existed to claw
+   back width for the header search box ("Search Courses..." clipped mid-word) plus a
+   one-off smaller logo to compensate. The mobile header no longer carries search or
+   cart, so 320px has room to spare: hamburger 44 + gap 9 + logo 205 = 258 inside a
+   280px content box. Dropping the block gives every mobile width the same 9px gap and
+   10px padding instead of a second, tighter set below 400px. */
 
 /* Desktop / tablet keep the original behaviour: no badge when the cart is empty,
    and no clear button (it is a mobile-only affordance — the rule above re-shows it
@@ -2455,8 +2510,11 @@
   }
   /* Phones take the slack; the icon row never shrinks, so it can't be squeezed
      off the edge. */
-  .rc-app .contact-strip__phones{flex:1 1 auto;min-width:0;gap:8px}
-  .rc-app .contact-strip__phones a{font-size:11px;white-space:nowrap}
+  /* Both the number and the email stay on mobile — neither is hidden. They sit on one
+     row while it fits and wrap to a second line rather than overflowing. */
+  .rc-app .contact-strip__phones{flex:1 1 auto;min-width:0;gap:4px 10px;justify-content:center}
+  .rc-app .contact-strip__item{font-size:11px;gap:5px}
+  .rc-app .contact-strip__item svg{width:12px;height:12px}
   .rc-app .contact-strip__phones>svg{width:12px;height:12px;flex-shrink:0}
   .rc-app .contact-strip__social{flex:0 0 auto;gap:6px}
   .rc-app .contact-strip__social a{width:30px;height:30px;border-radius:8px;flex-shrink:0}
@@ -2466,8 +2524,10 @@
    lowest-priority icon steps out so the rest stay fully inside the viewport. */
 @media (max-width:400px){
   .rc-app .contact-strip__inner{gap:6px;padding:0 10px}
-  .rc-app .contact-strip__phones{gap:6px}
-  .rc-app .contact-strip__phones a{font-size:10px}
+  .rc-app .contact-strip__phones{gap:3px 8px}
+  .rc-app .contact-strip__item{font-size:10px;gap:4px}
+  .rc-app .contact-strip__item svg{width:11px;height:11px}
+  .rc-app .contact-strip__sep{display:none}   /* the wrap already separates them */
   .rc-app .contact-strip__phones>svg{width:11px;height:11px}
   .rc-app .contact-strip__social{gap:4px}
   .rc-app .contact-strip__social a{width:30px;height:30px}

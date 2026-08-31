@@ -368,6 +368,60 @@
                             <input type="text" name="city" class="hj-auth-input" placeholder="Pune" />
                         </div>
                     </div>
+                    @* Student profile fields — all OPTIONAL, so the four required fields above
+                       (name / phone / email / password) still define a valid signup and no
+                       existing account or the school flow is affected. Persisted to the columns
+                       added by 0042_student_profile_fields.sql. Markup reuses .hj-auth-field so
+                       the form keeps its existing styling exactly. *@
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Date of Birth</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                            <input type="date" name="dob" class="hj-auth-input" />
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Gender</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                            <select name="gender" class="hj-auth-input"><option value="">Select…</option><option>Male</option><option>Female</option><option>Other</option></select>
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">State</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            <input type="text" name="state" class="hj-auth-input" placeholder="Maharashtra" />
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">District</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            <input type="text" name="district" class="hj-auth-input" placeholder="Pune" />
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">School Name</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                            <input type="text" name="schoolName" class="hj-auth-input" placeholder="Your school name" />
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Class</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                            <select name="studentClass" class="hj-auth-input"><option value="">Select…</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select>
+                        </div>
+                    </div>
+                    <div class="hj-auth-field">
+                        <label class="hj-auth-field__label">Board</label>
+                        <div class="hj-auth-input-wrap">
+                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                            <select name="board" class="hj-auth-input"><option value="">Select…</option><option>CBSE</option><option>ICSE</option><option>State Board</option><option>Other</option></select>
+                        </div>
+                    </div>
                     <button type="submit" class="hj-auth-submit">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
                         <span>Create Account</span>

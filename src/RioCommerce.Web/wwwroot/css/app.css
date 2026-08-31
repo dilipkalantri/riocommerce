@@ -10,10 +10,17 @@
 
    To change the site's typeface, change --font-primary here and the <link> in
    RioCommerce.API/Components/App.razor. Nothing else should declare a font-family.
+
+   Current face: Poppins (400/500/600/700), with Noto Sans Devanagari behind it so
+   Marathi content renders correctly. Monospace stacks (code, invoice numbers, JSON
+   viewers) and icon fonts are deliberately NOT part of this token - they must keep
+   their own families. The same stack is mirrored in three other token files that
+   load later and would otherwise win: Storefront theme.css, rc-styles.css, and the
+   .pv-scoped preview stylesheets.
    ═══════════════════════════════════════════════════════════════════════════ */
 :root{
-  --font-primary:"Jost",sans-serif;
-  --font-secondary:"Jost",sans-serif;
+  --font-primary:'Poppins','Noto Sans Devanagari',system-ui,-apple-system,sans-serif;
+  --font-secondary:'Poppins','Noto Sans Devanagari',system-ui,-apple-system,sans-serif;
 }
 html{font-family:var(--font-primary)}
 body{font-family:var(--font-primary);
@@ -168,8 +175,7 @@ select.form-input{appearance:none;background:#fff url("data:image/svg+xml,%3Csvg
 .footer__logo{height:36px;margin-bottom:12px}.footer__col h4{font-size:15px;margin-bottom:12px;color:var(--orange)}
 .footer__col a{display:block;font-size:14px;color:rgba(255,255,255,.7);margin-bottom:8px}.footer__col a:hover{color:#fff}
 .footer__col p{font-size:13px;color:rgba(255,255,255,.7);line-height:1.6}
-.footer__phones a{display:block;font-size:14px;color:rgba(255,255,255,.7);margin-top:4px}
-.footer__franchisee{color:var(--orange) !important;font-weight:600}.footer__franchisee:hover{color:#fff !important}
+
 .footer__bottom{border-top:1px solid rgba(255,255,255,.1);margin-top:32px;padding-top:16px;text-align:center;font-size:13px;color:rgba(255,255,255,.5)}.footer__bottom a{color:var(--orange)}
 .floating-btns{position:fixed;bottom:20px;right:12px;display:flex;flex-direction:column;gap:8px;z-index:90}
 .float-btn{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:var(--shadow-md)}

@@ -2,6 +2,7 @@
 @layout AdminLayout
 @attribute [Authorize(Roles = "super_admin,admin,backend_user")]
 @inject IIntegrationSettingsService Svc
+@inject ISmsSender Sms
 <PageTitle>SMS Gateway — RioCommerce Admin</PageTitle>
 
 <div class="page__header"><h1>SMS Gateway</h1></div>
@@ -24,11 +25,20 @@ else
                     <option value="MSG91">MSG91</option>
                     <option value="Twilio">Twilio</option>
                     <option value="TextLocal">TextLocal</option>
+                    @* GET endpoint carrying every parameter in the query string, with
+                       #COUNTRYCODE# / #MOBILENUMBER# / #MESSAGE# placeholders. Paste the
+                       whole URL (apikey, entityId, templateId included) into Base URL. *@
+                    <option value="URLTEMPLATE">URL Template (GET)</option>
                     <option value="Other">Other</option>
                 </select>
             </div>
             <div class="form-group"><label class="form-label">Sender ID / Header</label><input class="form-input" @bind="model.SenderId" placeholder="RIOCOM" /></div>
-            <div class="form-group"><label class="form-label">API Base URL</label><input class="form-input" @bind="model.BaseUrl" placeholder="https://api.msg91.com/api/v5/flow/" /></div>
+            <div class="form-group"><label class="form-label">API Base URL</label><input class="form-input" @bind="model.BaseUrl" placeholder="https://api.msg91.com/api/v5/flow/" />
+                <div class="form-hint" style="font-size:12.5px;color:var(--gray-500);margin-top:6px">
+                    For <strong>URL Template (GET)</strong>: paste the full endpoint including apikey,
+                    entityId, templateId and sender. Placeholders <code>#COUNTRYCODE#</code>,
+                    <code>#MOBILENUMBER#</code> and <code>#MESSAGE#</code> are substituted per message.
+                </div></div>
         </div>
         <div class="form-card">
             <div class="form-card__title">Credentials</div>
@@ -38,7 +48,34 @@ else
         </div>
     </div>
     <div class="form-actions" style="margin-top:4px">
-        <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save SMS Settings")</button>
+        <div class="form-card" style="margin-top:16px">
+        <div class="form-card__title">Send a test message</div>
+        <p style="font-size:13px;color:var(--gray-500);margin:0 0 14px">
+            Uses the <strong>saved</strong> settings, not what is on screen &mdash; press
+            <em>Save SMS Settings</em> first, then test.
+        </p>
+        <div class="form-group">
+            <label class="form-label">Mobile number</label>
+            <input class="form-input" @bind="testPhone" placeholder="9975242929" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Message</label>
+            @* Editable so the exact DLT-approved template text can be pasted in: a body that does
+               not match the registered template is rejected even when every id is correct. *@
+            <textarea class="form-input" rows="3" @bind="testBody"></textarea>
+        </div>
+        <button class="btn btn-outline" disabled="@testing" @onclick="SendTest">
+            @(testing ? "Sending…" : "Send test SMS")
+        </button>
+        @if (testResult != null)
+        {
+            <div class="inline-alert @(testOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-top:12px">
+                @testResult
+            </div>
+        }
+    </div>
+
+    <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving…" : "Save SMS Settings")</button>
     </div>
 }
 
@@ -48,6 +85,56 @@ else
     private string? msg;
 
     protected override async Task OnInitializedAsync() => model = await Svc.GetSmsAsync();
+
+    private string testPhone = "";
+    // Mirrors the DLT-approved template the app actually sends, so a passing test means the
+    // real OTP will pass too. Editable for trying the other approved template.
+    private string testBody = "Dear Customer your SMS Verification Code for Rioplay is: 123456";
+    private bool testing, testOk;
+    private string? testResult;
+
+    private async Task SendTest()
+    {
+        testResult = null;
+        if (string.IsNullOrWhiteSpace(testPhone))
+        {
+            testOk = false; testResult = "Enter a mobile number first."; return;
+        }
+
+        testing = true;
+        try
+        {
+            // Read back what is PERSISTED: SmsSender resolves its own settings from the store, so a
+            // test run before Save would quietly exercise the previous configuration.
+            var saved = await Svc.GetSmsAsync();
+            var isTemplate = string.Equals(saved.Provider, "URLTEMPLATE", StringComparison.OrdinalIgnoreCase);
+            var configured = isTemplate
+                ? !string.IsNullOrWhiteSpace(saved.BaseUrl)
+                : !string.IsNullOrWhiteSpace(saved.ApiKey);
+
+            // SmsSender returns success when unconfigured (it only logs), which would make this
+            // button report a false positive. Detect that state here instead.
+            if (!saved.Enabled || string.IsNullOrWhiteSpace(saved.Provider) || !configured)
+            {
+                testOk = false;
+                testResult = "Nothing was sent — SMS is in log-only mode. Tick Enable, choose a provider, "
+                           + (isTemplate ? "fill the API Base URL" : "fill the API Key") + ", then Save.";
+                return;
+            }
+
+            var (ok, err) = await Sms.SendAsync(testPhone.Trim(), testBody);
+            testOk = ok;
+            testResult = ok
+                ? $"Gateway accepted the message for {testPhone.Trim()}. Check the handset — final delivery still depends on your DLT template and sender ID."
+                : $"Gateway rejected it: {err}";
+        }
+        catch (Exception ex)
+        {
+            testOk = false;
+            testResult = "Send failed: " + ex.Message;
+        }
+        finally { testing = false; }
+    }
 
     private async Task Save()
     {
