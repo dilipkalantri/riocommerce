@@ -297,6 +297,26 @@
                 </AuthorizeView>
             }
 
+            @* ── School ── *@
+            @if (MatchGroup("School", "Academic Years", "Geography", "Schools"))
+            {
+                <AuthorizeView Roles="super_admin,admin,operations,backend_user" Context="schCtx">
+                    <div class="sidebar__group">
+                        <button class="sidebar__group-header @(IsOpen("school") ? "open" : "")" @onclick='() => Toggle("school")'>
+                            <span class="sidebar__group-label"><span class="sidebar__ico">🏫</span><span class="sidebar__txt">School</span></span><span class="sidebar__chevron">▸</span>
+                        </button>
+                        @if (IsOpen("school"))
+                        {
+                            <div class="sidebar__group-items">
+                                @if (MatchLink("Academic Years")) { <NavLink href="/admin/academic-years" class="sidebar__link"><span class="sidebar__txt">Academic Years</span></NavLink> }
+                                @if (MatchLink("Geography"))      { <NavLink href="/admin/geography" class="sidebar__link"><span class="sidebar__txt">Geography</span></NavLink> }
+                                @if (MatchLink("Schools"))        { <NavLink href="/admin/schools" class="sidebar__link"><span class="sidebar__txt">Schools</span></NavLink> }
+                            </div>
+                        }
+                    </div>
+                </AuthorizeView>
+            }
+
             @* ── Master Data ── *@
             @if (MatchGroup("Master Data", "URL Redirects", "Mega Menu"))
             {
@@ -574,6 +594,9 @@
         // subjects are a catalog lookup alongside categories, not an attribute screen.
         ("/admin/catalog/subjects",                "catalog.categories.view"),
         ("/admin/catalog",                         "catalog.attributes.view"),
+        ("/admin/academic-years",                  "dashboard.view"),
+        ("/admin/geography",                       "dashboard.view"),
+        ("/admin/schools",                         "dashboard.view"),
         ("/admin/dashboard",                       "dashboard.view"),
         ("/admin",                                 "dashboard.view"),
     };

@@ -139,6 +139,14 @@ public class RioCommerceDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<ScheduledTask> ScheduledTasks => Set<ScheduledTask>();
     public DbSet<ScheduledTaskRun> ScheduledTaskRuns => Set<ScheduledTaskRun>();
 
+    // ── School module (vijaypath branch) ──
+    public DbSet<AcademicYear> AcademicYears => Set<AcademicYear>();
+    public DbSet<State> States => Set<State>();
+    public DbSet<District> Districts => Set<District>();
+    public DbSet<Taluka> Talukas => Set<Taluka>();
+    public DbSet<School> Schools => Set<School>();
+    public DbSet<SchoolUser> SchoolUsers => Set<SchoolUser>();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -174,6 +182,9 @@ public class RioCommerceDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.HasPostgresEnum<CommissionType>();
         modelBuilder.HasPostgresEnum<CustomerType>();
         modelBuilder.HasPostgresEnum<AttributeControlType>();
+        modelBuilder.HasPostgresEnum<SchoolType>();
+        modelBuilder.HasPostgresEnum<SchoolUserRole>();
+        modelBuilder.HasPostgresEnum<Gender>();
 
         // Set default values for ALL BaseEntity derived types via SQL
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
@@ -239,6 +250,16 @@ public class RioCommerceDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<ScheduledTaskRun>().Property(r => r.Trigger).HasMaxLength(20);
         modelBuilder.Entity<ScheduledTaskRun>().Property(r => r.Output).HasMaxLength(800);
         modelBuilder.Entity<ScheduledTaskRun>().Property(r => r.Error).HasMaxLength(800);
+
+        // ── School module indexes & constraints ──
+        modelBuilder.Entity<School>().HasIndex(s => s.UdiseCode).IsUnique();
+        modelBuilder.Entity<School>().Property(s => s.UdiseCode).HasMaxLength(20).IsRequired();
+        modelBuilder.Entity<School>().Property(s => s.Name).HasMaxLength(300).IsRequired();
+        modelBuilder.Entity<SchoolUser>().HasIndex(su => new { su.SchoolId, su.UserId }).IsUnique();
+        modelBuilder.Entity<AcademicYear>().HasIndex(ay => ay.Name).IsUnique();
+        modelBuilder.Entity<State>().HasIndex(s => s.Code).IsUnique();
+        modelBuilder.Entity<District>().HasIndex(d => new { d.StateId, d.Name }).IsUnique();
+        modelBuilder.Entity<Taluka>().HasIndex(t => new { t.DistrictId, t.Name }).IsUnique();
 
         // Apply all IEntityTypeConfiguration from this assembly
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RioCommerceDbContext).Assembly);

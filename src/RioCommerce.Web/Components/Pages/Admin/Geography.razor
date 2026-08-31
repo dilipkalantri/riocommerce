@@ -1,0 +1,210 @@
+@page "/admin/geography"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IGeographyService Svc
+<PageTitle>Geography — Admin</PageTitle>
+
+<div class="page__header"><h1>Geography (States / Districts / Talukas)</h1></div>
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+    <div class="form-group" style="min-width:200px">
+        <label class="form-label">State</label>
+        <select class="form-input" @bind="selectedStateId" @bind:after="OnStateChanged">
+            <option value="">— All States —</option>
+            @if (states != null) { @foreach (var s in states) { <option value="@s.Id">@s.Name (@s.Code) — @s.DistrictCount districts</option> } }
+        </select>
+    </div>
+    <div class="form-group" style="min-width:200px">
+        <label class="form-label">District</label>
+        <select class="form-input" @bind="selectedDistrictId" @bind:after="OnDistrictChanged">
+            <option value="">— All Districts —</option>
+            @if (districts != null) { @foreach (var d in districts) { <option value="@d.Id">@d.Name — @d.TalukaCount talukas</option> } }
+        </select>
+    </div>
+</div>
+
+@* ── District editor ── *@
+@if (editingDistrict != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editingDistrict.Id == null ? "New District" : "Edit District")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="form-label">State</label>
+                <select class="form-input" @bind="editingDistrict.StateId">
+                    @if (states != null) { @foreach (var s in states) { <option value="@s.Id">@s.Name</option> } }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Name <span class="required">*</span></label>
+                <input class="form-input" @bind="editingDistrict.Name" />
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="SaveDistrict">@(saving ? "Saving..." : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editingDistrict = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@* ── Taluka editor ── *@
+@if (editingTaluka != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editingTaluka.Id == null ? "New Taluka" : "Edit Taluka")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="form-label">District</label>
+                <select class="form-input" @bind="editingTaluka.DistrictId">
+                    @if (districts != null) { @foreach (var d in districts) { <option value="@d.Id">@d.Name</option> } }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Name <span class="required">*</span></label>
+                <input class="form-input" @bind="editingTaluka.Name" />
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="SaveTaluka">@(saving ? "Saving..." : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editingTaluka = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@* ── Districts table ── *@
+<div class="data-card" style="margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Districts @(selectedStateId.HasValue ? $"({districts?.Count ?? 0})" : "")</h3>
+        @if (selectedStateId.HasValue) { <button class="btn btn-primary btn-sm" @onclick="NewDistrict">+ Add District</button> }
+    </div>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>State</th><th>Talukas</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (districts == null) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">Loading...</td></tr> }
+            else if (districts.Count == 0) { <tr><td colspan="5" style="text-align:center;color:var(--gray-400)">No districts found.</td></tr> }
+            else { @foreach (var d in districts)
+            {
+                <tr>
+                    <td><strong>@d.Name</strong></td>
+                    <td>@d.StateName</td>
+                    <td>@d.TalukaCount</td>
+                    <td><span class="status @(d.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(d.IsActive ? "Active" : "Inactive")</span></td>
+                    <td><div style="display:flex;gap:6px">
+                        <button class="btn btn-ghost btn-sm" @onclick="() => EditDistrict(d.Id)">Edit</button>
+                        @if (d.TalukaCount == 0) { <button class="btn btn-danger btn-sm" @onclick="() => DeleteDistrict(d.Id)">Delete</button> }
+                    </div></td>
+                </tr>
+            } }
+        </tbody>
+    </table></div>
+</div>
+
+@* ── Talukas table ── *@
+<div class="data-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Talukas @(selectedDistrictId.HasValue ? $"({talukas?.Count ?? 0})" : "")</h3>
+        @if (selectedDistrictId.HasValue) { <button class="btn btn-primary btn-sm" @onclick="NewTaluka">+ Add Taluka</button> }
+    </div>
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>District</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (talukas == null) { <tr><td colspan="4" style="text-align:center;color:var(--gray-400)">Select a district to view talukas.</td></tr> }
+            else if (talukas.Count == 0) { <tr><td colspan="4" style="text-align:center;color:var(--gray-400)">No talukas found.</td></tr> }
+            else { @foreach (var t in talukas)
+            {
+                <tr>
+                    <td><strong>@t.Name</strong></td>
+                    <td>@t.DistrictName</td>
+                    <td><span class="status @(t.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(t.IsActive ? "Active" : "Inactive")</span></td>
+                    <td><div style="display:flex;gap:6px">
+                        <button class="btn btn-ghost btn-sm" @onclick="() => EditTaluka(t)">Edit</button>
+                        <button class="btn btn-danger btn-sm" @onclick="() => DeleteTaluka(t.Id)">Delete</button>
+                    </div></td>
+                </tr>
+            } }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<StateItem>? states;
+    private List<DistrictItem>? districts;
+    private List<TalukaItem>? talukas;
+    private Guid? selectedStateId, selectedDistrictId;
+    private DistrictEditModel? editingDistrict;
+    private TalukaEditModel? editingTaluka;
+    private bool saving, msgOk;
+    private string? err, msg;
+
+    protected override async Task OnInitializedAsync()
+    {
+        states = await Svc.ListStatesAsync();
+        if (states.Count > 0)
+        {
+            selectedStateId = states[0].Id;
+            await OnStateChanged();
+        }
+    }
+
+    private async Task OnStateChanged()
+    {
+        districts = selectedStateId.HasValue
+            ? await Svc.ListDistrictsAsync(selectedStateId)
+            : await Svc.ListDistrictsAsync();
+        selectedDistrictId = null;
+        talukas = null;
+    }
+
+    private async Task OnDistrictChanged()
+    {
+        talukas = selectedDistrictId.HasValue
+            ? await Svc.ListTalukasAsync(selectedDistrictId)
+            : null;
+    }
+
+    private void NewDistrict() { err = null; msg = null; editingTaluka = null; editingDistrict = new DistrictEditModel { StateId = selectedStateId ?? Guid.Empty }; }
+    private async Task EditDistrict(Guid id) { err = null; msg = null; editingTaluka = null; var d = districts?.FirstOrDefault(x => x.Id == id); if (d != null) editingDistrict = new DistrictEditModel { Id = d.Id, Name = d.Name, StateId = d.StateId }; }
+
+    private async Task SaveDistrict()
+    {
+        if (editingDistrict == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveDistrictAsync(editingDistrict);
+        saving = false;
+        if (ok) { editingDistrict = null; await OnStateChanged(); Flash(true, "District saved."); }
+        else err = error;
+    }
+
+    private async Task DeleteDistrict(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteDistrictAsync(id);
+        if (ok) { await OnStateChanged(); Flash(true, "District deleted."); }
+        else Flash(false, error!);
+    }
+
+    private void NewTaluka() { err = null; msg = null; editingDistrict = null; editingTaluka = new TalukaEditModel { DistrictId = selectedDistrictId ?? Guid.Empty }; }
+    private void EditTaluka(TalukaItem t) { err = null; msg = null; editingDistrict = null; editingTaluka = new TalukaEditModel { Id = t.Id, Name = t.Name, DistrictId = t.DistrictId }; }
+
+    private async Task SaveTaluka()
+    {
+        if (editingTaluka == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveTalukaAsync(editingTaluka);
+        saving = false;
+        if (ok) { editingTaluka = null; await OnDistrictChanged(); Flash(true, "Taluka saved."); }
+        else err = error;
+    }
+
+    private async Task DeleteTaluka(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteTalukaAsync(id);
+        if (ok) { await OnDistrictChanged(); Flash(true, "Taluka deleted."); }
+        else Flash(false, error!);
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

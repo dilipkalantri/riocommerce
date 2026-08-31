@@ -12,6 +12,7 @@ public enum VerificationPurpose
     /// and so a code issued on one flow cannot be spent on the other.
     /// </summary>
     LegacyPasswordSetup = 3,
+    SchoolRegistration = 4,
 }
 
 /// <summary>Delivery channel for a verification code.</summary>

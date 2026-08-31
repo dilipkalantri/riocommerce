@@ -1,0 +1,256 @@
+@page "/admin/schools"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject ISchoolService Svc
+@inject IGeographyService Geo
+<PageTitle>Schools — Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>School Master</h1>
+    <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" @onclick="() => showImport = !showImport">Import Excel</button>
+        <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">+ Add School</button>
+    </div>
+</div>
+
+@* ── Excel Import ── *@
+@if (showImport)
+{
+    <div class="form-card" style="margin-bottom:16px">
+        <div class="form-card__title">Import Schools from Excel</div>
+        <p style="color:var(--gray-400);font-size:14px;margin-bottom:12px">
+            Columns: UDISE, Name, Address, Type, LowestClass, HighestClass, CityOrVillage, Taluka, District, PinCode.
+            Existing schools (matched by UDISE) will be updated.
+        </p>
+        <InputFile OnChange="OnFileSelected" accept=".xlsx,.xls" />
+        @if (importing) { <p style="color:var(--gray-400);margin-top:8px">Importing...</p> }
+        @if (importResult != null)
+        {
+            <div class="inline-alert inline-alert--ok" style="margin-top:8px">
+                Created: @importResult.Created, Updated: @importResult.Updated, Errors: @importResult.Errors
+            </div>
+            @if (importResult.ErrorMessages.Count > 0)
+            {
+                <div style="margin-top:8px;font-size:13px;color:var(--gray-400);max-height:200px;overflow-y:auto">
+                    @foreach (var e in importResult.ErrorMessages) { <div>@e</div> }
+                </div>
+            }
+        }
+    </div>
+}
+
+@* ── Filters ── *@
+<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:end">
+    <div class="form-group" style="min-width:250px">
+        <label class="form-label">Search</label>
+        <input class="form-input" placeholder="UDISE, name, or city..." @bind="searchTerm" @bind:after="Reload" />
+    </div>
+    <div class="form-group" style="min-width:200px">
+        <label class="form-label">District</label>
+        <select class="form-input" @bind="filterDistrictId" @bind:after="Reload">
+            <option value="">— All Districts —</option>
+            @if (allDistricts != null) { @foreach (var d in allDistricts) { <option value="@d.Id">@d.Name</option> } }
+        </select>
+    </div>
+</div>
+
+@* ── Editor ── *@
+@if (editing != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editing.Id == null ? "New School" : "Edit School")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="form-label">UDISE Code <span class="required">*</span></label>
+                <input class="form-input" @bind="editing.UdiseCode" placeholder="11-digit UDISE+ code" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">School Name <span class="required">*</span></label>
+                <input class="form-input" @bind="editing.Name" />
+            </div>
+            <div class="form-group" style="grid-column:span 2">
+                <label class="form-label">Address</label>
+                <input class="form-input" @bind="editing.Address" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">School Type</label>
+                <select class="form-input" @bind="editing.SchoolType">
+                    @foreach (var t in Enum.GetValues<SchoolType>()) { <option value="@t">@t</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Lowest Class</label>
+                <input type="number" class="form-input" @bind="editing.LowestClass" min="1" max="12" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Highest Class</label>
+                <input type="number" class="form-input" @bind="editing.HighestClass" min="1" max="12" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">City / Village</label>
+                <input class="form-input" @bind="editing.CityOrVillage" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">State</label>
+                <select class="form-input" @bind="editing.StateId" @bind:after="OnEditStateChanged">
+                    <option value="">— Select —</option>
+                    @if (allStates != null) { @foreach (var s in allStates) { <option value="@s.Id">@s.Name</option> } }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">District</label>
+                <select class="form-input" @bind="editing.DistrictId" @bind:after="OnEditDistrictChanged">
+                    <option value="">— Select —</option>
+                    @if (editDistricts != null) { @foreach (var d in editDistricts) { <option value="@d.Id">@d.Name</option> } }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Taluka</label>
+                <select class="form-input" @bind="editing.TalukaId">
+                    <option value="">— Select —</option>
+                    @if (editTalukas != null) { @foreach (var t in editTalukas) { <option value="@t.Id">@t.Name</option> } }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">PIN Code</label>
+                <input class="form-input" @bind="editing.PinCode" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Active</label>
+                <div style="padding-top:8px"><input type="checkbox" @bind="editing.IsActive" /></div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving..." : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+@* ── Table ── *@
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>UDISE</th><th>Name</th><th>Type</th><th>Classes</th><th>Location</th><th>Status</th><th>Users</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Loading...</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No schools found.</td></tr> }
+            else { @foreach (var s in items)
+            {
+                <tr>
+                    <td style="font-family:monospace">@s.UdiseCode</td>
+                    <td><strong>@s.Name</strong></td>
+                    <td>@s.SchoolType</td>
+                    <td>@s.LowestClass–@s.HighestClass</td>
+                    <td>@(s.CityOrVillage ?? "")@(s.TalukaName != null ? $", {s.TalukaName}" : "")@(s.DistrictName != null ? $", {s.DistrictName}" : "")</td>
+                    <td><span class="status @(s.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(s.IsActive ? "Active" : "Inactive")</span></td>
+                    <td>@s.UserCount</td>
+                    <td><div style="display:flex;gap:6px">
+                        <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(s.Id)">Edit</button>
+                        <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(s.Id)">@(s.IsActive ? "Deactivate" : "Activate")</button>
+                        @if (s.UserCount == 0) { <button class="btn btn-danger btn-sm" @onclick="() => Delete(s.Id)">Delete</button> }
+                    </div></td>
+                </tr>
+            } }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<SchoolListItem>? items;
+    private List<StateItem>? allStates;
+    private List<DistrictItem>? allDistricts;
+    private List<DistrictItem>? editDistricts;
+    private List<TalukaItem>? editTalukas;
+    private SchoolEditModel? editing;
+    private string? searchTerm;
+    private Guid? filterDistrictId;
+    private bool saving, msgOk, showImport, importing;
+    private string? err, msg;
+    private SchoolImportResult? importResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        allStates = await Geo.ListStatesAsync();
+        allDistricts = await Geo.ListDistrictsAsync();
+        await Reload();
+    }
+
+    private async Task Reload() => items = await Svc.ListAsync(searchTerm, filterDistrictId);
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        if (id == null)
+        {
+            editing = new SchoolEditModel();
+            if (allStates?.Count > 0) editing.StateId = allStates[0].Id;
+        }
+        else
+        {
+            editing = await Svc.GetAsync(id.Value);
+        }
+        if (editing != null)
+        {
+            await OnEditStateChanged();
+            if (editing.DistrictId.HasValue) await OnEditDistrictChanged();
+        }
+    }
+
+    private async Task OnEditStateChanged()
+    {
+        editDistricts = editing?.StateId.HasValue == true
+            ? await Geo.ListDistrictsAsync(editing.StateId) : null;
+        editTalukas = null;
+    }
+
+    private async Task OnEditDistrictChanged()
+    {
+        editTalukas = editing?.DistrictId.HasValue == true
+            ? await Geo.ListTalukasAsync(editing.DistrictId) : null;
+    }
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); Flash(true, "School saved."); }
+        else err = error;
+    }
+
+    private async Task Toggle(Guid id)
+    {
+        var (ok, error) = await Svc.ToggleAsync(id);
+        if (ok) { await Reload(); Flash(true, "School updated."); }
+        else Flash(false, error!);
+    }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteAsync(id);
+        if (ok) { await Reload(); Flash(true, "School deleted."); }
+        else Flash(false, error!);
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        importing = true; importResult = null; msg = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+            importResult = await Svc.ImportFromExcelAsync(ms);
+            await Reload();
+        }
+        catch (Exception ex) { Flash(false, $"Import failed: {ex.Message}"); }
+        finally { importing = false; }
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

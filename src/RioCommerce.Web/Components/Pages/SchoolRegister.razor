@@ -1,0 +1,357 @@
+@page "/school/register"
+@using RioCommerce.Core.DTOs.School
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+<PageTitle>School Registration</PageTitle>
+
+<div class="sr-wrap">
+    <div class="sr-card">
+        @* ── Progress Steps ── *@
+        <div class="sr-steps">
+            <div class="sr-step @(step >= 1 ? "sr-step--active" : "") @(step > 1 ? "sr-step--done" : "")"><span class="sr-step__num">1</span><span class="sr-step__label">UDISE Code</span></div>
+            <div class="sr-step__line @(step > 1 ? "sr-step__line--done" : "")"></div>
+            <div class="sr-step @(step >= 2 ? "sr-step--active" : "") @(step > 2 ? "sr-step--done" : "")"><span class="sr-step__num">2</span><span class="sr-step__label">School Info</span></div>
+            <div class="sr-step__line @(step > 2 ? "sr-step__line--done" : "")"></div>
+            <div class="sr-step @(step >= 3 ? "sr-step--active" : "") @(step > 3 ? "sr-step--done" : "")"><span class="sr-step__num">3</span><span class="sr-step__label">Principal</span></div>
+            <div class="sr-step__line @(step > 3 ? "sr-step__line--done" : "")"></div>
+            <div class="sr-step @(step >= 4 ? "sr-step--active" : "")"><span class="sr-step__num">4</span><span class="sr-step__label">Verify</span></div>
+        </div>
+
+        @if (error != null) { <div class="sr-alert sr-alert--err">@error</div> }
+
+        @* ── Step 1: Enter UDISE ── *@
+        @if (step == 1)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">🏫</div>
+                <h1>School Registration</h1>
+                <p class="sr-sub">Enter your school's UDISE code to begin the registration process.</p>
+                <div class="sr-field">
+                    <label class="form-label">UDISE Code <span class="required">*</span></label>
+                    <input class="form-input" @bind="udiseCode" placeholder="Enter 11-digit UDISE+ code" @onkeydown="OnUdiseKeyDown" />
+                </div>
+                <button class="sr-btn" disabled="@busy" @onclick="LookupSchool">
+                    @(busy ? "Looking up..." : "Find School")
+                </button>
+                <a href="/login" class="sr-back">Already registered? Login here</a>
+            </div>
+        }
+
+        @* ── Step 2: School Info ── *@
+        @if (step == 2 && school != null)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">✅</div>
+                <h1>School Found</h1>
+                <p class="sr-sub">Please confirm this is your school before proceeding.</p>
+                <div class="sr-info">
+                    <div class="sr-info__row"><span class="sr-info__label">UDISE Code</span><span class="sr-info__value" style="font-family:monospace">@school.UdiseCode</span></div>
+                    <div class="sr-info__row"><span class="sr-info__label">School Name</span><span class="sr-info__value"><strong>@school.Name</strong></span></div>
+                    @if (!string.IsNullOrWhiteSpace(school.Address)) { <div class="sr-info__row"><span class="sr-info__label">Address</span><span class="sr-info__value">@school.Address</span></div> }
+                    <div class="sr-info__row"><span class="sr-info__label">Type</span><span class="sr-info__value">@school.SchoolType</span></div>
+                    <div class="sr-info__row"><span class="sr-info__label">Classes</span><span class="sr-info__value">@school.LowestClass to @school.HighestClass</span></div>
+                    @if (!string.IsNullOrWhiteSpace(school.CityOrVillage)) { <div class="sr-info__row"><span class="sr-info__label">City/Village</span><span class="sr-info__value">@school.CityOrVillage</span></div> }
+                    @if (!string.IsNullOrWhiteSpace(school.TalukaName)) { <div class="sr-info__row"><span class="sr-info__label">Taluka</span><span class="sr-info__value">@school.TalukaName</span></div> }
+                    @if (!string.IsNullOrWhiteSpace(school.DistrictName)) { <div class="sr-info__row"><span class="sr-info__label">District</span><span class="sr-info__value">@school.DistrictName</span></div> }
+                    @if (!string.IsNullOrWhiteSpace(school.StateName)) { <div class="sr-info__row"><span class="sr-info__label">State</span><span class="sr-info__value">@school.StateName</span></div> }
+                </div>
+                <div class="sr-actions">
+                    <button class="sr-btn" @onclick="() => { step = 3; error = null; }">Yes, this is my school</button>
+                    <button class="sr-btn sr-btn--ghost" @onclick="() => { step = 1; error = null; school = null; }">No, go back</button>
+                </div>
+            </div>
+        }
+
+        @* ── Step 3: Principal Details ── *@
+        @if (step == 3)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">👤</div>
+                <h1>Principal Details</h1>
+                <p class="sr-sub">Enter the school principal's information to create your account.</p>
+                <div class="sr-field">
+                    <label class="form-label">Full Name <span class="required">*</span></label>
+                    <input class="form-input" @bind="fullName" placeholder="Principal's full name" />
+                </div>
+                <div class="sr-field">
+                    <label class="form-label">Email <span class="required">*</span></label>
+                    <input type="email" class="form-input" @bind="email" placeholder="principal@school.edu.in" />
+                </div>
+                <div class="sr-field">
+                    <label class="form-label">Mobile Number <span class="required">*</span></label>
+                    <input type="tel" class="form-input" @bind="phone" placeholder="10-digit mobile number" />
+                </div>
+                <div class="sr-field">
+                    <label class="form-label">Password <span class="required">*</span></label>
+                    <input type="password" class="form-input" @bind="password" placeholder="Minimum 6 characters" />
+                </div>
+                <div class="sr-actions">
+                    <button class="sr-btn" disabled="@busy" @onclick="RegisterPrincipal">
+                        @(busy ? "Registering..." : "Register & Send OTP")
+                    </button>
+                    <button class="sr-btn sr-btn--ghost" @onclick="() => { step = 2; error = null; }">Back</button>
+                </div>
+            </div>
+        }
+
+        @* ── Step 4: OTP Verification ── *@
+        @if (step == 4)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">✉️</div>
+                <h1>Verify Your Email</h1>
+                <p class="sr-sub">
+                    We've sent a 6-digit code to<br /><strong>@email</strong>.
+                    Enter it below to complete registration.
+                </p>
+                <div class="otp-boxes">
+                    @for (var i = 0; i < 6; i++)
+                    {
+                        var idx = i;
+                        <input id="sr-otp-@idx" class="otp-box" type="text" inputmode="numeric" maxlength="1" autocomplete="off"
+                               value="@digits[idx]"
+                               @oninput="(e) => OnOtpInput(idx, e)" @onkeydown="(e) => OnOtpKeyDown(idx, e)" />
+                    }
+                </div>
+                <button class="sr-btn" disabled="@(busy || !OtpComplete)" @onclick="VerifyOtp">
+                    @(busy ? "Verifying..." : "Verify & Complete")
+                </button>
+                <div class="sr-resend">
+                    @if (cooldown > 0)
+                    {
+                        <span>Resend code in @cooldown s</span>
+                    }
+                    else
+                    {
+                        <button class="sr-link" disabled="@busy" @onclick="ResendOtp">@(busy ? "Sending..." : "Resend code")</button>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ── Step 5: Success ── *@
+        @if (step == 5)
+        {
+            <div class="sr-body">
+                <div class="sr-icon">🎉</div>
+                <h1>Registration Complete!</h1>
+                <p class="sr-sub">Your school account has been verified and activated. You can now log in to the School Portal.</p>
+                <a href="/login" class="sr-btn" style="display:inline-block;text-decoration:none;text-align:center">Go to Login</a>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .sr-wrap { min-height:70vh; display:flex; align-items:center; justify-content:center; padding:32px 16px; }
+    .sr-card { background:#fff; border:1px solid var(--gray-200); border-radius:18px; padding:32px; max-width:560px; width:100%; box-shadow:0 18px 48px -24px rgba(16,42,67,.35); }
+    .sr-body { text-align:center; }
+    .sr-icon { font-size:40px; margin-bottom:4px; }
+    .sr-body h1 { font-size:22px; font-weight:800; color:var(--navy); margin:8px 0 6px; }
+    .sr-sub { color:var(--gray-500); font-size:14px; line-height:1.6; margin-bottom:20px; }
+
+    .sr-steps { display:flex; align-items:center; justify-content:center; gap:0; margin-bottom:24px; }
+    .sr-step { display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .sr-step__num { width:32px; height:32px; border-radius:50%; border:2px solid var(--gray-300); color:var(--gray-400);
+                    display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; }
+    .sr-step--active .sr-step__num { border-color:var(--orange); color:#fff; background:var(--orange); }
+    .sr-step--done .sr-step__num { border-color:var(--green,#16a34a); color:#fff; background:var(--green,#16a34a); }
+    .sr-step__label { font-size:11px; color:var(--gray-400); font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+    .sr-step--active .sr-step__label { color:var(--navy); }
+    .sr-step__line { width:40px; height:2px; background:var(--gray-200); margin:0 6px; margin-bottom:18px; }
+    .sr-step__line--done { background:var(--green,#16a34a); }
+
+    .sr-field { text-align:left; margin-bottom:14px; }
+    .sr-field .form-input { width:100%; }
+    .sr-btn { width:100%; padding:13px; background:var(--orange); color:#fff; border:0; border-radius:12px;
+              font-size:15px; font-weight:700; cursor:pointer; transition:opacity .15s; margin-bottom:8px; }
+    .sr-btn:disabled { opacity:.5; cursor:not-allowed; }
+    .sr-btn--ghost { background:transparent; color:var(--gray-500); border:1px solid var(--gray-200); }
+    .sr-btn--ghost:hover { background:var(--gray-50,#f9fafb); }
+    .sr-actions { display:flex; flex-direction:column; gap:8px; }
+    .sr-back { display:inline-block; margin-top:12px; font-size:13px; color:var(--gray-500); text-decoration:none; }
+    .sr-alert--err { background:#FEF2F2; color:#991B1B; border:1px solid #FECACA; border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:16px; text-align:left; }
+
+    .sr-info { text-align:left; background:var(--gray-50,#f9fafb); border:1px solid var(--gray-200); border-radius:12px; padding:16px; margin-bottom:20px; }
+    .sr-info__row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--gray-100,#f3f4f6); font-size:14px; }
+    .sr-info__row:last-child { border-bottom:0; }
+    .sr-info__label { color:var(--gray-500); }
+    .sr-info__value { color:var(--navy); text-align:right; }
+
+    .otp-boxes { display:flex; gap:10px; justify-content:center; margin-bottom:22px; }
+    .otp-box { width:48px; height:56px; text-align:center; font-size:24px; font-weight:700; color:var(--navy);
+               border:2px solid var(--gray-200); border-radius:12px; outline:none; transition:border-color .15s; }
+    .otp-box:focus { border-color:var(--orange); }
+    .sr-resend { margin-top:12px; font-size:13.5px; color:var(--gray-500); }
+    .sr-link { background:none; border:0; color:var(--orange); font-weight:700; cursor:pointer; font-size:13.5px; }
+    .sr-link:disabled { opacity:.5; cursor:not-allowed; }
+
+    @@media (max-width:480px) {
+        .sr-card { padding:20px 16px; }
+        .sr-step__label { font-size:10px; }
+        .sr-step__line { width:24px; }
+        .otp-box { width:42px; height:50px; font-size:20px; }
+    }
+</style>
+
+@code {
+    private int step = 1;
+    private string? error;
+    private bool busy;
+
+    // Step 1
+    private string udiseCode = "";
+
+    // Step 2
+    private SchoolLookupResult? school;
+
+    // Step 3
+    private string fullName = "", email = "", phone = "", password = "";
+
+    // Step 4
+    private readonly string[] digits = new string[6] { "", "", "", "", "", "" };
+    private int cooldown;
+    private System.Threading.Timer? timer;
+    private bool OtpComplete => digits.All(d => d.Length == 1 && char.IsDigit(d[0]));
+    private string Code => string.Concat(digits);
+
+    private async Task OnUdiseKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await LookupSchool();
+    }
+
+    private async Task LookupSchool()
+    {
+        if (string.IsNullOrWhiteSpace(udiseCode)) { error = "Please enter a UDISE code."; return; }
+        error = null; busy = true;
+        try
+        {
+            var resp = await JS.InvokeAsync<LookupResult>("rc.postForm", "/api/school/lookup",
+                new Dictionary<string, string> { ["udiseCode"] = udiseCode.Trim() });
+            if (!resp.success)
+            {
+                error = resp.error ?? "School not found.";
+                return;
+            }
+            school = resp.school;
+            if (school!.AlreadyRegistered)
+            {
+                error = "A principal is already registered for this school. Please login instead.";
+                return;
+            }
+            step = 2;
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task RegisterPrincipal()
+    {
+        if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email)
+            || string.IsNullOrWhiteSpace(phone) || string.IsNullOrWhiteSpace(password))
+        {
+            error = "All fields are required."; return;
+        }
+        if (password.Length < 6) { error = "Password must be at least 6 characters."; return; }
+        error = null; busy = true;
+        try
+        {
+            var resp = await JS.InvokeAsync<ApiResult>("rc.postForm", "/api/school/register",
+                new Dictionary<string, string>
+                {
+                    ["udiseCode"] = school!.UdiseCode,
+                    ["fullName"] = fullName.Trim(),
+                    ["email"] = email.Trim(),
+                    ["phone"] = phone.Trim(),
+                    ["password"] = password
+                });
+            if (!resp.success) { error = resp.error ?? "Registration failed."; return; }
+            step = 4;
+            StartCooldown();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void OnOtpInput(int idx, ChangeEventArgs e)
+    {
+        var v = (e.Value?.ToString() ?? "").Trim();
+        if (v.Length > 1)
+        {
+            var clean = new string(v.Where(char.IsDigit).Take(6).ToArray());
+            for (var i = 0; i < 6; i++) digits[i] = i < clean.Length ? clean[i].ToString() : "";
+            _ = FocusOtp(Math.Min(clean.Length, 5));
+            return;
+        }
+        digits[idx] = new string(v.Where(char.IsDigit).ToArray());
+        if (digits[idx].Length == 1 && idx < 5) _ = FocusOtp(idx + 1);
+    }
+
+    private async Task OnOtpKeyDown(int idx, KeyboardEventArgs e)
+    {
+        if (e.Key == "Backspace" && digits[idx].Length == 0 && idx > 0)
+        {
+            digits[idx - 1] = "";
+            await FocusOtp(idx - 1);
+        }
+    }
+
+    private async Task FocusOtp(int idx)
+    {
+        try { await JS.InvokeVoidAsync("rc.focusEl", $"sr-otp-{idx}"); } catch { }
+        StateHasChanged();
+    }
+
+    private async Task VerifyOtp()
+    {
+        if (!OtpComplete) return;
+        error = null; busy = true;
+        try
+        {
+            var resp = await JS.InvokeAsync<VerifyResult>("rc.postForm", "/api/school/verify-otp",
+                new Dictionary<string, string> { ["email"] = email.Trim(), ["code"] = Code });
+            if (resp.success && !string.IsNullOrEmpty(resp.token))
+            {
+                step = 5;
+                return;
+            }
+            error = resp.error ?? "Invalid or expired code.";
+            for (var i = 0; i < 6; i++) digits[i] = "";
+            await FocusOtp(0);
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task ResendOtp()
+    {
+        busy = true; error = null;
+        try
+        {
+            await JS.InvokeAsync<ApiResult>("rc.postForm", "/api/school/resend-otp",
+                new Dictionary<string, string> { ["email"] = email.Trim() });
+            StartCooldown();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private void StartCooldown()
+    {
+        cooldown = 30;
+        timer?.Dispose();
+        timer = new System.Threading.Timer(_ =>
+        {
+            cooldown--;
+            if (cooldown <= 0) { timer?.Dispose(); timer = null; }
+            InvokeAsync(StateHasChanged);
+        }, null, 1000, 1000);
+    }
+
+    public void Dispose() => timer?.Dispose();
+
+    private class LookupResult { public bool success { get; set; } public string? error { get; set; } public SchoolLookupResult? school { get; set; } }
+    private class ApiResult { public bool success { get; set; } public string? error { get; set; } }
+    private class VerifyResult { public bool success { get; set; } public string? token { get; set; } public string? error { get; set; } }
+}

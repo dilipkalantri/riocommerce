@@ -8,7 +8,7 @@
 
 <header class="header">
     <div class="header__inner">
-        <a href="/" class="header__logo"><img src="@LogoSrc" alt="RioCommerce" /></a>
+        <a href="/" class="header__logo"><img src="@LogoSrc" alt="Vijaypath" /></a>
         <nav class="header__nav">
             @if (menu is { Count: > 0 })
             {
@@ -32,9 +32,10 @@
             else
             {
                 <NavLink href="/" class="header__link" Match="NavLinkMatch.All">Home</NavLink>
-                <NavLink href="/courses/ca-foundation" class="header__link">Courses</NavLink>
-                <NavLink href="/faculty" class="header__link">Faculty</NavLink>
-                <NavLink href="/blog" class="header__link">Blogs</NavLink>
+                <NavLink href="/about" class="header__link">About</NavLink>
+                <NavLink href="/courses" class="header__link">Courses</NavLink>
+                <NavLink href="/scholarship-exam" class="header__link">Scholarship Exam</NavLink>
+                <NavLink href="/talent-test" class="header__link">Talent Test</NavLink>
                 <NavLink href="/contact" class="header__link">Contact</NavLink>
             }
         </nav>
@@ -167,7 +168,7 @@
     <div class="drawer-overlay" @onclick="ToggleMenu"></div>
     <aside class="drawer">
         <div class="drawer__header">
-            <img src="@LogoSrc" alt="RioCommerce" class="drawer__logo" />
+            <img src="@LogoSrc" alt="Vijaypath" class="drawer__logo" />
             <button class="drawer__close" @onclick="ToggleMenu">✕</button>
         </div>
         <nav class="drawer__nav">
@@ -179,8 +180,10 @@
             }
             else
             {
+                <a href="/about" @onclick="ToggleMenu">About</a>
                 <a href="/courses" @onclick="ToggleMenu">Courses</a>
-                <a href="/faculty" @onclick="ToggleMenu">Faculty</a>
+                <a href="/scholarship-exam" @onclick="ToggleMenu">Scholarship Exam</a>
+                <a href="/talent-test" @onclick="ToggleMenu">Talent Test</a>
                 <a href="/contact" @onclick="ToggleMenu">Contact</a>
             }
             <AuthorizeView>
@@ -211,7 +214,7 @@
     private List<MenuItemNode>? menu;
     private string? customLogoUrl;
     private bool _franchiseOn = true;
-    private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
+    private const string FallbackLogo = "_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo.svg";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
     private void ToggleMenu() => MenuOpen = !MenuOpen;
     private void ToggleProfile() => profileOpen = !profileOpen;
@@ -377,7 +380,7 @@
 
     private static string Initials(string? name)
     {
-        if (string.IsNullOrWhiteSpace(name)) return "RC";
+        if (string.IsNullOrWhiteSpace(name)) return "VP";
         var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
                                  : name[..Math.Min(2, name.Length)].ToUpper();

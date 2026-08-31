@@ -10,54 +10,137 @@
 <HeroBanner />
 
 <!-- Hero -->
-
-<!-- Hero -->
 <section class="hero">
-    <div class="hero__bg" aria-hidden="true">
-        <span class="hero__blob hero__blob--orange"></span>
-        <span class="hero__blob hero__blob--blue"></span>
-        <span class="hero__blob hero__blob--green"></span>
-        <span class="hero__grid"></span>
-    </div>
     <div class="hero__inner">
-        <h1 class="hero__title reveal" data-delay="1">Your <span class="highlight">Trusted</span> Learning Platform</h1>
-        <p class="hero__subtitle reveal" data-delay="2">
-            Learn from expert faculty. Live streaming, recorded lectures, study material &amp; mentorship.
-            <span class="hero__note">(Click a button below for more information)</span>
-        </p>
-        <div class="hero__course-btns reveal" data-delay="3">
-            <a href="/ca-foundation" class="hero__course-btn hero__course-btn--foundation magnetic">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
-                Beginner Courses
-            </a>
-            <a href="/ca-intermediate" class="hero__course-btn hero__course-btn--inter magnetic">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
-                Intermediate Courses
-            </a>
-            <a href="/ca-final" class="hero__course-btn hero__course-btn--final magnetic">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4.5 6v6c0 4.4 3.2 8.4 7.5 9.5 4.3-1.1 7.5-5.1 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>
-                Advanced Courses
-            </a>
-            <a href="/books" class="hero__course-btn hero__course-btn--books magnetic">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                Our Books
-            </a>
+        <div class="hero__content">
+            <h1 class="hero__title reveal" data-delay="1">Your Path to <span class="highlight">Scholarship</span> Success</h1>
+            <p class="hero__subtitle reveal" data-delay="2">
+                India's trusted platform for scholarship preparation. Expert faculty, live classes, study material &amp; personalised mentorship.
+            </p>
+            <div class="hero__course-btns reveal" data-delay="3">
+                <a href="/courses" class="hero__course-btn hero__course-btn--primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                    View Courses
+                </a>
+                <a href="/about" class="hero__course-btn hero__course-btn--outline">
+                    About Us
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                </a>
+            </div>
+        </div>
+        <div class="hero__photos">
+            <div class="hero__photo-card hero__photo-card--girl">
+                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-girl.jpg" alt="Student preparing for scholarship exam" loading="eager" />
+            </div>
+            <div class="hero__photo-card hero__photo-card--boy" style="grid-row: span 2">
+                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-boy.jpg" alt="Student with globe" loading="eager" />
+            </div>
+            <div class="hero__photo-card hero__photo-card--grp">
+                <img src="_content/RioCommerce.Web.Storefront/images/vijaypath-hero-group.jpg" alt="Students studying together" loading="eager" />
+            </div>
         </div>
     </div>
-    <div class="hero__wave" aria-hidden="true">
-        @* Three layered waves with 1440-unit periodic paths inside a 2880-wide viewBox.
-           All three layers flow left at different speeds. Each layer deeply overlaps the bottom of the
-           container so there is no visible gap between the curves.
+</section>
 
-           svg-noclamp is REQUIRED here: responsive-normalize.css clamps every loose
-           <svg> without a width attribute to icon size (16–24px). These are full-bleed
-           decorations sized in CSS (width:200%;height:100%), and that clamp — which
-           outranks .rc-app .hero__wave-svg on specificity — collapsed all three to an
-           ~18px square in the hero's bottom-left corner, which read as a "cut corner"
-           notch on the banner. The class is the escape hatch that file provides. *@
-        <svg class="hero__wave-svg hero__wave-svg--back svg-noclamp"  viewBox="0 0 2880 120" preserveAspectRatio="none"><path fill="currentColor" d="M0,50 C240,20 480,20 720,50 C960,80 1200,80 1440,50 C1680,20 1920,20 2160,50 C2400,80 2640,80 2880,50 L2880,120 L0,120 Z"/></svg>
-        <svg class="hero__wave-svg hero__wave-svg--mid svg-noclamp"   viewBox="0 0 2880 120" preserveAspectRatio="none"><path fill="currentColor" d="M0,65 C240,45 480,45 720,65 C960,85 1200,85 1440,65 C1680,45 1920,45 2160,65 C2400,85 2640,85 2880,65 L2880,120 L0,120 Z"/></svg>
-        <svg class="hero__wave-svg hero__wave-svg--front svg-noclamp" viewBox="0 0 2880 120" preserveAspectRatio="none"><path fill="currentColor" d="M0,85 C240,70 480,70 720,85 C960,100 1200,100 1440,85 C1680,70 1920,70 2160,85 C2400,100 2640,100 2880,85 L2880,120 L0,120 Z"/></svg>
+<!-- Purple strip -->
+<div class="vp-strip reveal">
+    Empowering students across India with quality scholarship preparation
+</div>
+
+<!-- Stats -->
+<section class="vp-stats">
+    <h2 class="reveal">Impact in Numbers</h2>
+    <p class="reveal">Our track record speaks for itself</p>
+    <div class="stat-grid reveal">
+        <div class="stat-card">
+            <div class="stat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h3 data-count="50000" data-suffix="+">0</h3>
+            <p>Students Enrolled</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+            </div>
+            <h3 data-count="500" data-suffix="+">0</h3>
+            <p>Schools Partnered</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4.5 6v6c0 4.4 3.2 8.4 7.5 9.5 4.3-1.1 7.5-5.1 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>
+            </div>
+            <h3 data-count="95" data-suffix="%">0</h3>
+            <p>Success Rate</p>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
+            </div>
+            <h3 data-count="20" data-suffix="+">0</h3>
+            <p>Years Experience</p>
+        </div>
+    </div>
+</section>
+
+<!-- Prepare / Features -->
+<section class="vp-prepare">
+    <h2 class="reveal">How We Prepare You</h2>
+    <div class="feature-grid reveal">
+        <div class="feature-card">
+            <div class="feature-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1A10 10 0 0 1 4.9 4.9"/><path d="M7.8 16.2a6 6 0 0 1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.5"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/></svg>
+            </div>
+            <div>
+                <h5>Live Interactive Classes</h5>
+                <p>Real-time doubt solving with expert faculty through live streaming sessions.</p>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+            </div>
+            <div>
+                <h5>Recorded Lectures</h5>
+                <p>Watch anytime, pause &amp; rewind. Extended validity for all recorded batches.</p>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            </div>
+            <div>
+                <h5>Comprehensive Study Material</h5>
+                <p>Curated notes, practice sets, and exam-oriented study guides.</p>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div>
+                <h5>Personalised Mentorship</h5>
+                <p>One-on-one guidance tailored to your strengths and areas of improvement.</p>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            </div>
+            <div>
+                <h5>Mock Tests &amp; Analysis</h5>
+                <p>Regular tests with detailed performance reports and improvement strategies.</p>
+            </div>
+        </div>
+        <div class="feature-card">
+            <div class="feature-ico">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01"/></svg>
+            </div>
+            <div>
+                <h5>School Integration</h5>
+                <p>Partnered with schools across India to bring scholarship prep to every student.</p>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -96,33 +179,47 @@
     </div>
 </section>
 
-<!-- Mode of Teaching -->
-@* section--modes is a styling hook only: it scopes the compact mobile layout to
-   this section so the shared .section spacing on every other block is untouched. *@
-<section class="section section--modes">
-    <div class="section__inner">
-        <div class="section__header reveal">
-            <div class="section__label">Mode Of Teaching</div>
-            <h2 class="section__title">Learn The Way That Suits You</h2>
-        </div>
-        <div class="mode-grid">
-            <div class="mode-card reveal">
-                <div class="mode-card__icon mode-card__icon--live">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1A10 10 0 0 1 4.9 4.9"/><path d="M7.8 16.2a6 6 0 0 1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.5"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/></svg>
+<!-- Why Vijaypath -->
+<section class="vp-why">
+    <div style="max-width:1200px;margin:0 auto">
+        <h2 class="reveal">Why Choose Us</h2>
+        <p class="why-sub reveal">What makes our platform the preferred choice for scholarship aspirants</p>
+        <div class="why-grid reveal">
+            <div class="why-item">
+                <div class="why-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 </div>
-                <h3>Live Streaming</h3><p>Attend live lectures from anywhere. Real-time interaction and doubt solving during class.</p>
+                <div>
+                    <h5>Expert Faculty</h5>
+                    <p>Learn from India's top educators with decades of experience in scholarship exams.</p>
+                </div>
             </div>
-            <div class="mode-card reveal" data-delay="1">
-                <div class="mode-card__icon mode-card__icon--rec">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+            <div class="why-item">
+                <div class="why-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
                 </div>
-                <h3>Recorded Lectures</h3><p>Watch anytime, pause &amp; rewind. Recorded backup for all live batches with extended validity.</p>
+                <div>
+                    <h5>Proven Track Record</h5>
+                    <p>95%+ success rate with thousands of scholarship winners across the country.</p>
+                </div>
             </div>
-            <div class="mode-card reveal" data-delay="2">
-                <div class="mode-card__icon mode-card__icon--f2f">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-5h6v5"/><path d="M9 11h.01M15 11h.01"/></svg>
+            <div class="why-item">
+                <div class="why-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                 </div>
-                <h3>Face To Face</h3><p>Offline classes at Prestige Point, Shukrawar Peth, Pune — AC classrooms with smart boards.</p>
+                <div>
+                    <h5>Quality Study Material</h5>
+                    <p>Comprehensive notes and practice sets designed specifically for each exam pattern.</p>
+                </div>
+            </div>
+            <div class="why-item">
+                <div class="why-ico">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
+                </div>
+                <div>
+                    <h5>School Partnerships</h5>
+                    <p>Integrated with 500+ schools for seamless student enrollment and talent discovery.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -331,26 +428,15 @@
     </section>
 }
 
-<!-- Map -->
-<section class="section">
-    <div class="section__inner">
-        <div class="section__header reveal">
-            <div class="section__label">Find Us</div>
-            <h2 class="section__title">Visit Our Centre In Pune</h2>
-            <p class="section__subtitle">Office No. 66, 2nd Floor, Prestige Point, Bajirao Road, Shukrawar Peth, Pune — 411002</p>
+<!-- Footer CTA -->
+<section class="vp-footer-cta">
+    <div style="max-width:800px;margin:0 auto;text-align:center" class="reveal">
+        <h2>Ready to Start Your Scholarship Journey?</h2>
+        <p>Join thousands of students who have achieved their dreams with our guidance.</p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+            <a href="/courses" class="hero__course-btn hero__course-btn--primary">Explore Courses</a>
+            <a href="/contact" class="hero__course-btn hero__course-btn--outline">Contact Us</a>
         </div>
-        <div class="map-container reveal">
-            <iframe src="https://www.google.com/maps?q=Prestige+Point,+Bajirao+Road,+Shukrawar+Peth,+Pune+411002&output=embed" loading="lazy" title="RioCommerce location"></iframe>
-        </div>
-    </div>
-</section>
-
-<!-- CTA -->
-<section class="cta-banner">
-    <div class="cta-banner__inner reveal">
-        <h2>Ready To Begin Your CA Journey?</h2>
-        <p>Call: <a href="tel:9975242929">9975242929</a> · <a href="tel:9766582929">9766582929</a> · <a href="tel:9766182929">9766182929</a></p>
-        <a href="/courses" class="btn btn-primary btn-lg">Explore Courses</a>
     </div>
 </section>
 
@@ -411,9 +497,9 @@
 
     private SeoMetadata seo = new()
     {
-        Title = "RioCommerce — Online Learning Platform",
-        Description = "Expert-led courses with live streaming, recorded lectures, and study material.",
-        Keywords = "online courses, learning platform, RioCommerce"
+        Title = "Vijaypath — Scholarship Preparation Platform",
+        Description = "India's trusted platform for scholarship preparation. Expert faculty, live classes, study material & personalised mentorship.",
+        Keywords = "scholarship, preparation, talent test, Vijaypath, education"
     };
 
     // Enquiry popup

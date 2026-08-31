@@ -1,0 +1,48 @@
+@page "/school"
+@attribute [Authorize(Roles = "school_principal,school_coordinator")]
+@inject ISchoolRegistrationService RegSvc
+@inject AuthenticationStateProvider AuthProvider
+
+<PageTitle>School Portal</PageTitle>
+
+<div class="container account-page">
+    <h1 class="account-page__title">School Portal</h1>
+    <SchoolNav />
+
+    @if (loading)
+    {
+        <p style="color:var(--gray-400);padding:30px 0">Loading...</p>
+    }
+    else if (dash == null)
+    {
+        <div class="cart-empty"><p>Your account isn't linked to a school yet. Please contact the administrator.</p></div>
+    }
+    else
+    {
+        <p class="account-greeting"><strong>@dash.SchoolName</strong> · @(dash.DistrictName ?? "") <span style="color:var(--gray-400)">(@dash.UdiseCode)</span></p>
+
+        <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-card__label">Students</div><div class="kpi-card__value">@dash.StudentCount</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Coordinators</div><div class="kpi-card__value">@dash.CoordinatorCount</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Active Enrollments</div><div class="kpi-card__value">@dash.EnrollmentCount</div></div>
+        </div>
+
+        <div style="margin:18px 0">
+            <a href="/school/enrollment" class="btn btn-primary">Enroll Students</a>
+        </div>
+    }
+</div>
+
+@code {
+    private bool loading = true;
+    private RioCommerce.Core.DTOs.School.SchoolPortalDashboard? dash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        var uid = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (uid != null && Guid.TryParse(uid, out var userId))
+            dash = await RegSvc.GetDashboardAsync(userId);
+        loading = false;
+    }
+}

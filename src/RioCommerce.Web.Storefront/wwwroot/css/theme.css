@@ -1,46 +1,33 @@
 /* ============================================================
-   STOREFRONT THEME — Client Brand Tokens
-   ========================================================
-
-   This is the SINGLE file a new client edits to rebrand the
-   storefront. Every colour, font, and shape token used by the
-   public pages is declared here.
-
-   Scoped to .rc-app (the public layout wrapper in MainLayout.razor).
-   AdminLayout does not carry that class, so admin pages are
-   unaffected — they resolve these variables from :root in app.css.
-
-   To rebrand:
-     1. Replace the hex values below with your brand colours.
-     2. Optionally change the font family.
-     3. Deploy. No other file changes needed.
-
-   Runtime override: when the admin sets brand colours in
-   Settings → Theme, a dynamic <style> block is injected that
-   overrides these tokens — so this file serves as the default
-   and the admin UI as the live override.
+   STOREFRONT THEME — Vijaypath Brand Tokens
    ============================================================ */
 
 .rc-app {
-  /* ── Primary ── */
-  --navy:         #0B45AB;   /* headers, buttons, titles, links   */
-  --navy-light:   #0A5BCF;   /* hover / lighter primary            */
-  --navy-dark:    #082B73;   /* footer, dark sections              */
+  /* ── Primary (Purple) ── */
+  --navy:         #5d38de;
+  --navy-light:   #7455e8;
+  --navy-dark:    #4326b0;
 
-  /* ── Accent ── */
-  --orange:       #0AC7E5;   /* accents, focus rings, chips        */
-  --orange-dark:  #0AA9C4;   /* accent pressed state               */
+  /* ── Accent (Orange-Red) ── */
+  --orange:       #ff5028;
+  --orange-dark:  #e0441f;
 
   /* ── Success / Semantic ── */
-  --green:        #0B45AB;   /* savings, verified badges           */
-  --green-light:  #E6F9FD;   /* success backgrounds                */
+  --green:        #4caf50;
+  --green-light:  #e8f5e9;
+
+  /* ── Neutrals ── */
+  --vp-ink:       #1e272f;
+  --vp-muted:     #4b4b4b;
+  --vp-gray-300:  #b1bec7;
+  --vp-offwhite:  #f5f5f2;
 
   /* ── Brand Aliases ── */
-  --brand-primary:      var(--navy);
+  --brand-primary:       var(--navy);
   --brand-primary-hover: var(--navy-light);
-  --brand-primary-deep: var(--navy-dark);
-  --brand-accent:       var(--orange);
-  --brand-gradient:     linear-gradient(135deg, var(--navy), var(--orange));
+  --brand-primary-deep:  var(--navy-dark);
+  --brand-accent:        var(--orange);
+  --brand-gradient:      linear-gradient(135deg, var(--navy), var(--orange));
 
   /* Backward-compat aliases used by home-premium.css */
   --brand-blue:         var(--navy);
@@ -48,35 +35,68 @@
   --brand-blue-deep:    var(--navy-dark);
   --brand-azure:        var(--orange);
 
-  /* ── Premium layer tokens (used by home-premium.css) ── */
+  /* ── Premium layer tokens ── */
   --p-navy:       var(--navy-dark);
   --p-navy2:      var(--navy-light);
   --p-royal:      var(--navy);
   --p-orange:     var(--orange);
-  --p-orange2:    #5AD9EF;
+  --p-orange2:    #fe9f8a;
   --p-green:      var(--orange);
-  --p-green2:     #7FE3F5;
+  --p-green2:     #ffcbbf;
+
+  /* ── Vijaypath Gradients ── */
+  --hero-grain:        linear-gradient(158deg, #fff 58.74%, #ffcbbf 100.01%);
+  --testimonial-grain: linear-gradient(160deg, #FFF5F5 -4.22%, #FFF 21.41%, #E4DDFF 104.28%);
+  --courses-grain:     linear-gradient(166deg, #fff 3.48%, #fffaf9 51.98%, #ffcbbf 127.09%);
+  --prepare-grain:     linear-gradient(177deg, #fff5f5 -67.48%, #fff -23.08%, #e6dfff 120.45%);
+  --footer-cta-grain:  linear-gradient(178deg, #f0ebff -5.25%, #fe9f8a 142.61%);
+  --stat-card-grain:   linear-gradient(180deg, #f5f5f2 -56.07%, #fff 44.61%, #ffe2e2 100%);
 
   /* ── Typography ── */
-  --font-primary:   "Jost", sans-serif;
-  --font-secondary: "Jost", sans-serif;
+  --font-primary:   "Google Sans Flex", system-ui, -apple-system, sans-serif;
+  --font-secondary: "Google Sans Flex", system-ui, -apple-system, sans-serif;
 
   /* ── Shape ── */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
 }
 
 /* ── Button overrides ── */
-.rc-app .btn-primary { background: var(--brand-primary); color: #fff }
-.rc-app .btn-primary:hover { background: var(--brand-primary-hover) }
-.rc-app .btn-outline { background: #fff; border-color: var(--brand-primary); color: var(--brand-primary) }
-.rc-app .btn-outline:hover { border-color: var(--brand-accent); color: var(--brand-accent) }
+.rc-app .btn-primary {
+  background: var(--brand-accent);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  border: none;
+  font-weight: 500;
+  transition: all 0.3s linear;
+}
+.rc-app .btn-primary:hover {
+  background: var(--orange-dark);
+  transform: translateY(-2px);
+  filter: brightness(0.95);
+}
+.rc-app .btn-outline {
+  background: transparent;
+  border: 1px solid var(--vp-ink);
+  color: var(--vp-ink);
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+}
+.rc-app .btn-outline:hover {
+  text-decoration: underline;
+  text-underline-offset: 6px;
+  text-decoration-thickness: 1px;
+  border-color: var(--vp-ink);
+  color: var(--vp-ink);
+}
 
 /* ── Footer ── */
-.rc-app .footer { background: var(--brand-primary-deep) }
+.rc-app .footer { background: var(--vp-ink) }
 .rc-app .footer h4 { color: #fff }
-.rc-app .footer a:hover { color: var(--brand-accent) }
+.rc-app .footer a { color: #cfcadf }
+.rc-app .footer a:hover { color: #fff }
 .rc-app .footer__social a:hover,
 .rc-app .footer__phones svg,
 .rc-app .footer__col a[href^="mailto"] svg { color: var(--brand-accent) }
@@ -86,6 +106,39 @@
 .rc-app .filter-search:focus-within,
 .rc-app .search-box input:focus,
 .rc-app .coupon-input input:focus {
-  border-color: var(--brand-accent);
-  box-shadow: 0 0 0 3px rgba(10, 199, 229, .18);
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(93, 56, 222, .1);
+}
+
+/* ── Nav active link ── */
+.rc-app .header__link.active {
+  text-decoration: underline;
+  text-decoration-color: var(--brand-accent);
+  text-underline-offset: 6px;
+  text-decoration-thickness: 2px;
+}
+
+/* ── Course cards ── */
+.rc-app .course-card {
+  border-radius: var(--radius-lg);
+  box-shadow: 0 6px 22px rgba(40, 20, 80, 0.06);
+}
+
+/* ── Header login button ── */
+.rc-app .header__login {
+  background: var(--brand-accent);
+  border-radius: var(--radius-pill);
+}
+.rc-app .header__login:hover {
+  background: var(--orange-dark);
+}
+
+/* ── Hero section ── */
+.rc-app .hero {
+  background: var(--hero-grain);
+}
+
+/* ── Section backgrounds ── */
+.rc-app .trending-section {
+  background: var(--courses-grain);
 }

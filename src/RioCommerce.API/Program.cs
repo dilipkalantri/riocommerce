@@ -61,6 +61,9 @@ builder.Services.AddDbContext<RioCommerceDbContext>(options =>
             npgsql.MapEnum<RioCommerce.Core.Enums.CommissionType>();
             npgsql.MapEnum<RioCommerce.Core.Enums.CustomerType>();
             npgsql.MapEnum<RioCommerce.Core.Enums.AttributeControlType>();
+            npgsql.MapEnum<RioCommerce.Core.Enums.SchoolType>();
+            npgsql.MapEnum<RioCommerce.Core.Enums.SchoolUserRole>();
+            npgsql.MapEnum<RioCommerce.Core.Enums.Gender>();
         }),
     // Transient so concurrently-rendering Blazor components (e.g. Header + page body during
     // prerender) don't share one DbContext — avoids "A second operation was started…" crashes.
@@ -210,6 +213,10 @@ builder.Services.AddScoped<IFacultyService, FacultyService>();
 builder.Services.AddScoped<ICatalogAdminService, CatalogAdminService>();
 builder.Services.AddScoped<IAttributeAdminService, AttributeAdminService>();
 builder.Services.AddScoped<ISubjectAdminService, SubjectAdminService>();
+builder.Services.AddScoped<IAcademicYearService, AcademicYearService>();
+builder.Services.AddScoped<IGeographyService, GeographyService>();
+builder.Services.AddScoped<ISchoolService, SchoolService>();
+builder.Services.AddScoped<ISchoolRegistrationService, SchoolRegistrationService>();
 builder.Services.AddScoped<RioCommerce.Web.Services.ToastService>();
 // Per-circuit list-screen state (filters survive an order detail, clear on leaving the section).
 builder.Services.AddScoped<RioCommerce.Web.Services.AdminScreenState>();
@@ -726,6 +733,77 @@ app.MapPost("/api/account/resend-otp", async (HttpContext http, RioCommerceDbCon
     return Results.Json(new { success = send.Success, error = send.ErrorMessage });
 }).DisableAntiforgery().RequireRateLimiting(OtpSendRateLimitPolicy);
 
+// ── School Registration: UDISE lookup ──
+app.MapPost("/api/school/lookup", async (HttpContext http, ISchoolRegistrationService schoolReg) =>
+{
+    var form = await http.Request.ReadFormAsync();
+    var udise = form["udiseCode"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(udise))
+        return Results.Json(new { success = false, error = "Please enter a UDISE code." });
+
+    var result = await schoolReg.LookupByUdiseAsync(udise);
+    if (result == null)
+        return Results.Json(new { success = false, error = "No school found with this UDISE code. Please check and try again." });
+
+    return Results.Json(new { success = true, school = result });
+}).DisableAntiforgery();
+
+// ── School Registration: register principal (create user + send OTP) ──
+app.MapPost("/api/school/register", async (HttpContext http, ISchoolRegistrationService schoolReg) =>
+{
+    var form = await http.Request.ReadFormAsync();
+    var request = new RioCommerce.Core.DTOs.School.SchoolPrincipalRegisterRequest
+    {
+        UdiseCode = form["udiseCode"].ToString(),
+        FullName = form["fullName"].ToString(),
+        Email = form["email"].ToString(),
+        Phone = form["phone"].ToString(),
+        Password = form["password"].ToString()
+    };
+
+    if (string.IsNullOrWhiteSpace(request.UdiseCode) || string.IsNullOrWhiteSpace(request.FullName)
+        || string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Phone)
+        || string.IsNullOrWhiteSpace(request.Password))
+        return Results.Json(new { success = false, error = "All fields are required." });
+
+    if (request.Password.Length < 6)
+        return Results.Json(new { success = false, error = "Password must be at least 6 characters." });
+
+    var (ok, error) = await schoolReg.RegisterPrincipalAsync(request);
+    return Results.Json(new { success = ok, error });
+}).DisableAntiforgery();
+
+// ── School Registration: verify OTP, activate account, return sign-in token ──
+app.MapPost("/api/school/verify-otp", async (HttpContext http, ISchoolRegistrationService schoolReg,
+    RioCommerceDbContext db, IDataProtectionProvider dp) =>
+{
+    var form = await http.Request.ReadFormAsync();
+    var email = form["email"].ToString().Trim();
+    var code = form["code"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(code))
+        return Results.Json(new { success = false, error = "Enter the 6-digit code." });
+
+    var (ok, error, userId) = await schoolReg.VerifyOtpAsync(email, code);
+    if (!ok || userId == null)
+        return Results.Json(new { success = false, error = error ?? "Invalid or expired code." });
+
+    var protector = dp.CreateProtector("RioCommerce.Account.SignInBridge.v1").ToTimeLimitedDataProtector();
+    var token = protector.Protect(userId.Value.ToString(), TimeSpan.FromMinutes(2));
+    return Results.Json(new { success = true, token });
+}).DisableAntiforgery();
+
+// ── School Registration: resend OTP ──
+app.MapPost("/api/school/resend-otp", async (HttpContext http, ISchoolRegistrationService schoolReg) =>
+{
+    var form = await http.Request.ReadFormAsync();
+    var email = form["email"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(email))
+        return Results.Json(new { success = false, error = "Missing email." });
+
+    var (ok, error) = await schoolReg.ResendOtpAsync(email);
+    return Results.Json(new { success = ok, error });
+}).DisableAntiforgery().RequireRateLimiting(OtpSendRateLimitPolicy);
+
 // ── Sign-in bridge: consumes the one-time token from verify-otp, sets the auth cookie, redirects home. ──
 app.MapGet("/account/complete-signin", async (HttpContext http, RioCommerceDbContext db, IDataProtectionProvider dp, string token) =>
 {
@@ -989,6 +1067,8 @@ using (var scope = app.Services.CreateScope())
         ("44444444-4444-4444-4444-444444444404", "faculty",         "Faculty"),
         ("44444444-4444-4444-4444-444444444405", "franchise_admin", "Franchise Admin"),
         ("44444444-4444-4444-4444-444444444406", "operations",      "Operations"),
+        ("44444444-4444-4444-4444-444444444407", "school_principal", "School Principal"),
+        ("44444444-4444-4444-4444-444444444408", "school_coordinator","School Coordinator"),
     };
     var existingRoleNames = (await db.Roles.Select(r => r.Name).ToListAsync()).ToHashSet(StringComparer.OrdinalIgnoreCase);
     foreach (var (id, name, display) in staffRoles)

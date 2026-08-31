@@ -1,0 +1,130 @@
+@page "/admin/academic-years"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
+@inject IAcademicYearService Svc
+<PageTitle>Academic Years — Admin</PageTitle>
+
+<div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Academic Years</h1>
+    <button class="btn btn-primary btn-sm" @onclick="() => OpenEditor(null)">+ Add Academic Year</button>
+</div>
+
+@if (editing != null)
+{
+    <div class="form-card">
+        <div class="form-card__title">@(editing.Id == null ? "New Academic Year" : "Edit Academic Year")</div>
+        @if (err != null) { <div class="inline-alert inline-alert--err">@err</div> }
+        <div class="form-grid">
+            <div class="form-group">
+                <label class="form-label">Name <span class="required">*</span></label>
+                <input class="form-input" @bind="editing.Name" placeholder="e.g. 2025-26" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Start Date <span class="required">*</span></label>
+                <input type="date" class="form-input" @bind="startDateBind" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">End Date <span class="required">*</span></label>
+                <input type="date" class="form-input" @bind="endDateBind" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Current Year</label>
+                <div style="padding-top:8px"><input type="checkbox" @bind="editing.IsCurrent" /> <span style="color:var(--gray-400)">mark as the active academic year</span></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Active</label>
+                <div style="padding-top:8px"><input type="checkbox" @bind="editing.IsActive" /></div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">@(saving ? "Saving..." : "Save")</button>
+            <button class="btn btn-ghost" @onclick="() => editing = null">Cancel</button>
+        </div>
+    </div>
+}
+
+@if (msg != null) { <div class="inline-alert @(msgOk ? "inline-alert--ok" : "inline-alert--err")" style="margin-bottom:12px">@msg</div> }
+
+<div class="data-card">
+    <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Start</th><th>End</th><th>Current</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+            @if (items == null) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">Loading...</td></tr> }
+            else if (items.Count == 0) { <tr><td colspan="6" style="text-align:center;color:var(--gray-400)">No academic years.</td></tr> }
+            else
+            {
+                @foreach (var a in items)
+                {
+                    <tr>
+                        <td><strong>@a.Name</strong></td>
+                        <td>@a.StartDate.ToString("dd MMM yyyy")</td>
+                        <td>@a.EndDate.ToString("dd MMM yyyy")</td>
+                        <td>@(a.IsCurrent ? "Yes" : "")</td>
+                        <td><span class="status @(a.IsActive ? "status--confirmed" : "status--cancelled")"><span class="dot"></span>@(a.IsActive ? "Active" : "Inactive")</span></td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button class="btn btn-ghost btn-sm" @onclick="() => OpenEditor(a.Id)">Edit</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(a.Id)">@(a.IsActive ? "Deactivate" : "Activate")</button>
+                                @if (!a.IsCurrent) { <button class="btn btn-danger btn-sm" @onclick="() => Delete(a.Id)">Delete</button> }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table></div>
+</div>
+
+@code {
+    private List<AcademicYearItem>? items;
+    private AcademicYearEditModel? editing;
+    private bool saving, msgOk;
+    private string? err, msg;
+
+    private DateTime startDateBind
+    {
+        get => editing?.StartDate.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today;
+        set { if (editing != null) editing.StartDate = DateOnly.FromDateTime(value); }
+    }
+    private DateTime endDateBind
+    {
+        get => editing?.EndDate.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today;
+        set { if (editing != null) editing.EndDate = DateOnly.FromDateTime(value); }
+    }
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => items = await Svc.ListAsync();
+
+    private async Task OpenEditor(Guid? id)
+    {
+        err = null; msg = null;
+        editing = id == null ? new AcademicYearEditModel { StartDate = new DateOnly(DateTime.Today.Year, 6, 1), EndDate = new DateOnly(DateTime.Today.Year + 1, 5, 31) }
+                             : await Svc.GetAsync(id.Value);
+    }
+
+    private async Task Save()
+    {
+        if (editing == null) return;
+        saving = true; err = null;
+        var (ok, error, _) = await Svc.SaveAsync(editing);
+        saving = false;
+        if (ok) { editing = null; await Reload(); Flash(true, "Academic year saved."); }
+        else err = error;
+    }
+
+    private async Task Toggle(Guid id)
+    {
+        var (ok, error) = await Svc.ToggleAsync(id);
+        if (ok) { await Reload(); Flash(true, "Academic year updated."); }
+        else Flash(false, error!);
+    }
+
+    private async Task Delete(Guid id)
+    {
+        var (ok, error) = await Svc.DeleteAsync(id);
+        if (ok) { await Reload(); Flash(true, "Academic year deleted."); }
+        else Flash(false, error!);
+    }
+
+    private void Flash(bool ok, string m) { msgOk = ok; msg = m; }
+}

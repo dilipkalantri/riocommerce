@@ -1,0 +1,330 @@
+/* ============================================================
+   VIJAYPATH — Branch-specific layout overrides
+   ============================================================ */
+
+/* ── Hero: left text + right photo grid ── */
+.rc-app .hero{
+  background: var(--hero-grain);
+  padding: 80px 36px;
+  position: relative;
+  overflow: hidden;
+  text-align: left;
+  color: var(--vp-ink);
+}
+.rc-app .hero::after{ display: none }
+.rc-app .hero__bg{ display: none }
+.rc-app .hero__wave{ display: none }
+.rc-app .hero__inner{
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  gap: 40px;
+  align-items: center;
+}
+.rc-app .hero__content{ z-index: 1 }
+.rc-app .hero__title{
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 500;
+  line-height: 110%;
+  color: var(--vp-ink);
+  text-align: left;
+  text-shadow: none;
+  -webkit-text-fill-color: unset;
+  background: none;
+  -webkit-background-clip: unset;
+}
+.rc-app .hero__title .highlight{
+  background: none;
+  -webkit-background-clip: unset;
+  -webkit-text-fill-color: unset;
+  color: var(--brand-accent);
+}
+.rc-app .hero__subtitle{
+  font-size: clamp(16px, 1.8vw, 18px);
+  line-height: 140%;
+  color: var(--vp-muted);
+  max-width: 480px;
+  margin: 0 0 30px;
+  text-align: left;
+  opacity: 1;
+}
+.rc-app .hero__note{ display: none }
+.rc-app .hero__course-btns{
+  display: flex;
+  gap: 12px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin: 0;
+}
+.rc-app .hero__course-btn{
+  border-radius: var(--radius-pill);
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  transition: all 0.3s linear;
+}
+.rc-app .hero__course-btn--primary{
+  background: var(--brand-accent);
+  color: #fff;
+  box-shadow: none;
+}
+.rc-app .hero__course-btn--primary:hover{
+  transform: translateY(-2px);
+  filter: brightness(0.95);
+}
+.rc-app .hero__course-btn--outline{
+  background: transparent;
+  border: 1px solid var(--vp-ink);
+  color: var(--vp-ink);
+  box-shadow: none;
+}
+.rc-app .hero__course-btn--outline:hover{
+  text-decoration: underline;
+  text-underline-offset: 6px;
+}
+.rc-app .hero__course-btn svg{ width: 18px; height: 18px }
+.rc-app .hero__course-btn::after{ display: none }
+
+/* Hero photo grid */
+.rc-app .hero__photos{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.rc-app .hero__photo-card{
+  border-radius: 15px;
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 180px;
+}
+.rc-app .hero__photo-card img{
+  width: 100%;
+  border-radius: 10px;
+  object-fit: contain;
+}
+.rc-app .hero__photo-card--girl{ background: linear-gradient(178deg, #f8fcff -5.25%, #cabaff 142.61%) }
+.rc-app .hero__photo-card--boy{
+  background: linear-gradient(178deg, #f0ebff -5.25%, #fe9f8a 142.61%);
+  position: relative;
+  aspect-ratio: 7/5;
+  align-items: flex-end;
+}
+.rc-app .hero__photo-card--grp{ background: linear-gradient(162deg, #f8fcff -15.56%, #baf0ff 122.69%) }
+.rc-app .hero__photo-placeholder{
+  width: 100%;
+  height: 100%;
+  min-height: 140px;
+  display: grid;
+  place-items: center;
+  color: var(--vp-gray-300);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* ── Scrolling strip ── */
+.rc-app .vp-strip{
+  background: var(--brand-primary);
+  color: #fff;
+  padding: 12px 36px;
+  text-align: center;
+  font-size: 16px;
+}
+.rc-app .vp-strip a{ color: #fff; text-decoration: underline; margin-left: 8px }
+
+/* ── Stats section ── */
+.rc-app .vp-stats{ padding: 60px 36px; background: #fff }
+.rc-app .vp-stats h2{ text-align: center; font-size: clamp(28px, 4vw, 40px); font-weight: 500; color: var(--vp-ink); margin-bottom: 12px }
+.rc-app .vp-stats p{ text-align: center; color: var(--vp-muted); font-size: 18px; margin-bottom: 40px }
+.rc-app .stat-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.rc-app .stat-card{
+  background: var(--stat-card-grain);
+  border-radius: 15px;
+  padding: 30px;
+  text-align: left;
+}
+.rc-app .stat-card .stat-icon{
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  margin-bottom: 40px;
+  color: var(--brand-accent);
+}
+.rc-app .stat-card .stat-icon svg{ width: 22px; height: 22px }
+.rc-app .stat-card h3{ font-size: clamp(28px, 3.5vw, 40px); font-weight: 500; color: var(--vp-ink); margin-bottom: 4px }
+.rc-app .stat-card p{ text-align: left; color: var(--vp-muted); font-size: 16px; margin: 0 }
+
+/* ── Prepare / Features section ── */
+.rc-app .vp-prepare{ padding: 80px 36px; background: var(--prepare-grain) }
+.rc-app .vp-prepare h2{ font-size: clamp(28px, 4vw, 40px); font-weight: 500; color: var(--vp-ink); margin-bottom: 12px }
+.rc-app .feature-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  max-width: 1200px;
+  margin: 30px auto 0;
+}
+.rc-app .feature-card{
+  background: #fff;
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+  display: flex;
+  gap: 0.9rem;
+  height: 100%;
+}
+.rc-app .feature-card .feature-ico{
+  width: 64px;
+  height: 64px;
+  min-width: 64px;
+  border-radius: 10px;
+  background: #fff3f3;
+  color: var(--brand-accent);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.rc-app .feature-card .feature-ico svg{ width: 28px; height: 28px }
+.rc-app .feature-card h5{ font-size: 18px; font-weight: 500; color: var(--vp-ink); margin-bottom: 4px }
+.rc-app .feature-card p{ font-size: 14px; color: var(--vp-muted); line-height: 1.5; margin: 0 }
+
+/* ── Why section (dark) ── */
+.rc-app .vp-why{ padding: 80px 36px; background: var(--vp-ink); color: #e8e4f5 }
+.rc-app .vp-why h2{ color: #fff; font-size: clamp(28px, 4vw, 40px); font-weight: 500; margin-bottom: 12px }
+.rc-app .vp-why .why-sub{ color: var(--vp-gray-300) }
+.rc-app .why-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 30px 30px;
+  max-width: 1200px;
+  margin: 40px auto 0;
+}
+.rc-app .why-item{
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding-bottom: 30px;
+}
+.rc-app .why-item .why-ico{
+  width: 64px;
+  height: 64px;
+  min-width: 64px;
+  border-radius: 12px;
+  background: #f1eeff;
+  display: grid;
+  place-items: center;
+  color: #7b61ff;
+}
+.rc-app .why-item .why-ico svg{ width: 28px; height: 28px }
+.rc-app .why-item h5{ color: #fff; font-size: 18px; font-weight: 500; margin-bottom: 4px }
+.rc-app .why-item p{ color: #e8e4f5; font-size: 14px; line-height: 1.5; margin: 0 }
+
+/* ── Footer CTA ── */
+.rc-app .vp-footer-cta{
+  padding: 80px 36px;
+  background: var(--footer-cta-grain);
+}
+.rc-app .vp-footer-cta h2{ font-size: clamp(28px, 4vw, 40px); font-weight: 500; color: var(--vp-ink) }
+.rc-app .vp-footer-cta p{ color: var(--vp-muted); font-size: 18px; margin-bottom: 30px }
+
+/* ── Courses section override ── */
+.rc-app .trending-section{ background: var(--courses-grain) }
+
+/* ── Testimonial cards ── */
+.rc-app .tm-card{
+  background: var(--testimonial-grain);
+  border-radius: 15px;
+}
+
+/* ── Header nav overrides ── */
+.rc-app .header__link{
+  font-weight: 500;
+}
+.rc-app .header__logo img{
+  height: 28px;
+  width: auto;
+}
+
+/* ── Footer overrides ── */
+.rc-app .footer__tagline{
+  color: #cfcadf;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 12px;
+  max-width: 340px;
+}
+.rc-app .footer__social{
+  display: flex;
+  gap: 14px;
+  margin-top: 16px;
+}
+.rc-app .footer__social a{
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.15);
+  display: grid;
+  place-items: center;
+  color: #cfcadf;
+  transition: all .25s ease;
+}
+.rc-app .footer__social a:hover{
+  color: #fff;
+  border-color: var(--brand-accent);
+  background: rgba(255,80,40,.12);
+}
+.rc-app .footer__social a svg{ width: 18px; height: 18px }
+.rc-app .footer__watermark{
+  text-align: center;
+  opacity: .08;
+  overflow: hidden;
+  margin: 30px 0 -10px;
+}
+.rc-app .footer__watermark svg{
+  width: 100%;
+  max-width: 700px;
+  height: auto;
+}
+.rc-app .footer__bottom{
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 20px;
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 991px) {
+  .rc-app .hero__inner{
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .rc-app .hero__title{ text-align: center }
+  .rc-app .hero__subtitle{ text-align: center; max-width: 100%; margin: 0 auto 30px }
+  .rc-app .hero__course-btns{ justify-content: center }
+  .rc-app .hero__photos{ max-width: 500px; margin: 0 auto }
+  .rc-app .stat-grid{ grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) }
+  .rc-app .feature-grid{ grid-template-columns: 1fr }
+  .rc-app .why-grid{ grid-template-columns: 1fr }
+}
+@media (max-width: 575px) {
+  .rc-app .hero{ padding: 48px 20px; background: linear-gradient(135deg, #FFF 25%, #FFCBBF 75%) }
+  .rc-app .hero__course-btn{ width: 100%; justify-content: center }
+  .rc-app .vp-stats,
+  .rc-app .vp-prepare,
+  .rc-app .vp-why,
+  .rc-app .vp-footer-cta{ padding: 48px 20px }
+  .rc-app .stat-grid{ grid-template-columns: 1fr 1fr }
+}
