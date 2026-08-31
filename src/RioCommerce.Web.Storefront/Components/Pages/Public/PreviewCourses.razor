@@ -91,7 +91,7 @@
     // Same source as every other logo on the site: whatever the admin uploaded on Admin › Settings,
     // falling back to the bundled asset when nothing has been.
     private string? customLogoUrl;
-    private const string FallbackLogo = "/_content/RioCommerce.Web/assets/logo.png";
+    private const string FallbackLogo = "/_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo.svg";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
 
     protected override async Task OnInitializedAsync()

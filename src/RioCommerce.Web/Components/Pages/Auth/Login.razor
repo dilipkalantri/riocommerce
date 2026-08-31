@@ -48,7 +48,7 @@
     .hj-auth-logo-ring{position:absolute;inset:-26px;border-radius:50%;z-index:-1;
         background:radial-gradient(circle,rgba(10, 199, 229,.45),rgba(42,85,128,.28) 45%,transparent 70%);
         filter:blur(14px);animation:hj-ring-pulse 4.5s ease-in-out infinite}
-    .hj-auth-logo{height:64px;width:auto;display:block;filter:drop-shadow(0 6px 18px rgba(0,0,0,.35));
+    .hj-auth-logo{width:340px;max-width:100%;height:auto;display:block;filter:drop-shadow(0 6px 18px rgba(0,0,0,.35));
         transition:transform .4s cubic-bezier(.34,1.56,.64,1)}
     .hj-auth-logo-wrap:hover .hj-auth-logo{transform:scale(1.06)}
     .hj-auth-logo-wrap:hover .hj-auth-logo-ring{animation-duration:2.4s}
@@ -184,7 +184,7 @@
         .hj-auth-page{grid-template-columns:1fr;min-height:0}
         .hj-auth-brand{padding:34px 24px 30px}
         .hj-auth-brand__inner{max-width:560px}
-        .hj-auth-logo{height:54px}
+        .hj-auth-logo{width:300px}
         .hj-auth-logo-wrap{margin-bottom:18px}
         .hj-auth-brand__sub{margin-bottom:18px}
         .hj-auth-formside{padding:26px 18px 40px}
@@ -192,7 +192,7 @@
     }
     @@media(max-width:520px){
         .hj-auth-brand{padding:26px 18px 22px}
-        .hj-auth-logo{height:46px}
+        .hj-auth-logo{width:240px}
         .hj-auth-logo-wrap{margin-bottom:14px}
         .hj-auth-brand__title{margin-bottom:10px}
         .hj-auth-brand__sub{margin-bottom:14px;font-size:14px}
@@ -231,7 +231,7 @@
         <div class="hj-auth-brand__inner">
             <div class="hj-auth-logo-wrap hj-anim hj-anim--1">
                 <span class="hj-auth-logo-ring" aria-hidden="true"></span>
-                <img src="@LogoSrc" alt="RioCommerce" class="hj-auth-logo" />
+                <img src="@LogoSrc" alt="Vijaypath" class="hj-auth-logo" />
             </div>
             <h1 class="hj-auth-brand__title hj-anim hj-anim--2">Start Your CA Journey</h1>
             <p class="hj-auth-brand__sub hj-anim hj-anim--3">Learn from trusted faculty. Prepare with confidence. Achieve your CA dream.</p>
@@ -463,7 +463,7 @@
     // Same source as the storefront header and footer: whatever the admin uploaded on
     // Admin › Settings, falling back to the bundled asset when nothing has been.
     private string? customLogoUrl;
-    private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
+    private const string FallbackLogo = "_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo-light.svg";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
 
     protected override async Task OnInitializedAsync()

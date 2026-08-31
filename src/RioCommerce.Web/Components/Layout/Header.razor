@@ -96,6 +96,12 @@
                             </a>
                         </AuthorizeView>
                     }
+                    <AuthorizeView Roles="school_principal,school_coordinator" Context="sch">
+                        <a href="/school" class="header__chip" title="School portal">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10.5V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-6.5"/></svg>
+                            School
+                        </a>
+                    </AuthorizeView>
                     <div class="header__profile">
                         <button type="button" class="header__user @(profileOpen ? "is-open" : "")" @onclick="ToggleProfile" aria-label="Account menu" aria-expanded="@profileOpen">
                             <span class="header__avatar"><span class="header__avatar-txt">@Initials(uname)</span><span class="header__status"></span></span>
@@ -151,6 +157,10 @@
                 </Authorized>
                 <NotAuthorized>
                     <span class="header__divider"></span>
+                    <a href="/school/register" class="header__chip" title="Register your school">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="M6 10.5V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-6.5"/></svg>
+                        Register School
+                    </a>
                     <a href="/login" class="btn btn-primary btn-sm header__login">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/></svg>
                         Login
@@ -192,11 +202,15 @@
                     <AuthorizeView Roles="super_admin,admin,operations,faculty,franchise_admin" Context="adm2">
                         <a href="/admin/dashboard" @onclick="ToggleMenu">Admin Dashboard</a>
                     </AuthorizeView>
+                    <AuthorizeView Roles="school_principal,school_coordinator" Context="sch2">
+                        <a href="/school" @onclick="ToggleMenu">School Portal</a>
+                    </AuthorizeView>
                     <form method="post" action="/account/logout" data-enhance="false" style="margin:0">
                         <button type="submit" class="btn btn-outline" style="width:100%">Logout</button>
                     </form>
                 </Authorized>
                 <NotAuthorized>
+                    <a href="/school/register" @onclick="ToggleMenu">Register your School</a>
                     <a href="/login" class="btn btn-primary" @onclick="ToggleMenu">Login / Register</a>
                 </NotAuthorized>
             </AuthorizeView>

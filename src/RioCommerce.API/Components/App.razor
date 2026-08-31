@@ -5,9 +5,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <link rel="icon" type="image/png" href="/_content/RioCommerce.Web/assets/logo.png" />
-    <link rel="shortcut icon" type="image/png" href="/_content/RioCommerce.Web/assets/logo.png" />
-    <link rel="apple-touch-icon" href="/_content/RioCommerce.Web/assets/logo.png" />
+    <link rel="icon" type="image/svg+xml" href="/_content/RioCommerce.Web.Storefront/images/vijaypath-icon.svg" />
+    <link rel="shortcut icon" type="image/png" href="/_content/RioCommerce.Web.Storefront/images/vijaypath-icon-192.png" />
+    <link rel="apple-touch-icon" href="/_content/RioCommerce.Web.Storefront/images/vijaypath-icon-192.png" />
     <link rel="stylesheet" href="_content/RioCommerce.Web/css/app.css" />
     <link rel="stylesheet" href="_content/RioCommerce.Web/css/home-premium.css" />
     <link rel="stylesheet" href="_content/RioCommerce.Web.Storefront/css/theme.css" />
@@ -457,7 +457,7 @@
                     order_id: handoff.orderId,
                     name: 'RioCommerce',
                     description: 'Order ' + (handoff.orderNumber || ''),
-                    image: '/_content/RioCommerce.Web/assets/logo.png',
+                    image: '/_content/RioCommerce.Web.Storefront/images/vijaypath-icon-192.png',
                     prefill: prefill || {},
                     notes: { order_number: handoff.orderNumber || '' },
                     theme: { color: '#F58220' },
@@ -724,7 +724,7 @@
                     order_id: opts.gatewayOrderId,
                     name: opts.name || 'RioCommerce',
                     description: opts.description || ('Order ' + (opts.orderNumber || '')),
-                    image: opts.image || '/_content/RioCommerce.Web/assets/logo.png',
+                    image: opts.image || '/_content/RioCommerce.Web.Storefront/images/vijaypath-icon-192.png',
                     prefill: {
                         name: opts.prefillName || '',
                         email: opts.prefillEmail || '',

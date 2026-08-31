@@ -205,7 +205,7 @@
 /* divider */
 .rc-app .header__divider{width:1px;height:28px;background:linear-gradient(180deg,transparent,var(--gray-200) 30%,var(--gray-200) 70%,transparent);margin:0 4px}
 
-/* admin / franchise chip */
+/* admin / franchise / school chip */
 .rc-app .header__chip{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 15px;border-radius:11px;font-size:13.5px;font-weight:700;color:#fff;white-space:nowrap;
   background:linear-gradient(135deg,#16386a,#082B73);box-shadow:0 10px 22px -12px rgba(11,31,58,.85);transition:transform .25s var(--p-ease),box-shadow .25s,filter .25s}
 .rc-app .header__chip svg{width:16px;height:16px;color:var(--p-orange2)}

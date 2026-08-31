@@ -553,6 +553,14 @@ app.MapPost("/account/login", async (HttpContext http, RioCommerceDbContext db, 
     });
 
     await SignInUserAsync(http, user);
+
+    // School staff have no reason to land on the storefront home page. Only applies when the
+    // login carried no explicit destination — an rurl from a deep link still wins, so a
+    // principal following /login?ReturnUrl=/cart still ends up at the cart.
+    if (target == "/" && user.UserRoles.Any(ur => ur.IsActive
+            && (ur.Role.Name == "school_principal" || ur.Role.Name == "school_coordinator")))
+        target = "/school";
+
     return Results.Redirect(target);
 }).DisableAntiforgery();
 

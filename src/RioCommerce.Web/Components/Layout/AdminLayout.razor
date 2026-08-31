@@ -10,7 +10,7 @@
 <div class="admin-layout @(collapsed ? "admin-layout--collapsed" : "") @(mobileOpen ? "admin-layout--mobile-open" : "")">
     <div class="nav-overlay" @onclick="CloseMobile"></div>
     <aside class="sidebar @(_searchActive ? "sidebar--searching" : "")" id="sidebar">
-        <div class="sidebar__logo"><a href="/admin/dashboard"><img src="@LogoSrc" alt="RioCommerce" /></a><span class="sidebar__txt">ADMIN</span></div>
+        <div class="sidebar__logo"><a href="/admin/dashboard"><img src="@LogoSrc" alt="Vijaypath" /></a><span class="sidebar__txt">ADMIN</span></div>
 
         @* ── Global menu search — type to filter all groups + links. Ctrl+K from anywhere focuses
               this input. ESC clears. Auto-expands every visible group while a search is active. ── *@
@@ -629,7 +629,7 @@
     // Admin › Settings, falling back to the bundled asset when nothing has been.
     private string? customLogoUrl;
     private bool _franchiseOn = true, _serialKeysOn = true;
-    private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
+    private const string FallbackLogo = "_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo-light.svg";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
 
 

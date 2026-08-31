@@ -12,7 +12,7 @@
     .inv-toolbar{display:flex;justify-content:flex-end;gap:8px;margin-bottom:16px}
     .inv-paper{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:36px}
     .inv-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1f2937;padding-bottom:18px}
-    .inv-brand img{height:44px}
+    .inv-brand img{width:200px;max-width:100%;height:auto}
     .inv-brand h2{font-size:20px;font-weight:800;margin-top:8px;color:#0f172a}
     .inv-brand p{font-size:12px;color:#6b7280;line-height:1.5}
     .inv-title{text-align:right}
@@ -66,7 +66,7 @@
         <div class="inv-paper">
             <div class="inv-head">
                 <div class="inv-brand">
-                    <img src="@LogoSrc" alt="RioCommerce" />
+                    <img src="@LogoSrc" alt="Vijaypath" />
                     <h2>RioCommerce</h2>
                     <p>CA Coaching · Shukrawar Peth, Pune, Maharashtra<br />GSTIN: 27ABCDE1234F1Z5 · support@riocommerce.com</p>
                 </div>
@@ -224,7 +224,7 @@
     // Same source as the storefront header, footer and sign-in page: whatever the admin uploaded on
     // Admin › Settings, falling back to the bundled asset when nothing has been.
     private string? customLogoUrl;
-    private const string FallbackLogo = "_content/RioCommerce.Web/assets/logo.png";
+    private const string FallbackLogo = "_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo.svg";
     private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
 
 
