@@ -1,0 +1,279 @@
+/* ============================================================
+   HEADER — FIT + PREMIUM POLISH (v3)
+   ------------------------------------------------------------
+   Loaded AFTER theme.css / vijaypath.css (both of which override
+   header rules from home-premium.css), so equal-specificity rules
+   here win the cascade. Everything is .rc-app-scoped, so the admin
+   UI keeps its own header entirely.
+
+   Two jobs:
+     1. FIT  — the row overflowed the pill on every desktop >=1200px.
+     2. LOOK — re-tune the bar onto the real brand (purple #5d38de +
+               orange #ff5028); several pieces were still carrying the
+               old navy/cyan palette.
+
+   IMPORTANT: every rule in this file is gated to >=768px. The phone
+   header is a different layout (hamburger / logo / grow-to-fill search
+   / cart, reordered with flex `order`) with its own tuned block in
+   home-premium.css, and it is deliberately left completely untouched —
+   an earlier revision of this file leaked desktop logo padding into it
+   and blew the row out by 249px.
+   ============================================================ */
+
+/* ============================================================
+   1. FIT — stop the action cluster spilling out of the pill
+   ------------------------------------------------------------
+   Measured with the default menu at 1366px: the row needed 1236px
+   against a 1200px pill, so Login sat ~36px outside the border. The
+   cause is a gap in the responsive tiers — the "buy back room" rules
+   in home-premium.css stop at 1199.98px, but .header__inner stops
+   growing at max-width:1200px. So every viewport >=1200px got the
+   roomiest paddings inside the narrowest container it will ever use.
+
+   Fixed from both ends: the pill may now grow to 1280px, and the nav
+   horizontal padding scales with the viewport instead of jumping at
+   breakpoints, so there is no width where the row is over-padded.
+   ============================================================ */
+@media (min-width:768px){
+
+  .rc-app .header__inner{
+    box-sizing:border-box;
+    /* grow with the viewport, but never wider than the space actually
+       available (the .header wrapper padding is subtracted) */
+    max-width:min(1280px, calc(100vw - 2 * clamp(12px, 2.4vw, 26px)));
+  }
+
+  /* Every item in the row is a fixed-size anchor: the fit is bought with
+     the container width and the fluid nav padding below, never by
+     squeezing a flex item. NB the nav must keep flex:0 0 auto — letting
+     it shrink (flex:0 1 auto) compresses it below its own content width,
+     and because it has no overflow handling the links then render
+     straight over the action cluster. */
+  .rc-app .header__logo{flex:0 0 auto}
+  .rc-app .header__actions{flex:0 0 auto;margin-left:auto}
+  .rc-app .header__nav{flex:0 0 auto}
+  .rc-app .header__link{white-space:nowrap}
+}
+
+/* ------------------------------------------------------------
+   Tablet / small desktop (768px–1279.98px): hand the menu to the
+   drawer instead of overflowing.
+
+   Measured at 900px: the nav alone needs 826px, and logo (249) +
+   actions (380) already claim 629 of the 848 usable px — the inline
+   row cannot fit at any padding. The existing "buy back room" tiers
+   in home-premium.css were tuned for a shorter menu (Home / Courses /
+   Test Series / Books / Blog / Contact) and a single CTA; this site
+   runs longer labels plus both Register School and Login, so they no
+   longer close the gap and the row spilled out of the pill.
+
+   The cutover sits at 1280px because that is the first width that
+   measured clean: the row fits inside the pill with its intended 12px
+   inset. At 1200px it still needed ~1205px against a 1148px pill.
+
+   The hamburger + drawer already carry the full menu, so nothing is
+   lost — it simply starts one tier earlier than before.
+   ------------------------------------------------------------ */
+@media (min-width:768px) and (max-width:1279.98px){
+  .rc-app .header__nav{display:none}
+  .rc-app .header__hamburger{display:inline-flex;flex:0 0 auto;margin-left:6px}
+}
+
+/* Fluid nav padding: 13px of breathing room on a wide screen, tightening
+   to 9px as the viewport narrows. Replaces the hard 15px that only ever
+   fit above ~1450px. */
+@media (min-width:1280px){
+  .rc-app .header__nav{margin-left:14px;padding-left:16px;gap:2px}
+  .rc-app .header__link{padding:9px clamp(9px, 0.86vw, 13px)}
+  .rc-app .header__link::after{left:clamp(9px, 0.86vw, 13px);right:clamp(9px, 0.86vw, 13px)}
+  .rc-app .header__actions{gap:7px}
+}
+
+/* ============================================================
+   2-6. APPEARANCE  (desktop / tablet only)
+   ============================================================ */
+@media (min-width:768px){
+
+  /* ---------- 2. CONTAINER — cleaner glass, brand-tinted depth ---------- */
+  .rc-app .header{padding:12px clamp(12px, 2.4vw, 26px)}
+
+  .rc-app .header__inner{
+    height:68px;
+    padding:0 12px 0 8px;
+    border-radius:22px;
+    gap:8px;
+    background:linear-gradient(180deg, rgba(255,255,255,.95), rgba(250,248,255,.88));
+    border:1px solid rgba(93,56,222,.10);
+    backdrop-filter:saturate(185%) blur(20px);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.95),
+      0 10px 24px -16px rgba(67,38,176,.34),
+      0 30px 62px -34px rgba(30,39,47,.42);
+  }
+
+  /* the masked gradient hairline — brought onto brand and made legible */
+  .rc-app .header__inner::before{
+    border-radius:22px;
+    padding:1.25px;
+    opacity:.95;
+    background:linear-gradient(100deg,
+      var(--orange, #ff5028), var(--navy, #5d38de),
+      var(--navy-light, #7455e8), var(--orange, #ff5028));
+    background-size:280% 100%;
+  }
+
+  /* ambient glow behind the pill */
+  .rc-app .header__inner::after{
+    border-radius:22px;
+    box-shadow:
+      0 0 58px -14px rgba(93,56,222,.26),
+      0 0 44px -16px rgba(255,80,40,.20);
+  }
+
+  /* scrolled: tighter, more opaque, deeper lift */
+  .rc-app .header.is-scrolled{padding:7px clamp(12px, 2.4vw, 26px)}
+  .rc-app .header.is-scrolled .header__inner{
+    height:60px;
+    background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(250,248,255,.95));
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.95),
+      0 14px 30px -18px rgba(67,38,176,.40),
+      0 34px 66px -34px rgba(30,39,47,.48);
+  }
+
+  /* ---------- 3. LOGO + DIVIDER ---------- */
+  .rc-app .header__logo{
+    padding:4px 10px;
+    border-radius:14px;
+    box-shadow:none;
+    transition:background .28s var(--p-ease);
+  }
+  .rc-app .header__logo:hover{background:rgba(93,56,222,.06)}
+
+  .rc-app .header__nav{border-left:1px solid rgba(93,56,222,.13)}
+
+  /* ---------- 4. NAV LINKS — quiet by default, confident when active ---------- */
+  .rc-app .header__link{
+    font-size:14px;
+    font-weight:600;
+    letter-spacing:.1px;
+    color:#4b4b4b;
+    border-radius:11px;
+    transition:color .22s var(--p-ease), background .22s var(--p-ease), transform .22s var(--p-ease);
+  }
+  .rc-app .header__link:hover{
+    color:var(--navy, #5d38de);
+    background:rgba(93,56,222,.07);
+    transform:translateY(-1px);
+  }
+  .rc-app .header__link.active{
+    color:var(--navy-dark, #4326b0);
+    background:linear-gradient(180deg, rgba(93,56,222,.13), rgba(93,56,222,.05));
+    box-shadow:
+      inset 0 0 0 1px rgba(93,56,222,.18),
+      0 8px 18px -12px rgba(93,56,222,.75);
+  }
+  /* the sliding underline: orange to purple, on brand */
+  .rc-app .header__link::after{
+    height:2.5px;
+    bottom:5px;
+    background:linear-gradient(90deg, var(--orange, #ff5028), var(--navy, #5d38de));
+    box-shadow:0 0 8px rgba(255,80,40,.45);
+  }
+
+  .rc-app .hnav-caret{color:#9aa3ad}
+  .rc-app .header__link.active .hnav-caret,
+  .rc-app .hnav-item:hover .header__link .hnav-caret{color:var(--orange, #ff5028)}
+
+  /* ---------- 5. ICON BUTTONS (search / cart) — one consistent control ---------- */
+  .rc-app .header__icon{
+    width:40px;
+    height:40px;
+    border-radius:12px;
+    color:#4b4b4b;
+    transition:background .22s var(--p-ease), color .22s var(--p-ease),
+               box-shadow .22s var(--p-ease), transform .22s var(--p-ease);
+  }
+  .rc-app .header__icon:hover{
+    background:var(--navy, #5d38de);
+    color:#fff;
+    transform:translateY(-2px);
+    box-shadow:0 12px 22px -12px rgba(93,56,222,.9);
+  }
+  /* search and cart read as a matched pair, rather than one boxed and one bare */
+  .rc-app .header__search-btn,
+  .rc-app .header__cart{
+    background:#fff;
+    box-shadow:inset 0 0 0 1px rgba(93,56,222,.16);
+  }
+  .rc-app .header__search-btn:hover,
+  .rc-app .header__cart:hover{
+    background:var(--navy, #5d38de);
+    color:#fff;
+    box-shadow:inset 0 0 0 1px var(--navy, #5d38de), 0 12px 22px -12px rgba(93,56,222,.9);
+  }
+  .rc-app .header__cart-badge{
+    background:linear-gradient(135deg, var(--orange, #ff5028), #ff8560);
+    box-shadow:0 0 0 2px #fff, 0 4px 10px -3px rgba(255,80,40,.9);
+  }
+  .rc-app .header__divider{
+    background:linear-gradient(180deg, transparent, rgba(93,56,222,.22) 30%, rgba(93,56,222,.22) 70%, transparent);
+    opacity:1;
+    height:26px;
+    margin:0 5px;
+  }
+
+  /* ---------- 6. CTA CLUSTER — "Register School" + "Login" ----------
+     Both were off-palette: the chip used the old navy-blue gradient and
+     Login was flattened to solid orange by theme.css. The extra
+     .header__actions in the selector outranks that (0,3,0 vs 0,2,0). */
+  .rc-app .header__actions .header__chip{
+    height:42px;
+    padding:0 16px;
+    border-radius:13px;
+    font-size:13.5px;
+    background:linear-gradient(135deg, var(--navy-dark, #4326b0), var(--navy, #5d38de));
+    box-shadow:
+      0 10px 22px -12px rgba(67,38,176,.9),
+      inset 0 1px 0 rgba(255,255,255,.20);
+  }
+  .rc-app .header__actions .header__chip:hover{
+    transform:translateY(-2px);
+    filter:none;
+    background:linear-gradient(135deg, #4a2ac0, var(--navy-light, #7455e8));
+    box-shadow:
+      0 16px 30px -14px rgba(67,38,176,1),
+      inset 0 1px 0 rgba(255,255,255,.28);
+  }
+  .rc-app .header__actions .header__chip svg{color:#ffb4a1}
+
+  .rc-app .header__actions .header__login{
+    height:42px;
+    padding:0 20px;
+    gap:8px;
+    border-radius:999px;
+    font-size:13.5px;
+    font-weight:600;
+    background:linear-gradient(135deg, var(--orange, #ff5028), var(--orange-dark, #e0441f));
+    box-shadow:
+      0 10px 22px -12px rgba(255,80,40,.95),
+      inset 0 1px 0 rgba(255,255,255,.30);
+    transition:transform .25s var(--p-ease), box-shadow .25s var(--p-ease), background .25s;
+  }
+  .rc-app .header__actions .header__login:hover{
+    transform:translateY(-2px);
+    filter:none;
+    background:linear-gradient(135deg, #ff6137, var(--orange-dark, #e0441f));
+    box-shadow:
+      0 16px 30px -14px rgba(255,80,40,1),
+      inset 0 1px 0 rgba(255,255,255,.36);
+  }
+}
+
+/* Respect reduced-motion: drop the lifts, keep the colour changes. */
+@media (min-width:768px) and (prefers-reduced-motion:reduce){
+  .rc-app .header__link:hover,
+  .rc-app .header__icon:hover,
+  .rc-app .header__actions .header__chip:hover,
+  .rc-app .header__actions .header__login:hover{transform:none}
+}

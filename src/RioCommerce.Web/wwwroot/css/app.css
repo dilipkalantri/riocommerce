@@ -67,7 +67,7 @@ select.form-input{appearance:none;background:#fff url("data:image/svg+xml,%3Csvg
 /* The offset lives on <main> rather than .rc-app: as padding on the content box it
    cannot be collapsed away by a child's top margin (which was letting the homepage
    banner ride ~8px up under the bar). */
-.rc-app>main{padding-top:var(--topbar-h,126px)}
+.rc-app>main{padding-top:var(--topbar-h,122px)}
 
 .header{position:static;background:#fff;border-bottom:1px solid var(--gray-200)}
 .header__inner{max-width:1200px;margin:0 auto;padding:0 20px;display:flex;align-items:center;height:64px}

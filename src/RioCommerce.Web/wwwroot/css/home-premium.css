@@ -1639,7 +1639,7 @@
   .site-topbar{background:var(--gray-50,#f8fafc)}
   /* the mobile card layout makes the bar 124px, not the 126px desktop default —
      keep the fixed-content offset exact so there's no stray gap */
-  .rc-app{--topbar-h:124px}
+  .rc-app{--topbar-h:108px}
   .rc-app .header{padding:0;background:transparent;box-shadow:none;border-bottom:none}
   .rc-app .header::after{display:none}      /* drop the desktop gradient hairline */
   .rc-app .header__inner{

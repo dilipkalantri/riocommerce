@@ -5,7 +5,10 @@
 /* ── Hero: left text + right photo grid ── */
 .rc-app .hero{
   background: var(--hero-grain);
-  padding: 80px 36px;
+  /* top pad deliberately much smaller than the bottom: the fixed .site-topbar
+     already sits above this, so a symmetric 80px read as dead space under the
+     header rather than as breathing room. */
+  padding: 34px 36px 80px;
   position: relative;
   overflow: hidden;
   text-align: left;
@@ -107,14 +110,31 @@
 }
 .rc-app .hero__photo-card img{
   width: 100%;
+  /* Safety net: the card clips with overflow:hidden, so an image that is taller
+     than its card loses the top of the subject. Capping the height here means a
+     portrait photo scales down to fit instead of being decapitated. */
+  max-height: 100%;
   border-radius: 10px;
   object-fit: contain;
 }
 .rc-app .hero__photo-card--girl{ background: linear-gradient(178deg, #f8fcff -5.25%, #cabaff 142.61%) }
+/* The boy card carries grid-row:span 2 in the markup - it is the TALL right-hand
+   column, sized by the two rows it spans (~604px), and it holds the only portrait
+   photo (317x400).
+
+   It used to also set aspect-ratio:7/5, carried over from the mockup where this
+   card was a plain half-width cell rather than a row-spanning one. That forced the
+   card to 360x257 and overrode the span, so the 416px-tall portrait overflowed its
+   227px content box by 174px and overflow:hidden cut the student off at the neck.
+
+   Dropping aspect-ratio lets the card fill its span again, which is exactly the
+   shape a portrait wants. (The mockup instead let the photo break out of the frame
+   with overflow:visible + a negative margin - not reusable here, because the fixed
+   .site-topbar is opaque at z-index 99999 and sits ~100px below where that
+   overflow would reach, so the head would hide behind the bar rather than show.) */
 .rc-app .hero__photo-card--boy{
   background: linear-gradient(178deg, #f0ebff -5.25%, #fe9f8a 142.61%);
   position: relative;
-  aspect-ratio: 7/5;
   align-items: flex-end;
 }
 .rc-app .hero__photo-card--grp{ background: linear-gradient(162deg, #f8fcff -15.56%, #baf0ff 122.69%) }
@@ -320,11 +340,268 @@
   .rc-app .why-grid{ grid-template-columns: 1fr }
 }
 @media (max-width: 575px) {
-  .rc-app .hero{ padding: 48px 20px; background: linear-gradient(135deg, #FFF 25%, #FFCBBF 75%) }
+  .rc-app .hero{ padding: 24px 20px 48px; background: linear-gradient(135deg, #FFF 25%, #FFCBBF 75%) }
   .rc-app .hero__course-btn{ width: 100%; justify-content: center }
   .rc-app .vp-stats,
   .rc-app .vp-prepare,
   .rc-app .vp-why,
   .rc-app .vp-footer-cta{ padding: 48px 20px }
   .rc-app .stat-grid{ grid-template-columns: 1fr 1fr }
+}
+
+
+/* ============================================================
+   FOUNDER CARD  (home, sits just above the stats band)
+   ------------------------------------------------------------
+   One white card: portrait panel on the left, copy on the right.
+
+   The portrait is a transparent PNG (images/vijaypath-founder.png), cut out
+   from the supplied JPEG. That alpha channel is what lets it stand over the
+   purple blob: the earlier JPEG had an opaque white box, and the blend-mode
+   trick used to hide it also tinted the subject purple wherever the blob sat
+   behind him. If this photo is ever replaced, replace it with a PNG that has
+   real transparency.
+   ============================================================ */
+.rc-app .vp-founder{
+  padding: 80px 36px;
+  background: linear-gradient(180deg, #fbfaff 0%, #f6f3ff 100%);
+}
+
+.rc-app .vp-founder__card{
+  position: relative;
+  max-width: 1140px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  align-items: stretch;
+  background: #fff;
+  border: 1px solid rgba(93,56,222,.10);
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow:
+    0 30px 70px -40px rgba(67,38,176,.45),
+    0 8px 22px -16px rgba(30,39,47,.20);
+}
+
+/* ── left: portrait panel ── */
+.rc-app .vp-founder__media{
+  position: relative;
+  min-height: 400px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: linear-gradient(165deg, #ffffff 0%, #f3efff 60%, #ece5ff 100%);
+}
+/* soft purple wave anchored to the bottom-left corner */
+.rc-app .vp-founder__blob{
+  position: absolute;
+  left: -16%;
+  bottom: -24%;
+  width: 92%;
+  aspect-ratio: 1 / 1;
+  background: linear-gradient(150deg, #b9a6f5 0%, #7a5cf0 55%, #5d38de 100%);
+  border-radius: 46% 54% 38% 62% / 55% 44% 56% 45%;
+  opacity: .92;
+}
+.rc-app .vp-founder__photo{
+  position: relative;
+  z-index: 1;
+  width: 92%;
+  max-width: 340px;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+/* ── dotted accents ── */
+.rc-app .vp-founder__dots{
+  position: absolute;
+  width: 84px;
+  height: 84px;
+  background-image: radial-gradient(currentColor 1.6px, transparent 1.7px);
+  background-size: 13px 13px;
+  pointer-events: none;
+}
+.rc-app .vp-founder__dots--left{
+  left: 14px;
+  top: 34%;
+  color: rgba(93,56,222,.28);
+}
+.rc-app .vp-founder__dots--right{
+  right: 26px;
+  top: 26px;
+  color: rgba(93,56,222,.20);
+}
+
+/* ── right: copy ── */
+.rc-app .vp-founder__body{
+  position: relative;
+  padding: clamp(28px, 3.4vw, 46px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.rc-app .vp-founder__badge{
+  align-self: flex-start;
+  display: inline-block;
+  margin-bottom: 16px;
+  padding: 7px 15px;
+  border-radius: 999px;
+  background: rgba(93,56,222,.10);
+  color: var(--navy);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;   /* beats the site-wide capitalize */
+}
+.rc-app .vp-founder__name{
+  margin: 0 0 6px;
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--vp-ink);
+}
+.rc-app .vp-founder__role{
+  margin: 0 0 18px;
+  color: var(--navy);
+  font-size: 17px;
+  font-weight: 600;
+}
+.rc-app .vp-founder__text{
+  margin: 0;
+  max-width: 62ch;
+  color: var(--vp-muted);
+  font-size: 15.5px;
+  line-height: 1.75;
+}
+
+/* ── pull quote ── */
+.rc-app .vp-founder__quote{
+  position: relative;
+  margin: 30px 0 0;
+  padding: 4px 0 0 48px;
+}
+.rc-app .vp-founder__quote::before{
+  content: "“";
+  position: absolute;
+  left: 0;
+  top: -14px;
+  color: rgba(93,56,222,.30);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 62px;
+  line-height: 1;
+}
+.rc-app .vp-founder__quote blockquote{
+  margin: 0 0 10px;
+  color: var(--vp-muted);
+  font-size: 15.5px;
+  font-style: italic;
+  line-height: 1.7;
+}
+.rc-app .vp-founder__quote figcaption{
+  color: var(--navy);
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+/* ── responsive ── */
+@media (max-width: 900px){
+  .rc-app .vp-founder{ padding: 60px 24px }
+  .rc-app .vp-founder__card{ grid-template-columns: 1fr }
+  .rc-app .vp-founder__media{ min-height: 320px; padding-top: 26px }
+  .rc-app .vp-founder__photo{ max-width: 290px }
+  .rc-app .vp-founder__blob{ left: -18%; bottom: -34%; width: 92% }
+  .rc-app .vp-founder__dots--left{ top: auto; bottom: 18px }
+}
+@media (max-width: 575px){
+  .rc-app .vp-founder{ padding: 48px 16px }
+  .rc-app .vp-founder__card{ border-radius: 20px }
+  .rc-app .vp-founder__photo{ max-width: 240px }
+  .rc-app .vp-founder__quote{ padding-left: 34px }
+  .rc-app .vp-founder__quote::before{ font-size: 50px }
+  .rc-app .vp-founder__dots{ width: 62px; height: 62px }
+}
+
+
+/* ============================================================
+   STATS CARDS - polish pass
+   ------------------------------------------------------------
+   Appended after the base .stat-card rules above so these win at equal
+   specificity. Five counters now, so the grid is pinned to 5 across on
+   wide screens and steps down cleanly rather than leaving one orphan
+   card on its own row.
+   ============================================================ */
+.rc-app .stat-grid--5{
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.rc-app .stat-grid--5 .stat-card{
+  position: relative;
+  overflow: hidden;
+  padding: 26px 24px 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,80,40,.10);
+  background: linear-gradient(180deg, #ffffff 0%, #fff6f3 58%, #ffe7e0 100%);
+  box-shadow: 0 12px 30px -22px rgba(30,39,47,.55);
+  transition: transform .3s cubic-bezier(.22,.7,.24,1),
+              box-shadow .3s cubic-bezier(.22,.7,.24,1),
+              border-color .3s;
+}
+/* accent bar wipes in from the left on hover */
+.rc-app .stat-grid--5 .stat-card::before{
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--orange), var(--navy));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .38s cubic-bezier(.22,.7,.24,1);
+}
+.rc-app .stat-grid--5 .stat-card:hover{
+  transform: translateY(-5px);
+  border-color: rgba(255,80,40,.22);
+  box-shadow: 0 26px 48px -28px rgba(255,80,40,.75), 0 8px 20px -16px rgba(30,39,47,.4);
+}
+.rc-app .stat-grid--5 .stat-card:hover::before{ transform: scaleX(1) }
+
+.rc-app .stat-grid--5 .stat-card .stat-icon{
+  width: 46px;
+  height: 46px;
+  margin-bottom: 34px;
+  border-radius: 13px;
+  background: #fff;
+  color: var(--orange);
+  box-shadow: 0 8px 18px -10px rgba(255,80,40,.75), inset 0 0 0 1px rgba(255,80,40,.10);
+  transition: transform .3s cubic-bezier(.22,.7,.24,1);
+}
+.rc-app .stat-grid--5 .stat-card:hover .stat-icon{ transform: translateY(-2px) scale(1.05) }
+.rc-app .stat-grid--5 .stat-card .stat-icon svg{ width: 21px; height: 21px }
+
+.rc-app .stat-grid--5 .stat-card h3{
+  margin-bottom: 6px;
+  font-size: clamp(26px, 2.5vw, 36px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--vp-ink);
+  font-variant-numeric: tabular-nums;   /* digits keep their box while counting up */
+}
+.rc-app .stat-grid--5 .stat-card p{
+  color: var(--vp-muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px){
+  .rc-app .stat-grid--5{ grid-template-columns: repeat(3, minmax(0, 1fr)) }
+}
+@media (max-width: 700px){
+  .rc-app .stat-grid--5{ grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px }
+  .rc-app .stat-grid--5 .stat-card{ padding: 20px 18px }
+  .rc-app .stat-grid--5 .stat-card .stat-icon{ margin-bottom: 22px }
+}
+@media (max-width: 420px){
+  .rc-app .stat-grid--5 .stat-card h3{ font-size: 24px }
+  .rc-app .stat-grid--5 .stat-card p{ font-size: 13.5px }
 }
