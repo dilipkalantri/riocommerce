@@ -246,7 +246,10 @@ builder.Services.AddScoped<IReferralAdminService, ReferralAdminService>();
 builder.Services.AddScoped<IReferralService, ReferralService>();
 builder.Services.AddScoped<IProductRecommendationAdminService, ProductRecommendationAdminService>();
 builder.Services.AddScoped<IProductRecommendationService, ProductRecommendationService>();
-builder.Services.AddScoped<ISiteSettingsService, SiteSettingsService>();
+// Transient: consumed by App (root), Header, ContactStrip, FloatingButtons and both layouts, which
+// all initialise concurrently during prerender — a shared-scope DbContext would collide. Same
+// reasoning as IBannerService above.
+builder.Services.AddTransient<ISiteSettingsService, SiteSettingsService>();
 builder.Services.AddScoped<IIntegrationSettingsService, IntegrationSettingsService>();
 builder.Services.AddScoped<IExportService, ExportService>();
 // Centralised configuration: process-wide cache (singleton) + cached typed provider + finance façade.
