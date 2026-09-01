@@ -84,7 +84,7 @@ select.form-input{appearance:none;background:#fff url("data:image/svg+xml,%3Csvg
 /* mega-menu dropdown */
 /* ===== Multi-level header menu (Levels 1–4) — ONE recursive design ===== */
 .hnav-item{position:relative;display:flex;align-items:center}
-.hnav-caret{font-size:9px;color:var(--gray-400);transition:transform .2s,color .2s}
+.hnav-caret{font-size:10px;color:var(--gray-400);transition:transform .2s,color .2s}
 .hnav-sub{position:relative}
 /* Level-2 dropdown and Level-3+ flyouts share ONE panel design so every level looks identical. */
 .hnav-drop,.hnav-fly{position:absolute;display:flex;flex-direction:column;gap:2px;min-width:224px;max-width:300px;

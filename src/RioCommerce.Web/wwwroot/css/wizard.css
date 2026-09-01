@@ -33,12 +33,17 @@
 
     .sr-field { text-align:left; margin-bottom:14px; }
     .sr-field .form-input { width:100%; }
-    .sr-btn { width:100%; padding:13px; background:var(--orange); color:#fff; border:0; border-radius:12px;
-              font-size:15px; font-weight:700; cursor:pointer; transition:opacity .15s; margin-bottom:8px; }
+    /* min-height is the safety net: <button> carries overflow:hidden from the UA
+       stylesheet, so ANY future rule that squeezes the box silently crops the label
+       instead of failing loudly. Flex centring keeps the text optically centred
+       whether the label runs to one line or two. */
+    .sr-btn { width:100%; min-height:46px; padding:13px; background:var(--orange); color:#fff; border:0;
+              border-radius:12px; display:flex; align-items:center; justify-content:center; text-align:center;
+              font-size:15px; font-weight:700; line-height:1.25; cursor:pointer; transition:opacity .15s;
+              margin-bottom:8px; }
     .sr-btn:disabled { opacity:.5; cursor:not-allowed; }
     .sr-btn--ghost { background:transparent; color:var(--gray-500); border:1px solid var(--gray-200); }
     .sr-btn--ghost:hover { background:var(--gray-50,#f9fafb); }
-    .sr-actions { display:flex; flex-direction:column; gap:8px; }
     .sr-back { display:inline-block; margin-top:12px; font-size:13px; color:var(--gray-500); text-decoration:none; }
     .sr-alert--err { background:#FEF2F2; color:#991B1B; border:1px solid #FECACA; border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:16px; text-align:left; }
 
@@ -70,8 +75,26 @@
 .sr-field { display:flex; flex-direction:column; gap:6px; text-align:left; }
 .sr-field__label { font-size:12.5px; font-weight:700; color:var(--gray-600); }
 .sr-field__label .req { color:var(--orange); }
-.sr-actions { display:flex; gap:10px; margin-top:4px; }
-.sr-actions .sr-btn { flex:1 1 0; }
+/* ── Action row ───────────────────────────────────────────────────────────────
+   There used to be TWO .sr-actions definitions in this file: an earlier one that
+   set flex-direction:column, and this one, which assumed a row but never declared
+   it. Column therefore won at every width while `.sr-actions .sr-btn{flex:1 1 0}`
+   stayed in force — and in a COLUMN, flex-basis:0 sets the button's HEIGHT to zero.
+   flex-grow could not restore it (an auto-height container has no free space to
+   distribute), so every button collapsed to its 13px+13px padding = 26px and the UA
+   stylesheet's overflow:hidden cropped the label in half. That is what clipped
+   "Yes, this is my school", "Register & Send OTP", "No, go back" and "Back".
+
+   Now: stacked by default (heights come from content, so nothing can collapse), and
+   a real row only from 561px up, which is the one place flex:1 1 0 is meaningful. */
+.sr-actions { display:flex; flex-direction:column; gap:10px; margin-top:4px; }
+.sr-actions .sr-btn { flex:0 0 auto; margin-bottom:0; }
+
+@media (min-width:561px) {
+    .sr-actions { flex-direction:row; }
+    /* Equal-width columns — safe here because the main axis is horizontal. */
+    .sr-actions .sr-btn { flex:1 1 0; }
+}
 .sr-note { font-size:12.5px; color:var(--gray-500); line-height:1.55; text-align:left;
     background:var(--gray-50,#f9fafb); border:1px solid var(--gray-200); border-radius:10px; padding:10px 12px; }
 .sr-check { display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--gray-600); text-align:left; }
@@ -79,7 +102,8 @@
 
 @media (max-width:560px) {
     .sr-grid { grid-template-columns:1fr; }
-    .sr-actions { flex-direction:column; }
+    /* .sr-actions is column by default now — the min-width:561px row rule simply
+       does not apply here, so no override is needed. */
     .sr-step__label { display:none; }
     .sr-step__line { width:22px; margin-bottom:0; }
 }

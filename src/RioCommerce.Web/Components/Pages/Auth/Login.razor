@@ -22,6 +22,47 @@
     .dup-field-msg--bad{color:#DC2626}
 
     /* ══════════════════════ Premium authentication redesign (.hj-auth-*) ══════════════════════ */
+
+    /* ── Registration type chooser (Register tab) ────────────────────────────
+       Two equal cards on desktop, stacked on narrow widths. The card is the link,
+       so the whole surface is one keyboard-reachable target. */
+    /* The login form is comfortable at 440px, but two side-by-side option cards inside
+       that shell are only ~180px each. Widen the shell for the chooser only, so the
+       login tab keeps its existing proportions. */
+    .hj-auth-card.hj-auth-card--wide{max-width:640px}
+    .reg-pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+    .reg-pick__card{display:flex;flex-direction:column;align-items:flex-start;gap:7px;
+        padding:20px 18px;border-radius:18px;background:#fff;border:1px solid var(--gray-200);
+        box-shadow:0 10px 26px -20px rgba(16,40,70,.5);text-decoration:none;min-width:0;
+        transition:transform .24s cubic-bezier(.22,.7,.24,1),box-shadow .24s,border-color .24s}
+    .reg-pick__card:hover{transform:translateY(-3px);border-color:#c9bef4;
+        box-shadow:0 20px 40px -22px rgba(93,56,222,.55),0 0 0 3px rgba(93,56,222,.08)}
+    .reg-pick__card:focus-visible{outline:2px solid var(--navy);outline-offset:3px}
+    .reg-pick__ico{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;
+        transition:transform .24s cubic-bezier(.22,.7,.24,1)}
+    .reg-pick__card:hover .reg-pick__ico{transform:scale(1.03)}
+    .reg-pick__ico--student{background:rgba(93,56,222,.12);color:var(--navy)}
+    .reg-pick__ico--school{background:rgba(255,80,40,.12);color:var(--orange)}
+    .reg-pick__ico svg{width:21px;height:21px}
+    .reg-pick__title{font-size:15.5px;font-weight:700;color:var(--navy);line-height:1.3}
+    .reg-pick__text{font-size:12.8px;line-height:1.55;color:var(--gray-500)}
+    .reg-pick__cta{margin-top:auto;padding-top:10px;display:inline-flex;align-items:center;gap:6px;
+        font-size:13px;font-weight:700;color:var(--orange)}
+    .reg-pick__cta svg{width:15px;height:15px;transition:transform .24s cubic-bezier(.22,.7,.24,1)}
+    .reg-pick__card:hover .reg-pick__cta svg{transform:translateX(3px)}
+    .reg-pick__foot{margin:16px 0 0;text-align:center;font-size:13px;color:var(--gray-500)}
+    .reg-pick__foot a{color:var(--navy);font-weight:600}
+
+    /* One column once two cards would be too narrow to read. */
+    @@media (max-width:560px){
+        .reg-pick{gap:12px}          /* auto-fit already gives one column here */
+        .reg-pick__card{padding:16px 15px}
+    }
+    @@media (prefers-reduced-motion:reduce){
+        .reg-pick__card:hover,.reg-pick__card:hover .reg-pick__ico,
+        .reg-pick__card:hover .reg-pick__cta svg{transform:none}
+    }
+
     .hj-auth-page{position:relative;display:grid;grid-template-columns:1fr 1fr;min-height:calc(100vh - 64px);
         background:var(--navy-dark);overflow:hidden}
 
@@ -180,6 +221,9 @@
     @@keyframes hj-spin{to{transform:rotate(360deg)}}
 
     /* ─────── RESPONSIVE ─────── */
+    @@media(max-width:760px){
+        .hj-auth-card.hj-auth-card--wide{max-width:480px}
+    }
     @@media(max-width:900px){
         .hj-auth-page{grid-template-columns:1fr;min-height:0}
         .hj-auth-brand{padding:34px 24px 30px}
@@ -247,7 +291,7 @@
 
     @* ── RIGHT: soft-lit surface + glass auth card ── *@
     <div class="hj-auth-formside">
-        <div class="hj-auth-card hj-anim hj-anim--card">
+        <div class="hj-auth-card @(isLogin ? "" : "hj-auth-card--wide") hj-anim hj-anim--card">
             <div class="hj-auth-tabs" data-active="@(isLogin ? "login" : "register")">
                 <span class="hj-auth-tabs__thumb" aria-hidden="true"></span>
                 <button type="button" class="hj-auth-tab @(isLogin ? "active" : "")" @onclick="() => isLogin = true">
@@ -322,158 +366,47 @@
             }
             else
             {
+                @* ── Registration type chooser ──────────────────────────────────────────
+                     The generic "Create Your Account" form used to live here. Registration is
+                     now split by audience, and each audience already has a dedicated page that
+                     collects different fields (and, for schools, a UDISE lookup), so this tab
+                     hands off rather than duplicating either form. No new routes: both targets
+                     already exist. *@
                 <div class="hj-auth-head">
-                    <div class="hj-auth-head__title">Create Your Account</div>
-                    <div class="hj-auth-head__sub">Join RioCommerce and start learning today.</div>
+                    <div class="hj-auth-head__title">Choose Registration Type</div>
+                    <div class="hj-auth-head__sub">Select the account type you want to create.</div>
                 </div>
-                <form method="post" action="/account/register" data-enhance="false" class="auth-form hj-auth-form" id="dupRegForm">
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">Full Name <span class="req">*</span></label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                            <input type="text" name="fullName" class="hj-auth-input" placeholder="Your full name" required />
-                        </div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">Phone (+91) <span class="req">*</span></label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                            <input type="tel" name="phone" id="dupRegPhone" class="hj-auth-input" placeholder="10-digit mobile number" required autocomplete="off" />
-                        </div>
-                        <div id="dupRegPhoneMsg"></div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">Email <span class="req">*</span></label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                            <input type="email" name="email" id="dupRegEmail" class="hj-auth-input" placeholder="your@email.com" required autocomplete="off" />
-                        </div>
-                        <div id="dupRegEmailMsg"></div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">Password <span class="req">*</span></label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                            <input type="password" name="password" class="hj-auth-input hj-auth-input--pw" placeholder="Min 8 characters" minlength="6" required />
-                            <button type="button" class="hj-auth-eye" data-pwtoggle aria-label="Show password">
-                                <svg class="ico-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                <svg class="ico-eyeoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">City</label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                            <input type="text" name="city" class="hj-auth-input" placeholder="Pune" />
-                        </div>
-                    </div>
-                    @* Student profile fields — all OPTIONAL, so the four required fields above
-                       (name / phone / email / password) still define a valid signup and no
-                       existing account or the school flow is affected. Persisted to the columns
-                       added by 0042_student_profile_fields.sql. Markup reuses .hj-auth-field so
-                       the form keeps its existing styling exactly. *@
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">Date of Birth</label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                            <input type="date" name="dob" class="hj-auth-input" />
-                        </div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">Gender</label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-                            <select name="gender" class="hj-auth-input"><option value="">Select…</option><option>Male</option><option>Female</option><option>Other</option></select>
-                        </div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">State</label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                            <input type="text" name="state" class="hj-auth-input" placeholder="Maharashtra" />
-                        </div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">District</label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                            <input type="text" name="district" class="hj-auth-input" placeholder="Pune" />
-                        </div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">School Name</label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5"/></svg>
-                            <input type="text" name="schoolName" class="hj-auth-input" placeholder="Your school name" />
-                        </div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">Class</label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                            <select name="studentClass" class="hj-auth-input"><option value="">Select…</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select>
-                        </div>
-                    </div>
-                    <div class="hj-auth-field">
-                        <label class="hj-auth-field__label">Board</label>
-                        <div class="hj-auth-input-wrap">
-                            <svg class="hj-auth-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                            <select name="board" class="hj-auth-input"><option value="">Select…</option><option>CBSE</option><option>ICSE</option><option>State Board</option><option>Other</option></select>
-                        </div>
-                    </div>
-                    <button type="submit" class="hj-auth-submit">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
-                        <span>Create Account</span>
-                        <svg class="hj-auth-submit__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                        <span class="hj-auth-submit__spin" aria-hidden="true"></span>
-                    </button>
-                </form>
 
-                @* ── 🔍 Inline blur-AJAX availability check ──
-                     Hits /api/auth/check-email + /api/auth/check-phone (the public endpoints fronting
-                     ICustomerDuplicateService). Pure DOM script so it survives the non-interactive
-                     server render of /login (this page is a plain HTTP form post). ── *@
-                <script>
-                  (function(){
-                    function mkMsg(box, ok, txt){
-                        if (!box) return;
-                        box.innerHTML = '';
-                        if (txt == null) return;
-                        var d = document.createElement('div');
-                        d.className = 'dup-field-msg ' + (ok ? 'dup-field-msg--ok' : 'dup-field-msg--bad');
-                        d.textContent = (ok ? '✓ ' : '❌ ') + txt;
-                        box.appendChild(d);
-                    }
-                    function wire(inputId, msgId, url, fieldName){
-                        var input = document.getElementById(inputId);
-                        var msg = document.getElementById(msgId);
-                        if (!input || !msg) return;
-                        var lastVal = '';
-                        input.addEventListener('blur', async function(){
-                            var v = (input.value || '').trim();
-                            if (v === '' || v === lastVal) { return; }
-                            lastVal = v;
-                            try {
-                                var r = await fetch(url + '?' + fieldName + '=' + encodeURIComponent(v),
-                                    { credentials: 'same-origin' });
-                                if (!r.ok) return;
-                                var j = await r.json();
-                                var d = j && j.data;
-                                if (!d) return;
-                                mkMsg(msg, !!d.available, d.message || (d.available ? 'Available' : 'Already registered'));
-                            } catch (e) { /* network blip — silent */ }
-                        });
-                        input.addEventListener('input', function(){ if (msg.firstChild) msg.innerHTML = ''; });
-                    }
-                    function init(){
-                        wire('dupRegEmail', 'dupRegEmailMsg', '/api/auth/check-email', 'email');
-                        wire('dupRegPhone', 'dupRegPhoneMsg', '/api/auth/check-phone', 'phone');
-                    }
-                    if (document.readyState !== 'loading') init();
-                    else document.addEventListener('DOMContentLoaded', init);
-                  })();
-                </script>
+                <div class="reg-pick">
+                    <a class="reg-pick__card" href="/student/register" aria-label="Register as Student">
+                        <span class="reg-pick__ico reg-pick__ico--student" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                        </span>
+                        <span class="reg-pick__title">Register As Student</span>
+                        <span class="reg-pick__text">Create your student account and start your scholarship preparation journey.</span>
+                        <span class="reg-pick__cta">
+                            Register As Student
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                        </span>
+                    </a>
+
+                    <a class="reg-pick__card" href="/school/register" aria-label="Register your School">
+                        <span class="reg-pick__ico reg-pick__ico--school" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M10 21v-5h4v5"/><path d="M9.5 11h1M13.5 11h1"/></svg>
+                        </span>
+                        <span class="reg-pick__title">Register Your School</span>
+                        <span class="reg-pick__text">Register your school and manage students through the School Portal.</span>
+                        <span class="reg-pick__cta">
+                            Register Your School
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                        </span>
+                    </a>
+                </div>
+
+                <p class="reg-pick__foot">
+                    Already have an account?
+                    <a href="/login?tab=login">Sign in instead</a>
+                </p>
             }
         </div>
     </div>

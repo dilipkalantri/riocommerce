@@ -73,6 +73,35 @@ input, select, textarea, .form-input {
     min-width: 0;                /* defeats flex/grid min-content blow-up */
 }
 
+/* Touch targets: on phones/tablets a real form control or button gets a 44px floor
+   (WCAG 2.5.5 / platform HIG). Deliberately scoped to controls that are TAPPED to
+   operate a form - bare <button> is left out so the header's compact icon buttons and
+   the top contact bar's dense text links keep their designed size, and checkboxes and
+   radios keep the browser's native metrics. */
+@media (max-width: 768px) {
+    select,
+    textarea,
+    input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]),
+    .form-input,
+    .btn {
+        min-height: 44px;
+    }
+}
+
+/* Last-resort containment for tables that are NOT inside a .table-wrap /
+   .table-responsive. 12 admin/invoice views render a bare <table>; without this a wide
+   one makes the BODY scroll sideways on a phone. The child combinator with :not() on
+   the parent means already-wrapped tables are untouched, so no nested double-scroller.
+   Scoped to <=768px: desktop table layout is completely unaffected. */
+@media (max-width: 768px) {
+    :not(.table-wrap):not(.table-responsive) > table {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
 /* ── Tables — horizontal scroll wrapper fallback ────────────────────── */
 .table-wrap, .table-responsive {
     width: 100%;

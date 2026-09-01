@@ -1041,7 +1041,7 @@
 .rc-app .fomo-toast__ico{width:26px;height:26px;border-radius:7px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(135deg,#0AC7E5,#0AA9C4)}
 .rc-app .fomo-toast__ico svg{width:14px;height:14px}
 .rc-app .fomo-toast__text{font-size:11px;line-height:1.35}
-.rc-app .fomo-toast__time{font-size:9.5px;display:flex;align-items:center;gap:3px;margin-top:1px}
+.rc-app .fomo-toast__time{font-size:10px;display:flex;align-items:center;gap:3px;margin-top:1px}
 .rc-app .fomo-toast__time svg{width:10px;height:10px;flex-shrink:0}
 /* Glass-matched dismiss chip. Kept above the ::before accent rail and the ::after
    progress bar so the tap always lands on the button. */
@@ -1515,7 +1515,7 @@
 .rc-app .course-card:hover .bs-badge--overlay{transform:translateY(-1px) scale(1.05);transition:transform .25s var(--p-ease)}
 @media(max-width:639px){
   .rc-app .bs-badge{font-size:11px;padding:6px 12px;gap:6px}
-  .rc-app .bs-badge--overlay{font-size:9px;padding:4px 8px}
+  .rc-app .bs-badge--overlay{font-size:10px;padding:4px 8px}
 }
 
 /* ============================================================
@@ -2015,7 +2015,7 @@
   .rc-app .pb-grid .pb-card__badge{
     top:7px; left:7px; max-width:calc(100% - 14px);
     padding:2px 7px; border-radius:999px;
-    font-size:8.5px; letter-spacing:.3px;
+    font-size:10px; letter-spacing:.3px;
   }
 
   /* tighter body */
@@ -2042,7 +2042,7 @@
      the row wraps to a second line instead, and since every card carries the
      same three items they wrap identically, so tile heights stay equal. */
   .rc-app .pb-grid .pb-card__meta{
-    gap:2px 7px; padding-top:2px; font-size:8.5px;
+    gap:2px 7px; padding-top:2px; font-size:10px;
     max-height:none; overflow:visible;
   }
   .rc-app .pb-grid .pb-card__meta-item{line-height:1.25}
@@ -2153,7 +2153,7 @@
   .rc-app .course-card__ico{width:48px;height:48px;border-radius:14px}
   .rc-app .course-card__ico svg{width:24px;height:24px}
   .rc-app .course-card__illustration{gap:7px}
-  .rc-app .course-card__illustration-label{font-size:8.5px;letter-spacing:1px}
+  .rc-app .course-card__illustration-label{font-size:10px;letter-spacing:1px}
 
   /* ── badges: kept (batch status + admin badge), scaled down ──
      .bs-badge--overlay and .course-card__badge are BOTH anchored top-left in the
@@ -2167,13 +2167,13 @@
   .rc-app .course-card__badge{
     top:auto;bottom:7px;left:7px;
     padding:2px 7px;border-radius:999px;
-    font-size:8.5px;letter-spacing:.3px;
+    font-size:10px;letter-spacing:.3px;
     max-width:calc(100% - 14px);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
   .rc-app .course-card__badge--live::before{width:5px;height:5px}
   .rc-app .course-card .bs-badge--overlay{
-    padding:2px 6px;font-size:8px;border-radius:999px;gap:3px;
+    padding:2px 6px;font-size:10px;border-radius:999px;gap:3px;
     max-width:calc(100% - 14px);
   }
   .rc-app .course-card .bs-badge--overlay .bs-badge__dot{width:4px;height:4px}
@@ -2182,7 +2182,7 @@
   .rc-app .course-card__body{padding:9px 10px 11px;gap:4px}
 
   /* Category / level eyebrow */
-  .rc-app .course-card__level{font-size:8.5px;letter-spacing:.7px}
+  .rc-app .course-card__level{font-size:10px;letter-spacing:.7px}
 
   /* Title: exactly 2 lines, smaller type rather than a taller tile */
   /* FULL course name — no clamp, no ellipsis, wraps freely.
@@ -2218,7 +2218,7 @@
   .rc-app .course-card__pricing{gap:5px}
   .rc-app .course-card__price{font-size:15px;letter-spacing:-.2px}
   .rc-app .course-card__mrp{font-size:10px}
-  .rc-app .course-card__discount{font-size:8.5px;padding:1px 5px;border-radius:999px}
+  .rc-app .course-card__discount{font-size:10px;padding:1px 5px;border-radius:999px}
 
   /* ── CTA: compact, full width, rounded ── */
   .rc-app .course-card__cta{
@@ -2249,21 +2249,21 @@
     display:block;-webkit-line-clamp:none;overflow:visible;
     white-space:normal;word-break:break-word;overflow-wrap:anywhere;
   }
-  .rc-app .reco-card__cat{font-size:8.5px;letter-spacing:.7px}
+  .rc-app .reco-card__cat{font-size:10px;letter-spacing:.7px}
   .rc-app .reco-card__faculty{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .rc-app .reco-card__price{font-size:15px}
   .rc-app .reco-card__mrp{font-size:10px}
-  .rc-app .reco-card__disc{font-size:8.5px;padding:1px 5px}
+  .rc-app .reco-card__disc{font-size:10px;padding:1px 5px}
   .rc-app .reco-card__actions{flex-direction:column;gap:5px}
   .rc-app .reco-card__details,
   .rc-app .reco-card__add{padding:7px 8px;font-size:10.5px;border-radius:9px}
-  .rc-app .reco-card__badge{top:7px;right:7px;padding:2px 7px;font-size:8.5px}
+  .rc-app .reco-card__badge{top:7px;right:7px;padding:2px 7px;font-size:10px}
 
   .rc-app .fp-courses{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .rc-app .fp-course-row{grid-template-columns:1fr;border-radius:14px}
   .rc-app .fp-course-thumb{height:120px;border-radius:12px 12px 0 0;font-size:10px}
   .rc-app .fp-course-row__main{padding:9px 10px 11px;gap:3px}
-  .rc-app .fp-course-row__cat{font-size:8.5px;letter-spacing:.7px}
+  .rc-app .fp-course-row__cat{font-size:10px;letter-spacing:.7px}
   .rc-app .fp-course-row__title{
     font-size:14px;line-height:1.35;min-height:4.05em;
     display:block;-webkit-line-clamp:none;overflow:visible;text-overflow:clip;
@@ -2897,7 +2897,7 @@
   .rc-app .floating-dock ~ * .fomo-toast__ico svg,
   .rc-app .fomo-toast__ico svg{width:12px;height:12px}
   .rc-app .fomo-toast__text{font-size:10px;line-height:1.3}
-  .rc-app .fomo-toast__time{font-size:8.5px;gap:3px}
+  .rc-app .fomo-toast__time{font-size:10px;gap:3px}
   .rc-app .fomo-toast__time svg{width:8px;height:8px}
   .rc-app .fomo-toast__close{width:24px;height:24px;font-size:11px;top:5px;right:5px}
   .rc-app .fomo-toast::after{height:1px}          /* thinner progress bar */
