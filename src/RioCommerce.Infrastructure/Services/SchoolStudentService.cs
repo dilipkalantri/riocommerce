@@ -147,19 +147,22 @@ public class SchoolStudentService(
         var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
         var phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
 
-        // Every field on the principal's form is mandatory.
-        if (email is null) return new(false, "Enter the student's email address.", null, false);
+        // Only Name, Mobile, DOB and Gender are required. Email / Class / Section / Roll No are
+        // optional — a student on a paper roll may not have their email or roll number yet, and
+        // enrolments still work because the roster keeps everything else. Phone stays mandatory
+        // because it is the fallback identity when the student later claims their account.
         if (phone is null) return new(false, "Enter the student's mobile number.", null, false);
         if (request.DateOfBirth is null) return new(false, "Select the student's date of birth.", null, false);
         if (string.IsNullOrWhiteSpace(request.Gender)) return new(false, "Select the student's gender.", null, false);
-        if (string.IsNullOrWhiteSpace(request.StudentClass)) return new(false, "Select the class / standard.", null, false);
-        if (string.IsNullOrWhiteSpace(request.Section)) return new(false, "Select the section.", null, false);
-        if (string.IsNullOrWhiteSpace(request.RollNumber)) return new(false, "Enter the roll number.", null, false);
 
         // Match email and phone INDEPENDENTLY. A single OR-query would silently pick whichever
         // row it hit first and link the wrong student when the two contacts belong to different
-        // accounts, so each is resolved on its own and the pair is then compared.
-        var byEmail = await _db.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == email, ct);
+        // accounts, so each is resolved on its own and the pair is then compared. Skip the email
+        // lookup when no email was provided — otherwise `Email == null` would match every legacy
+        // account without an email.
+        var byEmail = email is null
+            ? null
+            : await _db.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == email, ct);
         var byPhone = await _db.Users.FirstOrDefaultAsync(u => u.Phone == phone, ct);
 
         // CASE 4 — the email is one student and the mobile is another. Ambiguous: refuse rather
@@ -201,7 +204,7 @@ public class SchoolStudentService(
                 FullName = name,
                 Email = email,
                 Phone = phone,
-                StudentClass = request.StudentClass!.Trim(),
+                StudentClass = string.IsNullOrWhiteSpace(request.StudentClass) ? null : request.StudentClass.Trim(),
                 DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth!.Value, DateTimeKind.Utc),
                 Gender = request.Gender!.Trim(),
                 // Created by the school with NO password, so it cannot be logged into. The student
@@ -230,9 +233,9 @@ public class SchoolStudentService(
             Id = Guid.NewGuid(),
             SchoolId = schoolId.Value,
             UserId = user.Id,
-            StudentClass = request.StudentClass!.Trim(),
-            Section = request.Section!.Trim(),
-            RollNumber = request.RollNumber!.Trim(),
+            StudentClass = string.IsNullOrWhiteSpace(request.StudentClass) ? null : request.StudentClass.Trim(),
+            Section = string.IsNullOrWhiteSpace(request.Section) ? null : request.Section.Trim(),
+            RollNumber = string.IsNullOrWhiteSpace(request.RollNumber) ? null : request.RollNumber.Trim(),
             IsActive = true,
         });
 

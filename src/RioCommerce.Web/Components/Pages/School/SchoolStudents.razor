@@ -133,13 +133,13 @@
                         <th class="c-st"></th>
                         <th class="c-no">#</th>
                         <th class="c-name">Student Name <span class="required">*</span></th>
-                        <th class="c-email">Email <span class="required">*</span></th>
+                        <th class="c-email">Email</th>
                         <th class="c-phone">Mobile <span class="required">*</span></th>
                         <th class="c-dob">Date of Birth <span class="required">*</span></th>
                         <th class="c-gen">Gender <span class="required">*</span></th>
-                        <th class="c-cls">Class <span class="required">*</span></th>
-                        <th class="c-sec">Section <span class="required">*</span></th>
-                        <th class="c-roll">Roll No. <span class="required">*</span></th>
+                        <th class="c-cls">Class</th>
+                        <th class="c-sec">Section</th>
+                        <th class="c-roll">Roll No.</th>
                         <th class="c-act"></th>
                     </tr>
                 </thead>
@@ -387,15 +387,14 @@
         || !string.IsNullOrWhiteSpace(r.Gender) || !string.IsNullOrWhiteSpace(r.StudentClass)
         || !string.IsNullOrWhiteSpace(r.Section) || !string.IsNullOrWhiteSpace(r.RollNumber);
 
+    // Required fields: Name, Mobile, DOB, Gender. Email / Class / Section / Roll No are optional
+    // — a row with just those four filled is submittable. Kept in sync with the server-side
+    // AddAsync gate, so a row that reads "ready" on the client does actually save.
     private static bool IsRowReady(BulkRow r) =>
         !string.IsNullOrWhiteSpace(r.FullName)
-        && !string.IsNullOrWhiteSpace(r.Email)
         && !string.IsNullOrWhiteSpace(r.Phone)
         && r.DateOfBirth.HasValue
-        && !string.IsNullOrWhiteSpace(r.Gender)
-        && !string.IsNullOrWhiteSpace(r.StudentClass)
-        && !string.IsNullOrWhiteSpace(r.Section)
-        && !string.IsNullOrWhiteSpace(r.RollNumber);
+        && !string.IsNullOrWhiteSpace(r.Gender);
 
     private string RowStatusClass(BulkRow r)
     {
@@ -418,21 +417,18 @@
     };
 
     // A field is drawn red only after the writer has engaged with the row (typed anything
-    // or hit save). Otherwise every fresh row would light up entirely red.
+    // or hit save). Otherwise every fresh row would light up entirely red. Only the four
+    // mandatory fields can trigger a red state — Email / Class / Section / Roll No stay neutral.
     private bool RowFieldError(BulkRow r, string field)
     {
         if (!saveRan && !HasAnyInput(r)) return false;
         if (!string.IsNullOrEmpty(r.Error)) return false; // server errors are shown as a strip, not per-cell
         return field switch
         {
-            nameof(BulkRow.FullName)     => string.IsNullOrWhiteSpace(r.FullName),
-            nameof(BulkRow.Email)        => string.IsNullOrWhiteSpace(r.Email),
-            nameof(BulkRow.Phone)        => string.IsNullOrWhiteSpace(r.Phone),
-            nameof(BulkRow.DateOfBirth)  => !r.DateOfBirth.HasValue,
-            nameof(BulkRow.Gender)       => string.IsNullOrWhiteSpace(r.Gender),
-            nameof(BulkRow.StudentClass) => string.IsNullOrWhiteSpace(r.StudentClass),
-            nameof(BulkRow.Section)      => string.IsNullOrWhiteSpace(r.Section),
-            nameof(BulkRow.RollNumber)   => string.IsNullOrWhiteSpace(r.RollNumber),
+            nameof(BulkRow.FullName)    => string.IsNullOrWhiteSpace(r.FullName),
+            nameof(BulkRow.Phone)       => string.IsNullOrWhiteSpace(r.Phone),
+            nameof(BulkRow.DateOfBirth) => !r.DateOfBirth.HasValue,
+            nameof(BulkRow.Gender)      => string.IsNullOrWhiteSpace(r.Gender),
             _ => false
         };
     }
