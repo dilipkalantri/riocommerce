@@ -1,4 +1,5 @@
 @page "/contact"
+@using RioCommerce.Core.Constants
 @inject ILeadService Leads
 @inject ISiteSettingsService SettingsSvc
 
@@ -164,28 +165,22 @@
 
     @* ── 2. Quick contact cards ── *@
     <section class="hj-contact-quick">
-        @if (!string.IsNullOrWhiteSpace(cfg?.ContactPhone1))
-        {
-            <a class="hj-quick-card" href="tel:@cfg.ContactPhone1">
-                <span class="hj-quick-card__icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                </span>
-                <span class="hj-quick-card__label">Call Our Team</span>
-                <span class="hj-quick-card__value">@string.Join(" / ", new[] { cfg.ContactPhone1, cfg.ContactPhone2, cfg.ContactPhone3 }.Where(p => !string.IsNullOrWhiteSpace(p)))</span>
-                @if (!string.IsNullOrWhiteSpace(cfg.BusinessHours)) { <span class="hj-quick-card__hint">@cfg.BusinessHours</span> }
-            </a>
-        }
-        @if (!string.IsNullOrWhiteSpace(cfg?.ContactEmail))
-        {
-            <a class="hj-quick-card" href="mailto:@cfg.ContactEmail">
-                <span class="hj-quick-card__icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-                </span>
-                <span class="hj-quick-card__label">Email Us</span>
-                <span class="hj-quick-card__value">@cfg.ContactEmail</span>
-                <span class="hj-quick-card__hint">We reply within a day</span>
-            </a>
-        }
+        <a class="hj-quick-card" href="tel:@PublicContactDefaults.TelHref(EffectivePhones.First())">
+            <span class="hj-quick-card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </span>
+            <span class="hj-quick-card__label">Call Our Team</span>
+            <span class="hj-quick-card__value">@string.Join(" / ", EffectivePhones)</span>
+            @if (!string.IsNullOrWhiteSpace(cfg?.BusinessHours)) { <span class="hj-quick-card__hint">@cfg!.BusinessHours</span> }
+        </a>
+        <a class="hj-quick-card" href="mailto:@EffectiveEmail">
+            <span class="hj-quick-card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            </span>
+            <span class="hj-quick-card__label">Email Us</span>
+            <span class="hj-quick-card__value">@EffectiveEmail</span>
+            <span class="hj-quick-card__hint">We reply within a day</span>
+        </a>
         @if (!string.IsNullOrWhiteSpace(waHref))
         {
             <a class="hj-quick-card hj-quick-card--wa" href="@waHref" target="_blank" rel="noopener">
@@ -319,27 +314,21 @@
                     </div>
                 </a>
             }
-            @{ var phones = new[] { cfg?.ContactPhone1, cfg?.ContactPhone2, cfg?.ContactPhone3 }.Where(p => !string.IsNullOrWhiteSpace(p)).ToArray(); }
-            @if (phones.Length > 0)
-            {
-                <div class="hj-info-row hj-info-row--h">
-                    <span class="hj-info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
-                    <div>
-                        <div class="hj-info-row__label">Phone</div>
-                        <div class="hj-info-row__value">@((MarkupString)string.Join(" · ", phones.Select(p => $"<a href=\"tel:{p}\">{p}</a>")))</div>
-                    </div>
+            @{ var phones = EffectivePhones; }
+            <div class="hj-info-row hj-info-row--h">
+                <span class="hj-info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
+                <div>
+                    <div class="hj-info-row__label">Phone</div>
+                    <div class="hj-info-row__value">@((MarkupString)string.Join(" · ", phones.Select(p => $"<a href=\"tel:{PublicContactDefaults.TelHref(p)}\">{p}</a>")))</div>
                 </div>
-            }
-            @if (!string.IsNullOrWhiteSpace(cfg?.ContactEmail))
-            {
-                <a class="hj-info-row" href="mailto:@cfg.ContactEmail">
-                    <span class="hj-info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></span>
-                    <div>
-                        <div class="hj-info-row__label">Email</div>
-                        <div class="hj-info-row__value">@cfg.ContactEmail</div>
-                    </div>
-                </a>
-            }
+            </div>
+            <a class="hj-info-row" href="mailto:@EffectiveEmail">
+                <span class="hj-info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></span>
+                <div>
+                    <div class="hj-info-row__label">Email</div>
+                    <div class="hj-info-row__value">@EffectiveEmail</div>
+                </div>
+            </a>
             @if (!string.IsNullOrWhiteSpace(cfg?.BusinessHours))
             {
                 <div class="hj-info-row hj-info-row--h">
@@ -359,6 +348,25 @@
     private bool busy, sent;
     private string? error, submittedName, waHref;
     private SiteSettings? cfg;
+
+    // Same fallback pattern the ContactStrip uses: configured value wins, but a blank OR a
+    // seeded example.com placeholder falls through to the official public detail so the page
+    // never shows "admin@example.com" or a phone-less "Reach Us" card.
+    private string EffectiveEmail =>
+        string.IsNullOrWhiteSpace(cfg?.ContactEmail) || PublicContactDefaults.IsPlaceholderEmail(cfg!.ContactEmail)
+            ? PublicContactDefaults.Email : cfg!.ContactEmail!;
+
+    private string[] EffectivePhones
+    {
+        get
+        {
+            var configured = new[] { cfg?.ContactPhone1, cfg?.ContactPhone2, cfg?.ContactPhone3 }
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p!)
+                .ToArray();
+            return configured.Length > 0 ? configured : new[] { PublicContactDefaults.Phone };
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
