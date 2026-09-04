@@ -71,6 +71,58 @@ public class SchoolStudentService(
         return await _db.SchoolStudents.CountAsync(ss => ss.SchoolId == schoolId.Value && ss.IsActive, ct);
     }
 
+    public async Task<BulkAddSchoolStudentResult> AddManyAsync(
+        Guid actingUserId, BulkAddSchoolStudentRequest request, CancellationToken ct = default)
+    {
+        var results = new List<BulkAddSchoolStudentRowResult>();
+        var rows = request.Rows ?? new();
+
+        // Cap the batch so a malicious or accidental submit can't tie up the connection.
+        // 100 covers a typical section roll in one go, still fits comfortably in one request.
+        const int MaxRows = 100;
+        var effective = rows.Take(MaxRows).ToList();
+
+        int created = 0, linked = 0, failed = 0;
+        for (int i = 0; i < effective.Count; i++)
+        {
+            var row = effective[i];
+            var name = (row?.FullName ?? string.Empty).Trim();
+            try
+            {
+                var r = await AddAsync(actingUserId, row!, ct);
+                if (r.Ok)
+                {
+                    if (r.LinkedExisting) linked++; else created++;
+                    results.Add(new BulkAddSchoolStudentRowResult(i, true, null, r.LinkedExisting, name));
+                }
+                else
+                {
+                    failed++;
+                    results.Add(new BulkAddSchoolStudentRowResult(i, false, r.Error, false, name));
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Bulk add: row {Index} failed", i);
+                failed++;
+                results.Add(new BulkAddSchoolStudentRowResult(i, false, "Unexpected error saving this row.", false, name));
+            }
+        }
+
+        if (rows.Count > MaxRows)
+        {
+            // Every row beyond the cap is reported as skipped so the writer can see and re-submit them.
+            for (int i = MaxRows; i < rows.Count; i++)
+            {
+                var name = (rows[i]?.FullName ?? string.Empty).Trim();
+                failed++;
+                results.Add(new BulkAddSchoolStudentRowResult(i, false, $"Batch limit is {MaxRows} rows per submit — re-submit this row.", false, name));
+            }
+        }
+
+        return new BulkAddSchoolStudentResult(created, linked, failed, results);
+    }
+
     public async Task<AddSchoolStudentResult> AddAsync(
         Guid actingUserId, AddSchoolStudentRequest request, CancellationToken ct = default)
     {

@@ -25,6 +25,13 @@ public interface ISchoolStudentService
     /// </summary>
     Task<AddSchoolStudentResult> AddAsync(Guid actingUserId, AddSchoolStudentRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Adds many students in one submit. Each row runs through the same AddAsync path, so
+    /// row-level rules (link vs create, duplicate email/phone in this school) still apply.
+    /// A failing row is reported and skipped — the whole submit does not roll back.
+    /// </summary>
+    Task<BulkAddSchoolStudentResult> AddManyAsync(Guid actingUserId, BulkAddSchoolStudentRequest request, CancellationToken ct = default);
+
     /// <summary>Removes a student from the acting user's school. Scoped to that school.</summary>
     Task<(bool ok, string? error)> RemoveAsync(Guid actingUserId, Guid schoolStudentId, CancellationToken ct = default);
 
