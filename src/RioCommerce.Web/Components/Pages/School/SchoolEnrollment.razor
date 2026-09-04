@@ -1,21 +1,21 @@
 @page "/school/enrollment"
+@layout SchoolLayout
 @using RioCommerce.Core.DTOs.School
 @attribute [Authorize(Roles = "school_principal,school_coordinator")]
 @inject ISchoolStudentService Students
 @inject ISchoolEnrollmentService Enrollment
 @inject AuthenticationStateProvider AuthProvider
 
-@* Fills the /school/enrollment route SchoolNav has always reserved. Same container /
-   account-page / SchoolNav shell as the dashboard and students pages.
-
-   The course list and every price come from ISchoolEnrollmentService, which projects the
-   live Products table — nothing in this file names a course or an amount. *@
+@* Fills the /school/enrollment route. Wrapped by SchoolLayout, which supplies the
+   portal sidebar and topbar so this file only owns page content.
+   The course list and every price come from ISchoolEnrollmentService, which projects
+   the live Products table — nothing in this file names a course or an amount. *@
 
 <PageTitle>Enroll Students — School Portal</PageTitle>
 
-<div class="container account-page">
-    <h1 class="account-page__title">School Portal</h1>
-    <SchoolNav />
+<div class="page__header">
+    <h1>Enroll Students</h1>
+</div>
 
     @if (loading)
     {
@@ -211,7 +211,6 @@
             </section>
         }
     }
-</div>
 
 <style>
     .se-note{color:var(--gray-400);padding:30px 0}

@@ -472,11 +472,31 @@ app.MapPost("/account/login", async (HttpContext http, RioCommerceDbContext db, 
     if (string.IsNullOrWhiteSpace(emailOrPhone) || string.IsNullOrWhiteSpace(password))
         return Results.Redirect($"/login?error=1&returnUrl={Uri.EscapeDataString(target)}");
 
+    var identifier = emailOrPhone.Trim();
+
     var user = await db.Users
         .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
         .FirstOrDefaultAsync(u =>
-            (u.Email != null && u.Email.ToLower() == emailOrPhone.ToLower()) ||
-            (u.Phone != null && u.Phone == emailOrPhone));
+            (u.Email != null && u.Email.ToLower() == identifier.ToLower()) ||
+            (u.Phone != null && u.Phone == identifier));
+
+    // ── School Principal login by UDISE code ──
+    // Schools are identified in the field by their UDISE — the 11-digit code printed on every
+    // school's board — so the principal wants to type that instead of the email/phone they
+    // registered with. Only the active Principal is resolvable this way: the code identifies
+    // the SCHOOL, not a user, and there's exactly one active Principal per school. Coordinators
+    // still sign in with their own email/phone because a UDISE couldn't tell one from another.
+    if (user == null && identifier.Length > 0 && identifier.All(char.IsDigit))
+    {
+        user = await db.Users
+            .Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+            .Where(u => db.SchoolUsers.Any(su =>
+                su.UserId == u.Id
+                && su.IsActive
+                && su.Role == RioCommerce.Core.Enums.SchoolUserRole.Principal
+                && su.School.UdiseCode == identifier))
+            .FirstOrDefaultAsync();
+    }
 
     // ── Customer migrated from the old website ──
     // The old site's password hashes were not carried across, so these accounts arrive with a NULL

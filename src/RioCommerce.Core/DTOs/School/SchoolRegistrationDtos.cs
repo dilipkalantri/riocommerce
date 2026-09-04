@@ -42,3 +42,25 @@ public record SchoolPortalDashboard(
     int StudentCount,
     int CoordinatorCount,
     int EnrollmentCount);
+
+public class SchoolCoordinatorCreateRequest
+{
+    public string FullName { get; set; } = string.Empty;
+    public string Phone { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Standard { get; set; } = string.Empty;
+    public string Medium { get; set; } = string.Empty;
+}
+
+public record SchoolCoordinatorScope(int LowestClass, int HighestClass, List<string> Mediums);
+
+public record SchoolCoordinatorListItem(
+    Guid Id,
+    Guid UserId,
+    string FullName,
+    string? Email,
+    string? Phone,
+    string? Standard,
+    string? Medium,
+    bool IsActive,
+    DateTime CreatedAt);

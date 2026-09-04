@@ -3,6 +3,7 @@
 @attribute [Authorize(Roles = "super_admin,admin,operations,backend_user")]
 @inject ISchoolService Svc
 @inject IGeographyService Geo
+@inject IJSRuntime JS
 <PageTitle>Schools — Admin</PageTitle>
 
 <div class="page__header" style="display:flex;justify-content:space-between;align-items:center">
@@ -132,12 +133,13 @@
 
 @* ── Table ── *@
 <div class="data-card">
-    <div class="table-wrap"><table>
+    <div class="table-scroll-top" @ref="topScrollRef"><div class="table-scroll-top__filler" @ref="topFillerRef"></div></div>
+    <div class="table-wrap" @ref="tableWrapRef"><table>
         <thead><tr><th>UDISE</th><th>Name</th><th>Type</th><th>Classes</th><th>Location</th><th>Status</th><th>Users</th><th>Actions</th></tr></thead>
         <tbody>
             @if (items == null) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">Loading...</td></tr> }
             else if (items.Count == 0) { <tr><td colspan="8" style="text-align:center;color:var(--gray-400)">No schools found.</td></tr> }
-            else { @foreach (var s in items)
+            else { @foreach (var s in PagedItems)
             {
                 <tr>
                     <td style="font-family:monospace">@s.UdiseCode</td>
@@ -156,6 +158,27 @@
             } }
         </tbody>
     </table></div>
+    @if (items != null && items.Count > 0)
+    {
+        <div class="table-footer">
+            <span>
+                Showing @(((page - 1) * pageSize) + 1)–@Math.Min(page * pageSize, items.Count) of @items.Count
+            </span>
+            <div class="table-pagination">
+                <button disabled="@(page <= 1)" @onclick="() => Go(1)" title="First">«</button>
+                <button disabled="@(page <= 1)" @onclick="() => Go(page - 1)" title="Previous">‹</button>
+                <span style="padding:0 10px">@(page) / @TotalPages</span>
+                <button disabled="@(page >= TotalPages)" @onclick="() => Go(page + 1)" title="Next">›</button>
+                <button disabled="@(page >= TotalPages)" @onclick="() => Go(TotalPages)" title="Last">»</button>
+                <select class="form-input" style="margin-left:12px;height:32px;padding:0 8px;font-size:13px" @bind="pageSize" @bind:after="OnPageSizeChanged">
+                    <option value="10">10 / page</option>
+                    <option value="25">25 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                </select>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
@@ -171,6 +194,16 @@
     private string? err, msg;
     private SchoolImportResult? importResult;
 
+    private int page = 1;
+    private int pageSize = 25;
+    private int TotalPages => items == null || items.Count == 0 ? 1 : (int)Math.Ceiling(items.Count / (double)pageSize);
+    private IEnumerable<SchoolListItem> PagedItems =>
+        items?.Skip((page - 1) * pageSize).Take(pageSize) ?? Enumerable.Empty<SchoolListItem>();
+
+    private ElementReference topScrollRef;
+    private ElementReference tableWrapRef;
+    private ElementReference topFillerRef;
+
     protected override async Task OnInitializedAsync()
     {
         allStates = await Geo.ListStatesAsync();
@@ -178,7 +211,28 @@
         await Reload();
     }
 
-    private async Task Reload() => items = await Svc.ListAsync(searchTerm, filterDistrictId);
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (items != null)
+        {
+            try { await JS.InvokeVoidAsync("rc.dualScroll.init", topScrollRef, tableWrapRef, topFillerRef); }
+            catch { /* JS not ready during prerender */ }
+        }
+    }
+
+    private async Task Reload()
+    {
+        page = 1;
+        items = await Svc.ListAsync(searchTerm, filterDistrictId);
+    }
+
+    private void Go(int p)
+    {
+        if (items == null || p < 1 || p > TotalPages) return;
+        page = p;
+    }
+
+    private void OnPageSizeChanged() => page = 1;
 
     private async Task OpenEditor(Guid? id)
     {

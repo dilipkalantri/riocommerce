@@ -1,0 +1,195 @@
+@* School portal shell.
+   Reuses the admin's erp-styles CSS classes so the sidebar/topbar match the admin
+   look exactly. Only the menu contents and the role pill differ:
+   - Principal sees Dashboard, Students, Enroll Students, Coordinators.
+   - Coordinator sees the same list minus Coordinators (that link is wrapped
+     in AuthorizeView).
+   The admin's collapse and mobile-drawer behaviour is preserved. *@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
+@inject ISiteSettingsService Settings
+@implements IDisposable
+
+<link rel="stylesheet" href="_content/RioCommerce.Web/css/erp-styles.css" />
+<link rel="stylesheet" href="_content/RioCommerce.Web/css/responsive-normalize.css" />
+
+<style>
+    /* Role pill next to the wordmark. Green for Principal, blue for Coordinator —
+       these are the same success/info hues the rest of the app already uses. */
+    .sidebar__role {
+        margin-left: auto; font-size: 10px; font-weight: 700; letter-spacing: .12em;
+        padding: 3px 8px; border-radius: 4px; color: #fff;
+    }
+    .sidebar__role--principal { background: #16a34a; }
+    .sidebar__role--coord     { background: #2563eb; }
+
+    /* One-line context under the wordmark ("Test School · 72251900401"). Kept quiet. */
+    .sidebar__context {
+        padding: 0 18px 12px; font-size: 11.5px; color: rgba(255,255,255,.6);
+        line-height: 1.35; border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .sidebar__context strong { color: rgba(255,255,255,.85); font-weight: 600; display: block; }
+    .sidebar__context .udise { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; letter-spacing: .02em; }
+</style>
+
+<div class="admin-layout @(collapsed ? "admin-layout--collapsed" : "") @(mobileOpen ? "admin-layout--mobile-open" : "")">
+    <div class="nav-overlay" @onclick="CloseMobile"></div>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar__logo">
+            <a href="/school"><img src="@LogoSrc" alt="Vijaypath" /></a>
+            <span class="sidebar__role @(IsPrincipal ? "sidebar__role--principal" : "sidebar__role--coord") sidebar__txt">
+                @(IsPrincipal ? "PRINCIPAL" : "COORDINATOR")
+            </span>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_schoolName))
+        {
+            <div class="sidebar__context sidebar__txt">
+                <strong>@_schoolName</strong>
+                <span class="udise">UDISE @_udise</span>
+                @if (!string.IsNullOrWhiteSpace(_scopeLine)) { <div style="margin-top:2px">@_scopeLine</div> }
+            </div>
+        }
+
+        <nav class="sidebar__nav">
+            <NavLink href="/school" class="sidebar__link sidebar__link--top" Match="NavLinkMatch.All">
+                <span class="sidebar__ico">🏠</span><span class="sidebar__txt">Dashboard</span>
+            </NavLink>
+            <NavLink href="/school/students" class="sidebar__link sidebar__link--top">
+                <span class="sidebar__ico">👥</span><span class="sidebar__txt">Students</span>
+            </NavLink>
+            <NavLink href="/school/enrollment" class="sidebar__link sidebar__link--top">
+                <span class="sidebar__ico">📝</span><span class="sidebar__txt">Enroll Students</span>
+            </NavLink>
+            <AuthorizeView Roles="school_principal" Context="pc">
+                <NavLink href="/school/coordinators" class="sidebar__link sidebar__link--top">
+                    <span class="sidebar__ico">🧑‍🏫</span><span class="sidebar__txt">Coordinators</span>
+                </NavLink>
+            </AuthorizeView>
+        </nav>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="sidebar__user">
+                    <div class="sidebar__avatar">@Initials(context.User.Identity?.Name)</div>
+                    <div class="sidebar__user-info sidebar__txt">
+                        <div class="sidebar__user-name">@(context.User.Identity?.Name ?? "User")</div>
+                        <div class="sidebar__user-role">@(IsPrincipal ? "Principal" : "Coordinator")</div>
+                    </div>
+                    <form method="post" action="/account/logout" data-enhance="false" style="margin:0 0 0 auto">
+                        <button type="submit" class="btn btn-ghost btn-sm" title="Logout">⎋</button>
+                    </form>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </aside>
+
+    <div class="main-content">
+        <div class="admin-topbar">
+            <div class="topbar__left">
+                <button class="topbar__btn topbar__hamburger" @onclick="ToggleMobile" aria-label="Toggle menu">☰</button>
+                <button class="topbar__btn topbar__collapse" @onclick="ToggleCollapse" aria-label="Collapse sidebar" title="Collapse sidebar">@(collapsed ? "⮞" : "⮜")</button>
+            </div>
+            <div class="topbar__right">
+                <a href="@_storeUrl" target="_blank" rel="noopener" class="topbar__store" title="Open public store in a new tab">
+                    <svg class="topbar__store-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h18l-1.5 9a2 2 0 0 1-2 1.7H6.5A2 2 0 0 1 4.5 16Z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg>
+                    <span class="topbar__store-txt">View Store</span>
+                    <svg class="topbar__store-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>
+                </a>
+
+                <AuthorizeView Context="tbu">
+                    <Authorized>
+                        <div class="topbar__profile" title="@(tbu.User.Identity?.Name ?? "User")">
+                            <span class="topbar__profile-avatar">@Initials(tbu.User.Identity?.Name)</span>
+                            <span class="topbar__profile-meta">
+                                <span class="topbar__profile-name">@(tbu.User.Identity?.Name ?? "User")</span>
+                                <span class="topbar__profile-role">@(IsPrincipal ? "Principal" : "Coordinator")</span>
+                            </span>
+                        </div>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </div>
+
+        <div class="page">
+            @Body
+        </div>
+    </div>
+</div>
+<ToastHost />
+
+@code {
+    private bool collapsed;
+    private bool mobileOpen;
+    private string _storeUrl = "/";
+    private string? customLogoUrl;
+    private const string FallbackLogo = "_content/RioCommerce.Web.Storefront/images/vijaypath-header-logo-light.svg";
+    private string LogoSrc => string.IsNullOrWhiteSpace(customLogoUrl) ? FallbackLogo : customLogoUrl!;
+
+    private bool IsPrincipal { get; set; }
+    private string? _schoolName;
+    private string? _udise;
+    private string? _scopeLine;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        var configured = Config["StoreUrl"];
+        _storeUrl = string.IsNullOrWhiteSpace(configured) ? "/" : configured!.Trim();
+        try { var cfg = await Settings.GetAsync(); customLogoUrl = cfg.LogoUrl; } catch { }
+        await LoadUserContextAsync();
+    }
+
+    private async Task LoadUserContextAsync()
+    {
+        var state = await AuthProvider.GetAuthenticationStateAsync();
+        var roles = state.User.FindAll(System.Security.Claims.ClaimTypes.Role).Select(c => c.Value).ToHashSet();
+        IsPrincipal = roles.Contains("school_principal");
+    }
+
+    /// <summary>Pages call this from OnInitializedAsync so the sidebar shows the school
+    /// name/UDISE and, for a coordinator, their Standard + Medium scope. Silent when the
+    /// layout isn't wrapping the page (e.g. during prerender).</summary>
+    [CascadingParameter] public SchoolShellContext? Shell { get; set; }
+
+    public void SetContext(string? schoolName, string? udise, string? standard, string? medium)
+    {
+        _schoolName = schoolName;
+        _udise = udise;
+        if (!IsPrincipal && (!string.IsNullOrWhiteSpace(standard) || !string.IsNullOrWhiteSpace(medium)))
+        {
+            var bits = new List<string>();
+            if (!string.IsNullOrWhiteSpace(standard)) bits.Add($"Std {standard}");
+            if (!string.IsNullOrWhiteSpace(medium)) bits.Add(medium!);
+            _scopeLine = string.Join(" · ", bits);
+        }
+        StateHasChanged();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        mobileOpen = false;
+        StateHasChanged();
+    }
+
+    private void ToggleCollapse() => collapsed = !collapsed;
+    private void ToggleMobile()   => mobileOpen = !mobileOpen;
+    private void CloseMobile()    => mobileOpen = false;
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "SC";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
+            : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+
+    /// <summary>Placeholder — kept to allow future cascading of school context to nested pages.</summary>
+    public class SchoolShellContext { }
+}

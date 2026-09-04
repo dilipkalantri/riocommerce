@@ -1,17 +1,18 @@
 @page "/school/students"
+@layout SchoolLayout
 @using RioCommerce.Core.DTOs.School
 @attribute [Authorize(Roles = "school_principal,school_coordinator")]
 @inject ISchoolStudentService Students
 @inject AuthenticationStateProvider AuthProvider
 
-@* Fills the /school/students route that SchoolNav has always linked to. Reuses the same
-   container / account-page / SchoolNav shell as the dashboard, so the portal keeps one look. *@
+@* Fills the /school/students route that the sidebar links to. Wrapped by SchoolLayout,
+   which supplies the portal sidebar and topbar so the page only owns its content. *@
 
 <PageTitle>Students — School Portal</PageTitle>
 
-<div class="container account-page">
-    <h1 class="account-page__title">School Portal</h1>
-    <SchoolNav />
+<div class="page__header">
+    <h1>Students</h1>
+</div>
 
     @if (loading)
     {
@@ -89,7 +90,6 @@
             <p class="ss-count">@rows.Count student@(rows.Count == 1 ? "" : "s")</p>
         }
     }
-</div>
 
 @if (addOpen)
 {

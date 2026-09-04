@@ -824,6 +824,33 @@
         // Admin smart-search helpers. Scroll the Nth child of a scroll container into the centre
         // when the user navigates the suggestion list with ↑/↓.
         window.rcAdmin = window.rcAdmin || {};
+        // Table dual-scrollbar: keep a "top" scrollbar in sync with the real bottom
+        // one on the .table-wrap below it. The filler div inside the top strip is
+        // sized to match the table's rendered width, so both bars show the same
+        // extent. A ResizeObserver keeps the filler in step when the table reflows
+        // (page change, viewport resize, column-content differences).
+        window.rc.dualScroll = {
+            init: function (topEl, bottomEl, fillerEl) {
+                if (!topEl || !bottomEl || !fillerEl) return;
+                if (topEl._dsInit) return; topEl._dsInit = true;
+                var table = bottomEl.querySelector('table');
+                var sync = function () { if (table) fillerEl.style.width = table.scrollWidth + 'px'; };
+                sync();
+                var locked = false;
+                topEl.addEventListener('scroll', function () {
+                    if (locked) return; locked = true;
+                    bottomEl.scrollLeft = topEl.scrollLeft;
+                    requestAnimationFrame(function () { locked = false; });
+                });
+                bottomEl.addEventListener('scroll', function () {
+                    if (locked) return; locked = true;
+                    topEl.scrollLeft = bottomEl.scrollLeft;
+                    requestAnimationFrame(function () { locked = false; });
+                });
+                if ('ResizeObserver' in window && table) new ResizeObserver(sync).observe(table);
+                window.addEventListener('resize', sync);
+            }
+        };
         window.rcAdmin.scrollIntoCenter = function (container, index) {
             try {
                 if (!container || index == null) return;
