@@ -53,17 +53,27 @@ public class CheckoutService : ICheckoutService
     // Convenience for paths that need the live gateway against the order's selected mode.
     private IPaymentGateway _gateway => _gateways.Get("Razorpay");
 
+    // Buyer tier for pricing: student on a school roll OR active staff (Principal / Coordinator).
+    // Matches CartService.IsSchoolStudentAsync so the checkout total lines up with the cart total
+    // the buyer just saw. Server-authoritative; never trust a client flag.
+    private async Task<bool> IsSchoolStudentAsync(Guid userId)
+    {
+        if (await _db.SchoolStudents.AnyAsync(s => s.UserId == userId && s.IsActive)) return true;
+        return await _db.SchoolUsers.AnyAsync(su => su.UserId == userId && su.IsActive);
+    }
+
     public async Task<CheckoutSummary> GetSummaryAsync(Guid userId, string? couponCode = null, string? affiliateCode = null,
         IReadOnlyList<CheckoutAttributeSelection>? checkoutSelections = null)
     {
         var rows = await LoadCartAsync(userId);
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
 
+        var isSchoolStudent = await IsSchoolStudentAsync(userId);
         var summary = new CheckoutSummary();
         foreach (var c in rows)
         {
-            // Mode price is ADDITIVE (add-on), not replacement. Purchase-option add-ons stack too.
-            var basePrice = c.Product.IsSpecialPriceActive ? c.Product.SpecialPrice!.Value : c.Product.SellingPrice;
+            // Base price picks the buyer's tier (school student vs regular); mode / options stack.
+            var basePrice = c.Product.EffectivePriceFor(isSchoolStudent);
             var (optAddOn, _) = ResolveOptionAddOns(c);
             var unit = basePrice + (c.ProductMode?.Price ?? 0m) + optAddOn + c.AttributePriceAdjustment;
             summary.Items.Add(new CheckoutItemLine(
@@ -125,9 +135,10 @@ public class CheckoutService : ICheckoutService
         var user = await _db.Users.FirstAsync(u => u.Id == userId);
 
         // Recompute everything server-side — never trust client amounts.
-        // Mode price is ADDITIVE (add-on), not replacement. See top of PriceCart for the shape.
+        // Buyer tier picks the base price; mode / options stack additively on top.
+        var isSchoolStudent = await IsSchoolStudentAsync(userId);
         var subtotal = rows.Sum(c =>
-            (((c.Product.IsSpecialPriceActive ? c.Product.SpecialPrice!.Value : c.Product.SellingPrice)
+            ((c.Product.EffectivePriceFor(isSchoolStudent)
               + (c.ProductMode?.Price ?? 0m) + ResolveOptionAddOns(c).addOn + c.AttributePriceAdjustment) * c.Quantity));
         var affiliateId = await ResolveAffiliateIdAsync(req.AffiliateCode, userId);
         var (discount, couponCode, _) = await ResolveCouponAsync(req.CouponCode, subtotal, affiliateId);
@@ -198,8 +209,9 @@ public class CheckoutService : ICheckoutService
 
         foreach (var c in rows)
         {
-            // Mode price is ADDITIVE (add-on), not replacement. Purchase-option add-ons stack too.
-            var basePrice = c.Product.IsSpecialPriceActive ? c.Product.SpecialPrice!.Value : c.Product.SellingPrice;
+            // Same tier resolution as the subtotal above — the price frozen onto the order line
+            // must match what the buyer paid. Mode / options stack on top of the buyer base.
+            var basePrice = c.Product.EffectivePriceFor(isSchoolStudent);
             var (optAddOn, optSnapshot) = ResolveOptionAddOns(c);
             var unit = basePrice + (c.ProductMode?.Price ?? 0m) + optAddOn + c.AttributePriceAdjustment;
             order.Items.Add(new OrderItem

@@ -932,8 +932,9 @@ else
                         @foreach (var m in product.Modes)
                         {
                             // Show the effective price = base + this mode's add-on. Matches what
-                            // Checkout charges. When special is active, the base is SpecialPrice.
-                            var _base = product.IsSpecialPriceActive ? product.SpecialPrice!.Value : product.SellingPrice;
+                            // Checkout charges — the DTO's EffectivePrice already resolves the buyer
+                            // tier (school-student when eligible, else special-when-active, else regular).
+                            var _base = product.EffectivePrice;
                             var _effective = _base + m.Price;
                             <option value="@m.Id">@m.ModeName — ₹@_effective.ToString("N0")</option>
                         }
@@ -1267,14 +1268,16 @@ else
     private string CurrentFranchiseOrderUrl
         => product == null ? "/franchise/order" : FranchiseOrderUrl(product.Id, selectedModeId, SelectedOptionIds());
 
-    // Mode price is ADDITIVE — add-on to the regular (or special) base. Matches CheckoutService /
-    // CartService / OrderAdminService pricing so what's shown on the product page equals what's charged.
+    // Mode price is ADDITIVE — add-on to the buyer's base. Matches CheckoutService / CartService /
+    // OrderAdminService pricing so what's shown on the product page equals what's charged. The
+    // DTO's EffectivePrice already resolves the buyer tier (school-student when eligible, else
+    // special-when-active, else regular selling price).
     private decimal CurrentPrice
     {
         get
         {
             if (product == null) return 0m;
-            var basePrice = product.IsSpecialPriceActive ? product.SpecialPrice!.Value : product.SellingPrice;
+            var basePrice = product.EffectivePrice;
             var modeAddOn = product.Modes.FirstOrDefault(m => m.Id == selectedModeId)?.Price ?? 0m;
             return basePrice + modeAddOn + OptionsAddOn;
         }

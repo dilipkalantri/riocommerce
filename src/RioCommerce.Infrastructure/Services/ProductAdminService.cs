@@ -391,6 +391,7 @@ public class ProductAdminService : IProductAdminService
             AllowCustomerPurchase = p.AllowCustomerPurchase,
             // Special price
             SpecialPrice = p.SpecialPrice, SpecialPriceStartDateUtc = p.SpecialPriceStartDateUtc, SpecialPriceEndDateUtc = p.SpecialPriceEndDateUtc,
+            SchoolStudentPrice = p.SchoolStudentPrice,
             Badge = p.Badge, IsFeatured = p.IsFeatured, DisplayOrder = p.DisplayOrder, HomePageDisplayOrder = p.HomePageDisplayOrder, Status = p.Status,
             BatchStatus = p.BatchStatus,
             LectureAccessTiming = p.LectureAccessTiming,
@@ -566,6 +567,7 @@ public class ProductAdminService : IProductAdminService
         p.SpecialPrice = m.SpecialPrice;
         p.SpecialPriceStartDateUtc = spStart;
         p.SpecialPriceEndDateUtc = spEnd;
+        p.SchoolStudentPrice = m.SchoolStudentPrice;
 
         // ── Multi-Category sync ─────────────────────────────────────────────────────────
         // Keep legacy CategoryId in sync: first selected = primary, or null when empty.

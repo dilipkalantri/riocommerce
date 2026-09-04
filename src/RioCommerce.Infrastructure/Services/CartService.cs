@@ -24,6 +24,16 @@ public class CartService : ICartService
     private const string FranchiseBlockedMessage =
         "Franchise accounts place orders through the Franchise Portal. Please use Franchise → Place Order.";
 
+    // School-tier pricing eligibility. Any user with an active SchoolStudent row OR active
+    // SchoolUsers row (Principal / Coordinator) qualifies — so staff members who buy a course
+    // see and pay the same tier their students do. Server-authoritative; called once per cart
+    // operation and reused across every line.
+    private async Task<bool> IsSchoolStudentAsync(Guid userId)
+    {
+        if (await _db.SchoolStudents.AnyAsync(s => s.UserId == userId && s.IsActive)) return true;
+        return await _db.SchoolUsers.AnyAsync(su => su.UserId == userId && su.IsActive);
+    }
+
     public async Task<int> CountAsync(Guid userId) =>
         await _db.CartItems.Where(c => c.UserId == userId).SumAsync(c => (int?)c.Quantity) ?? 0;
 
@@ -43,12 +53,17 @@ public class CartService : ICartService
         var alreadyInCart = await _db.CartItems.AnyAsync(c => c.UserId == userId && c.ProductId == productId);
         if (alreadyInCart) return (false, "This product is already in your cart.");
 
-        // Special price overrides everything (including mode prices) when active.
-        var basePrice = product.IsSpecialPriceActive
-            ? product.SpecialPrice!.Value
+        // Base price picks the buyer's tier: school students on a registered roll pay the lower
+        // of SchoolStudentPrice / EffectiveSellingPrice; everyone else pays EffectiveSellingPrice.
+        // Special price is baked into EffectiveSellingPrice already, so it still wins when it's
+        // the cheapest option. Mode add-ons stack on top of whichever base was chosen.
+        var isSchoolStudent = await IsSchoolStudentAsync(userId);
+        var buyerBase = product.EffectivePriceFor(isSchoolStudent);
+        var basePrice = product.IsSpecialPriceActive || isSchoolStudent
+            ? buyerBase
             : modeId.HasValue
-                ? await _db.ProductModes.Where(m => m.Id == modeId).Select(m => (decimal?)m.Price).FirstOrDefaultAsync() ?? product.SellingPrice
-                : product.SellingPrice;
+                ? await _db.ProductModes.Where(m => m.Id == modeId).Select(m => (decimal?)m.Price).FirstOrDefaultAsync() ?? buyerBase
+                : buyerBase;
         var (adjustment, json) = await ResolveAttributesAsync(productId, basePrice, selections);
 
         _db.CartItems.Add(new CartItem
@@ -167,12 +182,13 @@ public class CartService : ICartService
             .OrderBy(c => c.CreatedAt)
             .ToListAsync();
 
+        var isSchoolStudent = await IsSchoolStudentAsync(userId);
         var view = new CartView();
         foreach (var c in rows)
         {
-            // Mode price is ADDITIVE — an add-on to the regular (or special) price.
-            // Special price discounts the base; the mode add-on still applies on top of it.
-            var basePrice = c.Product.IsSpecialPriceActive ? c.Product.SpecialPrice!.Value : c.Product.SellingPrice;
+            // Mode price is ADDITIVE — an add-on to the regular / special / school price.
+            // The base picks the cheapest tier the buyer qualifies for; add-ons stack on top.
+            var basePrice = c.Product.EffectivePriceFor(isSchoolStudent);
             var unit = basePrice + (c.ProductMode?.Price ?? 0m) + CartOptionAddOn(c) + c.AttributePriceAdjustment;
             view.Items.Add(new CartItemView(c.Id, c.ProductId, c.Product.Slug, c.Product.Title, c.Product.Level,
                 c.Product.PrimaryFaculty?.DisplayName, c.ProductMode?.ModeName, unit, c.Product.Mrp, c.Quantity,
@@ -230,10 +246,12 @@ public class CartService : ICartService
             Status = OrderStatus.Pending,
             PaymentStatus = PaymentStatus.Pending
         };
+        var isSchoolStudentCheckout = await IsSchoolStudentAsync(userId);
         foreach (var c in rows)
         {
-            // Mode price is ADDITIVE (add-on), not replacement. Purchase-option add-ons stack too.
-            var basePrice = c.Product.IsSpecialPriceActive ? c.Product.SpecialPrice!.Value : c.Product.SellingPrice;
+            // Same tier resolution as GetAsync — the price that lands on the order line must match
+            // what the buyer just saw in the cart. Mode / options stack on top of the buyer base.
+            var basePrice = c.Product.EffectivePriceFor(isSchoolStudentCheckout);
             var (optAddOn, optSnapshot) = CartOptionResolve(c);
             var unit = basePrice + (c.ProductMode?.Price ?? 0m) + optAddOn + c.AttributePriceAdjustment;
             order.Items.Add(new OrderItem

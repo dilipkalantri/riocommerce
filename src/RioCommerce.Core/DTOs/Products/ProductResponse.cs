@@ -15,13 +15,31 @@ public class ProductListItem
     public decimal? SpecialPrice { get; set; }
     public DateTime? SpecialPriceStartDateUtc { get; set; }
     public DateTime? SpecialPriceEndDateUtc { get; set; }
+    // ── School Student Price ──
+    /// <summary>The tier price registered school students pay. Null / 0 = no school tier on this course.</summary>
+    public decimal? SchoolStudentPrice { get; set; }
+    /// <summary>
+    /// Stamped by the API when the caller is a school-linked user (student on a roll or active
+    /// staff). Drives both the display price and the "School student price" badge on the card.
+    /// </summary>
+    public bool SchoolPriceApplied { get; set; }
     /// <summary>True when a special price is configured and the current UTC time falls within its window.</summary>
     public bool IsSpecialPriceActive =>
         SpecialPrice.HasValue && SpecialPrice.Value > 0
         && (!SpecialPriceStartDateUtc.HasValue || DateTime.UtcNow >= SpecialPriceStartDateUtc.Value)
         && (!SpecialPriceEndDateUtc.HasValue || DateTime.UtcNow <= SpecialPriceEndDateUtc.Value);
-    /// <summary>The price to display on the storefront — special price when active, otherwise regular selling price.</summary>
-    public decimal EffectivePrice => IsSpecialPriceActive ? SpecialPrice!.Value : SellingPrice;
+    /// <summary>The price to display on the storefront — school tier when the caller qualifies and
+    /// it is lower; else the special price when active; else the regular selling price.</summary>
+    public decimal EffectivePrice
+    {
+        get
+        {
+            var regular = IsSpecialPriceActive ? SpecialPrice!.Value : SellingPrice;
+            return (SchoolPriceApplied && SchoolStudentPrice.HasValue && SchoolStudentPrice.Value > 0)
+                ? System.Math.Min(regular, SchoolStudentPrice.Value)
+                : regular;
+        }
+    }
     public string? Badge { get; set; }
     public string? PrimaryImageUrl { get; set; }
     public string? HomeCardImageUrl { get; set; }   // when present, storefront cards prefer this over PrimaryImageUrl

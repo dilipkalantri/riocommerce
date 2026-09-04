@@ -71,6 +71,16 @@ public class SchoolStudentService(
         return await _db.SchoolStudents.CountAsync(ss => ss.SchoolId == schoolId.Value && ss.IsActive, ct);
     }
 
+    // Two-tier pricing eligibility. A student on a roll OR active staff (Principal / Coordinator)
+    // both count — a coordinator seeing the school price on the storefront and their students
+    // paying that same price is the intent. Anonymous / direct-registered users are false.
+    public async Task<bool> IsSchoolLinkedAsync(Guid userId, CancellationToken ct = default)
+    {
+        if (userId == Guid.Empty) return false;
+        if (await _db.SchoolStudents.AnyAsync(s => s.UserId == userId && s.IsActive, ct)) return true;
+        return await _db.SchoolUsers.AnyAsync(su => su.UserId == userId && su.IsActive, ct);
+    }
+
     public async Task<BulkAddSchoolStudentResult> AddManyAsync(
         Guid actingUserId, BulkAddSchoolStudentRequest request, CancellationToken ct = default)
     {

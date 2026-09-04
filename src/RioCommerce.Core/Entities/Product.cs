@@ -98,6 +98,13 @@ public class Product : BaseEntity
     public DateTime? SpecialPriceStartDateUtc { get; set; }
     public DateTime? SpecialPriceEndDateUtc { get; set; }
 
+    /// <summary>
+    /// Discounted price for students who are on a registered school's roll (a SchoolStudent row).
+    /// Applied only when the current buyer is verified server-side as a school student — the client
+    /// never picks this. Null means the course has no school-student discount.
+    /// </summary>
+    public decimal? SchoolStudentPrice { get; set; }
+
     /// <summary>True when a special price is set and the current UTC time falls within its window.</summary>
     public bool IsSpecialPriceActive =>
         SpecialPrice.HasValue && SpecialPrice.Value > 0
@@ -107,6 +114,16 @@ public class Product : BaseEntity
     /// <summary>The effective price — special price when active, otherwise regular selling price.
     /// Overrides mode prices too — use this everywhere a customer-facing price is needed.</summary>
     public decimal EffectiveSellingPrice => IsSpecialPriceActive ? SpecialPrice!.Value : SellingPrice;
+
+    /// <summary>
+    /// Effective base price for a specific buyer. A school student pays the lower of
+    /// SchoolStudentPrice and EffectiveSellingPrice — so a temporary Special Price still wins
+    /// when it happens to be cheaper than the school price. Everyone else pays EffectiveSellingPrice.
+    /// </summary>
+    public decimal EffectivePriceFor(bool isSchoolStudent) =>
+        (isSchoolStudent && SchoolStudentPrice.HasValue && SchoolStudentPrice.Value > 0)
+            ? System.Math.Min(EffectiveSellingPrice, SchoolStudentPrice.Value)
+            : EffectiveSellingPrice;
 
     public string? Badge { get; set; }
     public bool IsFeatured { get; set; }

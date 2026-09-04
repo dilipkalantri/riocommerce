@@ -36,20 +36,33 @@ public class SchoolEnrollmentService(
     {
         var now = DateTime.UtcNow;
 
-        // The special-price window is re-expressed here rather than calling Product.EffectiveSellingPrice
-        // because that is a computed C# property EF cannot translate. Same expression the franchise
-        // catalogue uses, so both portals price a product identically.
+        // The catalogue shown here is ALWAYS priced at the school tier — this endpoint is gated to
+        // school Principals / Coordinators, and every order it places is on behalf of enrolled
+        // school students. So the projected price is the minimum of (school-student price, active
+        // special price, regular price), with only the ones that are actually set considered.
+        //
+        // Re-expressed in EF-translatable form because Product.EffectivePriceFor is a computed C#
+        // method the query provider can't translate. The condition below mirrors it exactly.
         return await _db.Products.AsNoTracking()
             .Where(p => p.Status == ProductStatus.Active)
             .OrderBy(p => p.DisplayOrder).ThenBy(p => p.Title)
             .Select(p => new SchoolEnrollmentProduct(
                 p.Id,
                 p.Title,
-                (p.SpecialPrice != null && p.SpecialPrice > 0
-                    && (p.SpecialPriceStartDateUtc == null || now >= p.SpecialPriceStartDateUtc)
-                    && (p.SpecialPriceEndDateUtc == null || now <= p.SpecialPriceEndDateUtc))
-                    ? p.SpecialPrice!.Value
-                    : p.SellingPrice))
+                // Regular effective price (special when active, else selling).
+                (p.SchoolStudentPrice != null && p.SchoolStudentPrice > 0
+                 && p.SchoolStudentPrice.Value <
+                    ((p.SpecialPrice != null && p.SpecialPrice > 0
+                      && (p.SpecialPriceStartDateUtc == null || now >= p.SpecialPriceStartDateUtc)
+                      && (p.SpecialPriceEndDateUtc == null || now <= p.SpecialPriceEndDateUtc))
+                        ? p.SpecialPrice.Value
+                        : p.SellingPrice))
+                    ? p.SchoolStudentPrice.Value
+                    : (p.SpecialPrice != null && p.SpecialPrice > 0
+                       && (p.SpecialPriceStartDateUtc == null || now >= p.SpecialPriceStartDateUtc)
+                       && (p.SpecialPriceEndDateUtc == null || now <= p.SpecialPriceEndDateUtc))
+                        ? p.SpecialPrice!.Value
+                        : p.SellingPrice))
             .ToListAsync(ct);
     }
 
@@ -85,7 +98,9 @@ public class SchoolEnrollmentService(
         if (product == null)
             return new(false, "That course is no longer available. Pick another and try again.", null, 0, 0m);
 
-        var unit = product.IsSpecialPriceActive ? product.SpecialPrice!.Value : product.SellingPrice;
+        // School-tier price for the order line — same rule the enrollment catalogue displays. Route
+        // is gated to school staff, so the buyer always qualifies for the school tier.
+        var unit = product.EffectivePriceFor(isSchoolStudent: true);
         var qty = studentIds.Count;
         var total = Math.Round(unit * qty, 2);
 

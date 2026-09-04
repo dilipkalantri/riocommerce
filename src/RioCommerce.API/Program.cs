@@ -286,11 +286,23 @@ builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<ICustomerAdminService, CustomerAdminService>();
 
 // ── HttpClient for Blazor ──
+// Blazor pages call the in-process API (/api/*) through this HttpClient. It is raw sockets —
+// browser cookies do NOT flow with it automatically, so any /api/* endpoint that consults
+// User.Identity sees an anonymous caller unless we forward the auth cookie explicitly. This
+// scoped factory reads the current request's rio_auth cookie via IHttpContextAccessor and
+// attaches it to every outbound call, so server-authoritative checks (school-tier pricing,
+// user-scoped data) resolve to the real user during Blazor SSR/interactive renders.
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped(sp =>
 {
     var nav = sp.GetRequiredService<NavigationManager>();
-    return new HttpClient { BaseAddress = new Uri(nav.BaseUri) };
+    var http = sp.GetRequiredService<IHttpContextAccessor>();
+    var client = new HttpClient { BaseAddress = new Uri(nav.BaseUri) };
+    var authCookie = http.HttpContext?.Request.Cookies["rio_auth"];
+    if (!string.IsNullOrEmpty(authCookie))
+        client.DefaultRequestHeaders.Add("Cookie", $"rio_auth={authCookie}");
+    return client;
 });
 
 // ── Auth ──

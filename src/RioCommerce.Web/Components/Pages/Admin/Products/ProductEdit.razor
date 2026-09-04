@@ -357,6 +357,11 @@ else
             <div class="form-grid form-grid--3col">
                 <div class="form-group"><label class="form-label">Price (₹) <span class="required">*</span></label><input type="number" class="form-input" @bind="model.SellingPrice" /></div>
                 <div class="form-group"><label class="form-label">Old price / MRP (₹)</label><input type="number" class="form-input" @bind="model.Mrp" /></div>
+                <div class="form-group">
+                    <label class="form-label">School student price (₹)</label>
+                    <input type="number" step="0.01" min="0" class="form-input" @bind="model.SchoolStudentPrice" placeholder="Leave blank for no discount" />
+                    <div class="form-hint">Applied only when the buyer is on a registered school's roll. If both this and Special Price are set, the student pays whichever is lower.</div>
+                </div>
                 <div class="form-group"><label class="form-label">Product cost (₹)</label><input type="number" class="form-input" @bind="model.ProductCost" /></div>
                 <div class="form-group"><label class="form-label">GST rate (%)</label><input type="number" class="form-input" @bind="model.GstRate" /></div>
                 <div class="form-group" style="display:flex;align-items:flex-end"><label class="pe-chk"><input type="checkbox" @bind="model.GstInclusive" /> Price includes GST</label></div>

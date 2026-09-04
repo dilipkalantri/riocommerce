@@ -58,6 +58,8 @@ public class ProductEditModel
     public DateTime? SpecialPriceStartDateUtc { get; set; }
     public DateTime? SpecialPriceEndDateUtc { get; set; }
     public string? SpecialPriceRemarks { get; set; }   // optional audit remark (not persisted on Product)
+    // Discounted price for registered school students. Null = no school-student discount on this course.
+    public decimal? SchoolStudentPrice { get; set; }
     public string? Badge { get; set; }
     public bool IsFeatured { get; set; }              // "Show on home page"
     public int DisplayOrder { get; set; }

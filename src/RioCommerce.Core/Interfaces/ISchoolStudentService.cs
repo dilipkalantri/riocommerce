@@ -37,4 +37,12 @@ public interface ISchoolStudentService
 
     /// <summary>Live student count for the dashboard tile.</summary>
     Task<int> CountAsync(Guid actingUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// True when the user is linked to a registered school in ANY capacity — a student on the
+    /// roll, or a staff member (Principal / Coordinator). Drives the two-tier product pricing:
+    /// eligible users see and pay <c>Product.SchoolStudentPrice</c> when it is set and lower.
+    /// The check is server-authoritative; the client never asserts it.
+    /// </summary>
+    Task<bool> IsSchoolLinkedAsync(Guid userId, CancellationToken ct = default);
 }
