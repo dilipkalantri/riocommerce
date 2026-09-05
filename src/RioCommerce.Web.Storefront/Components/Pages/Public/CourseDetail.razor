@@ -419,7 +419,10 @@
       .detail-tile--full h4{font-size:15px}
       .detail-tile--full p{font-size:13.5px;line-height:1.55}
       .contact-line{font-size:12.5px;margin-top:8px}
-      /* Estimated Delivery card stacks its 2 columns */
+      /* Estimated Delivery card stacks its 2 columns.
+         The card itself is no longer rendered on this page (see the note in the Overview tab),
+         so these are inert. Kept deliberately: they are the phone half of that card's styling,
+         and restoring the markup without them would bring it back broken on mobile. */
       .ed-card{padding:16px;border-radius:14px;margin-top:16px}
       .ed-card__grid{grid-template-columns:1fr;gap:10px}
       .ed-row{padding:12px 14px;border-radius:12px;gap:10px}
@@ -668,44 +671,15 @@ else
                     @if (!string.IsNullOrEmpty(product.CourseSchedule)) { <div class="detail-tile"><strong>Course Schedule</strong><span>@product.CourseSchedule</span></div> }
                 </div>
 
-                @* ── 📦 Estimated Delivery Information — sits BEFORE Additional Details. DB-driven copy
-                     from Product.LectureAccessTiming / NotesDispatchTimeline / EstimatedDeliveryMessage.
-                     Single source of truth — no hardcoded strings. ── *@
-                <section class="ed-card" aria-label="Estimated Delivery">
-                    <header class="ed-card__head">
-                        <span class="ed-card__rocket">🚀</span>
-                        <div>
-                            <h3 class="ed-card__title">Estimated Delivery</h3>
-                            <p class="ed-card__sub">Activation and dispatch timelines for this product</p>
-                        </div>
-                    </header>
-                    <div class="ed-card__grid">
-                        <div class="ed-row ed-row--orange">
-                            <span class="ed-row__ico">⚡</span>
-                            <div class="ed-row__body">
-                                <span class="ed-row__label">Lecture Access</span>
-                                <strong class="ed-row__value">@product.LectureAccessTiming</strong>
-                            </div>
-                        </div>
-                        <div class="ed-row ed-row--blue">
-                            <span class="ed-row__ico">📦</span>
-                            <div class="ed-row__body">
-                                <span class="ed-row__label">Notes Dispatch</span>
-                                <strong class="ed-row__value">@product.NotesDispatchTimeline</strong>
-                            </div>
-                        </div>
-                    </div>
-                    @if (!string.IsNullOrWhiteSpace(product.EstimatedDeliveryMessage))
-                    {
-                        <div class="ed-card__note">
-                            <span class="ed-card__note-ico">ℹ</span>
-                            <div>
-                                <span class="ed-card__note-title">Additional Information</span>
-                                <p class="ed-card__note-body">@((MarkupString)product.EstimatedDeliveryMessage.Replace("\n", "<br />"))</p>
-                            </div>
-                        </div>
-                    }
-                </section>
+                @* The "Estimated Delivery" card (Lecture Access / Notes Dispatch) used to sit here.
+                   Removed from the product page on request: for most products the timings are not
+                   filled in, so the card rendered "0" against both labels and read as a defect.
+
+                   ONLY the display was removed. Product.LectureAccessTiming,
+                   NotesDispatchTimeline and EstimatedDeliveryMessage are untouched — the columns,
+                   the admin fields that edit them, and the Cart / Checkout / Order-confirmation
+                   screens that also show them all still work. Restoring this block is enough to
+                   bring the card back. *@
 
                 @if (!string.IsNullOrEmpty(product.AdditionalDetails))
                 {
