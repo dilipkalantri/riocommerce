@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using RioCommerce.Core.DTOs.Attributes;
 using RioCommerce.Core.DTOs.Checkout;
 using RioCommerce.Core.DTOs.Realtime;
@@ -25,11 +25,15 @@ public class CheckoutService : ICheckoutService
     private readonly ISerialKeyService _serialKeys;
     private readonly IInvoiceService _invoices;
     private readonly IFacultySharingService _facultyShares;
+    /// <summary>Optional: supplies the configured order series. Null (as in unit tests that build
+    /// this service by hand) falls back to the original RIO- numbering.</summary>
+    private readonly ICompanySettingsService? _company;
     private readonly ILogger<CheckoutService> _log;
 
     public CheckoutService(RioCommerceDbContext db, IPaymentGatewayFactory gateways, INotificationSender notify,
         INotificationCenterService center, IRealtimeBus bus, ISerialKeyService serialKeys,
-        IInvoiceService invoices, IFacultySharingService facultyShares, ILogger<CheckoutService> log)
+        IInvoiceService invoices, IFacultySharingService facultyShares, ILogger<CheckoutService> log,
+        ICompanySettingsService? company = null)
     {
         _db = db;
         _gateways = gateways;
@@ -39,6 +43,7 @@ public class CheckoutService : ICheckoutService
         _serialKeys = serialKeys;
         _invoices = invoices;
         _facultyShares = facultyShares;
+        _company = company;
         _log = log;
     }
 
@@ -322,12 +327,89 @@ public class CheckoutService : ICheckoutService
             gw?.GatewayName, gw?.GatewayOrderId, gw?.GatewayKey, req.PayOnline, gw?.RedirectUrl);
     }
 
+    /// <summary>
+    /// Grants the purchased course to every student on a school-enrolment order's roster, and marks
+    /// each roster row confirmed. The principal who paid gets NOTHING from this — they are the buyer,
+    /// not a learner.
+    ///
+    /// <para>Idempotent on the same key the storefront path uses — (UserId, OrderItemId) — which
+    /// works unchanged here because each student is a different UserId against the same order item.
+    /// A replayed callback re-enters, finds every grant present, and adds nothing.</para>
+    ///
+    /// <para>Roll membership is REVALIDATED at grant time rather than trusted from the roster: the
+    /// order may have been placed days before payment cleared, and a student removed from the school
+    /// in between must not silently receive a course. A mismatch is logged and skipped, leaving
+    /// ConfirmedAt null — which also stops an invoice being raised for that student.</para>
+    ///
+    /// <para>Everything here is written into the caller's single SaveChangesAsync, so the paid order,
+    /// the grants and the roster confirmation commit atomically. Invoices follow afterwards through
+    /// the idempotent EnsureForOrderAsync, exactly as they do for storefront orders.</para>
+    /// </summary>
+    private async Task GrantSchoolEnrollmentAsync(Order order, List<SchoolEnrollmentStudent> roster)
+    {
+        var modeIds = order.Items.Where(i => i.ProductModeId.HasValue).Select(i => i.ProductModeId!.Value).ToList();
+        var modeTypes = await _db.ProductModes.Where(m => modeIds.Contains(m.Id))
+            .ToDictionaryAsync(m => m.Id, m => m.ModeType);
+
+        foreach (var it in order.Items)
+        {
+            it.IsActivated = true;
+            it.ActivatedAt = DateTime.UtcNow;
+        }
+
+        // One query for every (school, student) pair still on roll.
+        var schoolIds = roster.Select(r => r.SchoolId).Distinct().ToList();
+        var rollSet = (await _db.SchoolStudents.AsNoTracking()
+                .Where(ss => ss.IsActive && schoolIds.Contains(ss.SchoolId))
+                .Select(ss => new { ss.SchoolId, ss.UserId })
+                .ToListAsync())
+            .Select(x => (x.SchoolId, x.UserId))
+            .ToHashSet();
+
+        foreach (var row in roster)
+        {
+            if (!rollSet.Contains((row.SchoolId, row.StudentUserId)))
+            {
+                _log.LogWarning(
+                    "School grant SKIPPED — student {Student} is not on school {School}'s roll (order {Order}). No access granted, no invoice raised.",
+                    row.StudentUserId, row.SchoolId, order.OrderNumber);
+                continue;
+            }
+
+            var item = order.Items.FirstOrDefault(i => i.ProductId == row.ProductId) ?? order.Items.FirstOrDefault();
+            if (item == null) continue;
+
+            var already = await _db.Enrollments
+                .AnyAsync(e => e.UserId == row.StudentUserId && e.OrderItemId == item.Id);
+            if (!already)
+            {
+                LectureMode? mode = item.ProductModeId.HasValue && modeTypes.TryGetValue(item.ProductModeId.Value, out var mt)
+                    ? mt : null;
+                _db.Enrollments.Add(new Enrollment
+                {
+                    UserId = row.StudentUserId,
+                    ProductId = row.ProductId,
+                    OrderItemId = item.Id,
+                    Mode = mode,
+                    IsActive = true
+                });
+
+                var prod = await _db.Products.FirstOrDefaultAsync(p => p.Id == row.ProductId);
+                if (prod != null) prod.TotalOrders++;
+            }
+
+            // ??= so a replay never rewrites the original confirmation timestamp.
+            row.ConfirmedAt ??= DateTime.UtcNow;
+            row.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
     public async Task<OrderReceipt?> ConfirmPaymentAsync(PaymentCallback cb, GatewayPaymentInstrument? instrument = null)
     {
         var order = await _db.Orders
             .Include(o => o.Items)
             .Include(o => o.Payments)
-            .Include(o => o.Invoice)
+            .Include(o => o.Invoices)
             .FirstOrDefaultAsync(o => o.OrderNumber == cb.OrderNumber);
         if (order == null) return null;
 
@@ -370,7 +452,7 @@ public class CheckoutService : ICheckoutService
         var payment = await _db.Payments
             .Include(p => p.Order).ThenInclude(o => o.Items)
             .Include(p => p.Order).ThenInclude(o => o.Payments)
-            .Include(p => p.Order).ThenInclude(o => o.Invoice)
+            .Include(p => p.Order).ThenInclude(o => o.Invoices)
             .FirstOrDefaultAsync(p => p.GatewayOrderId == gatewayOrderId);
 
         if (payment == null)
@@ -439,8 +521,20 @@ public class CheckoutService : ICheckoutService
         // same RIO-INV-yyyyMM-#### number and the same full customer/company/line snapshot as every
         // other source. Creating a thin one here used to win the race and leave that snapshot empty.
 
+        // ── School enrolment orders grant to the STUDENTS, never to the buyer ────────────────
+        // The buyer on these orders is the PRINCIPAL, who is paying on behalf of pupils and must
+        // not receive the course themselves. The roster (0048) is the authority for who does.
+        // Detected by the roster's existence — a structural link, not the free-text OrderNote.
+        var schoolRoster = await _db.SchoolEnrollmentStudents
+            .Where(r => r.OrderId == order.Id)
+            .ToListAsync();
+
+        if (schoolRoster.Count > 0)
+        {
+            await GrantSchoolEnrollmentAsync(order, schoolRoster);
+        }
         // Grant course access. One enrollment per order item, idempotent.
-        if (order.UserId.HasValue)
+        else if (order.UserId.HasValue)
         {
             var modeIds = order.Items.Where(i => i.ProductModeId.HasValue).Select(i => i.ProductModeId!.Value).ToList();
             var modeTypes = await _db.ProductModes.Where(m => modeIds.Contains(m.Id))
@@ -756,7 +850,7 @@ public class CheckoutService : ICheckoutService
         var order = await _db.Orders
             .Include(o => o.Items)
             .Include(o => o.Payments)
-            .Include(o => o.Invoice)
+            .Include(o => o.Invoices)
             .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
         if (order == null)
         {
@@ -785,7 +879,7 @@ public class CheckoutService : ICheckoutService
         // that reason — they can never be reached without passing the ownership test.
         var order = await _db.Orders
             .Include(o => o.Items)
-            .Include(o => o.Invoice)
+            .Include(o => o.Invoices)
             .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber && o.UserId == userId);
         if (order == null) return null;
 
@@ -962,14 +1056,11 @@ public class CheckoutService : ICheckoutService
         return (0m, 0m, gst);
     }
 
-    private async Task<string> GenerateOrderNumberAsync()
-    {
-        var last = await _db.Orders.Where(o => o.OrderNumber.StartsWith("RIO"))
-            .OrderByDescending(o => o.CreatedAt).FirstOrDefaultAsync();
-        var next = 1043;
-        if (last != null && int.TryParse(last.OrderNumber.Split('-').Last(), out var n)) next = n + 1;
-        return $"RIO-{next}";
-    }
+    /// <summary>Shared allocator, so checkout, the admin counter and the school portal all follow
+    /// the one configured series instead of three hard-coded copies of "RIO".</summary>
+    private async Task<string> GenerateOrderNumberAsync() =>
+        await OrderNumberGenerator.NextAsync(
+            _db.Orders, _company is null ? null : (await _company.GetAsync()).OrderSeries);
 
     private static OrderReceipt Build(Order o) => new()
     {
@@ -1005,3 +1096,4 @@ public class CheckoutService : ICheckoutService
             CartService.AttributeSummary(i.SelectedAttributesJson))).ToList()
     };
 }
+

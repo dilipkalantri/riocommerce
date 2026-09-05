@@ -1,8 +1,9 @@
-@page "/school/students"
+﻿@page "/school/students"
 @layout SchoolLayout
 @using RioCommerce.Core.DTOs.School
 @attribute [Authorize(Roles = "school_principal,school_coordinator")]
 @inject ISchoolStudentService Students
+@inject ISchoolEnrollmentService Enrollment
 @inject AuthenticationStateProvider AuthProvider
 
 @* Fills the /school/students route that the sidebar links to. Wrapped by SchoolLayout,
@@ -28,10 +29,28 @@
     {
         <div class="ss-bar">
             <div class="ss-bar__search">
-                <input class="form-input" placeholder="Search name, email, phone or roll no."
+                <input class="form-input" placeholder="Search name, email or phone"
                        @bind="search" @bind:event="oninput" @onkeydown="OnSearchKey" />
             </div>
-            <button class="btn btn-primary" @onclick="OpenAdd">+ Add Students</button>
+            @* Grouped so .ss-bar's space-between keeps the search on the left and the whole action
+               cluster together on the right, instead of spreading three buttons across the row.
+               Excel import sits ALONGSIDE the manual grid, which is unchanged — a coordinator with
+               three students still types them, one with three hundred uploads a sheet. *@
+            <div class="ss-bar__actions">
+                <a class="btn btn-outline" href="/school/students/import-template.xlsx" download>⬇ Download Sample Excel</a>
+                <button class="btn btn-outline" @onclick="OpenImport">⬆ Import Students</button>
+                <button class="btn btn-primary" @onclick="OpenAdd">+ Add Students</button>
+            </div>
+        </div>
+
+        @* Payment filter. Client-side over the already school-scoped rows — it narrows what is
+           shown, it never widens what was fetched. *@
+        <div class="ss-filters">
+            @foreach (var f in new[] { "All", "Paid", "Pending", "Failed" })
+            {
+                <button type="button" class="ss-filter @(payFilter == f ? "is-on" : null)"
+                        @onclick="() => payFilter = f">@f (@CountFor(f))</button>
+            }
         </div>
 
         @if (message != null)
@@ -52,13 +71,18 @@
                 <table class="ss-table">
                     <thead>
                         <tr>
-                            <th>Student</th><th>Contact</th><th>Class</th><th>Section</th>
-                            <th>Roll No.</th><th>Status</th><th></th>
+                            @* Section and Roll No. are no longer collected when adding students, so
+                               the columns are gone. The DATA is untouched — SchoolStudent.Section and
+                               .RollNumber still hold every value already recorded, and the list DTO
+                               still carries them; this table simply stops rendering them. *@
+                            <th>Student</th><th>Contact</th><th>Class</th>
+                            <th>Status</th><th>Payment</th><th>Invoice</th><th></th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var r in rows)
+                        @foreach (var r in Visible)
                         {
+                            var pay = payStatus.TryGetValue(r.UserId, out var ps) ? ps : null;
                             <tr>
                                 <td>
                                     <div class="ss-name">@r.FullName</div>
@@ -69,8 +93,6 @@
                                     <div class="ss-sub">@(r.Phone ?? "—")</div>
                                 </td>
                                 <td>@(string.IsNullOrWhiteSpace(r.StudentClass) ? "—" : r.StudentClass)</td>
-                                <td>@(string.IsNullOrWhiteSpace(r.Section) ? "—" : r.Section)</td>
-                                <td>@(string.IsNullOrWhiteSpace(r.RollNumber) ? "—" : r.RollNumber)</td>
                                 <td>
                                     @* IsVerified is the activation signal: it flips to true only when
                                        the student completes the OTP and sets their own password. *@
@@ -78,6 +100,58 @@
                                           title="@(r.IsVerified ? "Account activated by the student" : "Student has not activated the account yet")">
                                         @(r.IsVerified ? "Active" : "Pending")
                                     </span>
+                                </td>
+                                <td>
+                                    @* SCHOOL-paid status, from persisted orders. A student with no
+                                       school enrolment order has no entry here at all — which is the
+                                       right answer for someone who merely named this school when
+                                       self-registering; the school owes nothing for them. *@
+                                    @if (pay is null)
+                                    {
+                                        <span class="ss-pill ss-pill--wait" title="Not enrolled through the school yet">🟡 Pending</span>
+                                    }
+                                    else if (pay.IsPaid)
+                                    {
+                                        <span class="ss-pill ss-pill--ok" title="@($"Order {pay.OrderNumber}")">🟢 Paid</span>
+                                    }
+                                    else if (pay.IsFailed)
+                                    {
+                                        <span class="ss-pill ss-pill--fail" title="@($"Order {pay.OrderNumber}")">🔴 Payment Failed</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="ss-pill ss-pill--wait" title="@($"Order {pay.OrderNumber}")">🟡 Payment Pending</span>
+                                    }
+                                </td>
+                                <td style="white-space:nowrap">
+                                    @* Invoice actions require BOTH a successful payment and an invoice
+                                       that actually exists — never a status label alone.
+
+                                       PRINCIPAL ONLY. /school/invoice/{id}/pdf is now principal-gated,
+                                       so rendering these for a coordinator would hand them a button
+                                       that 403s. A coordinator's student CAN be paid — the principal
+                                       may enrol them — so the payment status still shows; only the
+                                       invoice action is withheld. *@
+                                    @if (pay is { IsPaid: true, InvoiceId: not null })
+                                    {
+                                        <AuthorizeView Roles="school_principal" Context="inv">
+                                            <Authorized>
+                                                <a class="btn btn-outline btn-sm" href="/school/invoice/@pay.InvoiceId/pdf" target="_blank" rel="noopener">View Invoice</a>
+                                                <a class="btn btn-primary btn-sm" href="/school/invoice/@pay.InvoiceId/pdf?download=1" download>Download</a>
+                                            </Authorized>
+                                            <NotAuthorized>
+                                                <span class="ss-sub">Invoice issued</span>
+                                            </NotAuthorized>
+                                        </AuthorizeView>
+                                    }
+                                    else if (pay is { IsPaid: true })
+                                    {
+                                        <span class="ss-sub">Invoice pending</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="ss-sub">—</span>
+                                    }
                                 </td>
                                 <td style="text-align:right">
                                     <button class="btn btn-outline btn-sm" @onclick="() => Remove(r)">Remove</button>
@@ -87,7 +161,7 @@
                     </tbody>
                 </table>
             </div>
-            <p class="ss-count">@rows.Count student@(rows.Count == 1 ? "" : "s")</p>
+            <p class="ss-count">@Visible.Count of @rows.Count student@(rows.Count == 1 ? "" : "s")</p>
         }
     }
 
@@ -117,13 +191,6 @@
                     @for (var c = 1; c <= 12; c++) { <option value="@c">@c</option> }
                 </select>
             </label>
-            <label class="bulk-toolbar__pill">
-                Section
-                <select @bind="defaultSection">
-                    <option value="">—</option>
-                    @foreach (var sec in new[] { "A", "B", "C", "D", "E", "F" }) { <option value="@sec">@sec</option> }
-                </select>
-            </label>
         </div>
 
         <div class="bulk-grid-wrap">
@@ -133,13 +200,11 @@
                         <th class="c-st"></th>
                         <th class="c-no">#</th>
                         <th class="c-name">Student Name <span class="required">*</span></th>
-                        <th class="c-email">Email</th>
+                        <th class="c-email">Email <span class="c-opt">(optional)</span></th>
                         <th class="c-phone">Mobile <span class="required">*</span></th>
                         <th class="c-dob">Date of Birth <span class="required">*</span></th>
                         <th class="c-gen">Gender <span class="required">*</span></th>
                         <th class="c-cls">Class</th>
-                        <th class="c-sec">Section</th>
-                        <th class="c-roll">Roll No.</th>
                         <th class="c-act"></th>
                     </tr>
                 </thead>
@@ -179,15 +244,6 @@
                                     @for (var c = 1; c <= 12; c++) { <option value="@c">@c</option> }
                                 </select>
                             </td>
-                            <td class="cell @(RowFieldError(row, "Section") ? "cell--err" : "")">
-                                <select @bind="row.Section">
-                                    <option value="">—</option>
-                                    @foreach (var sec in new[] { "A", "B", "C", "D", "E", "F" }) { <option value="@sec">@sec</option> }
-                                </select>
-                            </td>
-                            <td class="cell mono @(RowFieldError(row, "RollNumber") ? "cell--err" : "")">
-                                <input @bind="row.RollNumber" placeholder="Roll" />
-                            </td>
                             <td>
                                 <button class="row-del" title="Remove row" @onclick="() => RemoveBulkRow(idx)" disabled="@saving">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
@@ -198,7 +254,7 @@
                         {
                             <tr class="row-error-line">
                                 <td></td>
-                                <td colspan="10"><span class="row-error-line__msg">@row.Error</span></td>
+                                <td colspan="8"><span class="row-error-line__msg">@row.Error</span></td>
                             </tr>
                         }
                     }
@@ -231,9 +287,129 @@
     </div>
 }
 
+@* ── Excel import modal ───────────────────────────────────────────────────────────────────────
+   Three states in one dialog: choose a file, review the preview, then a result summary.
+   The parsed rows live in SERVER memory on this component — the browser never receives or
+   returns them — and the confirm step re-runs every row through the same AddAsync the manual
+   form uses, so nothing the spreadsheet contains can widen what gets written. *@
+@if (importOpen)
+{
+    <div class="ss-modal-backdrop" @onclick="CloseImport"></div>
+    <div class="bulk-modal" role="dialog" aria-label="Import students">
+        <div class="bulk-modal__head">
+            <div style="display:flex;align-items:center;gap:12px">
+                <h3 class="bulk-modal__title">Import Students</h3>
+                <span class="bulk-chip">Excel</span>
+            </div>
+            <p class="bulk-modal__lede">
+                Download the sample file, fill one student per row, then upload it here. Every student
+                joins <strong>your</strong> school automatically. Nothing is saved until you confirm.
+            </p>
+        </div>
+
+        <div class="imp-body">
+            @if (importResult is not null)
+            {
+                <div class="imp-done">
+                    <div class="imp-done__big">✅ @importResult.Imported student@(importResult.Imported == 1 ? "" : "s") imported successfully.</div>
+                    @if (importResult.Linked > 0)
+                    {
+                        <p class="ss-sub">@importResult.Linked existing account@(importResult.Linked == 1 ? " was" : "s were") linked to your school rather than duplicated.</p>
+                    }
+                    @if (skippedRows.Count > 0)
+                    {
+                        <p class="ss-sub" style="margin-top:10px"><strong>@skippedRows.Count row@(skippedRows.Count == 1 ? "" : "s") skipped</strong> — these were not imported:</p>
+                        <div class="imp-table-wrap">
+                            <table class="imp-table">
+                                <thead><tr><th>Row</th><th>Student Name</th><th>Mobile</th><th>Reason</th></tr></thead>
+                                <tbody>
+                                    @foreach (var r in skippedRows)
+                                    {
+                                        <tr>
+                                            <td class="mono">@r.ExcelRow</td>
+                                            <td>@(r.FullName ?? "—")</td>
+                                            <td class="mono">@(r.Phone ?? "—")</td>
+                                            <td class="imp-err">@r.Error</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+            else if (preview is null)
+            {
+                <div class="imp-pick">
+                    <a class="btn btn-outline" href="/school/students/import-template.xlsx" download>⬇ Download Sample Excel</a>
+                    <label class="imp-file">
+                        <InputFile OnChange="OnImportFileChosen" accept=".xlsx" disabled="@parsing" />
+                    </label>
+                    @if (parsing) { <p class="ss-sub">Reading the file…</p> }
+                    @if (importError is not null) { <div class="inline-alert inline-alert--err">@importError</div> }
+                    <p class="ss-sub">.xlsx only · up to 500 students per file.</p>
+                </div>
+            }
+            else
+            {
+                <div class="imp-stats">
+                    <div class="imp-stat"><span>Total Rows</span><strong>@preview.TotalRows</strong></div>
+                    <div class="imp-stat imp-stat--ok"><span>Valid</span><strong>@preview.ValidRows</strong></div>
+                    <div class="imp-stat imp-stat--bad"><span>Invalid</span><strong>@preview.InvalidRows</strong></div>
+                    <div class="imp-stat imp-stat--warn"><span>Duplicates</span><strong>@preview.DuplicateRows</strong></div>
+                </div>
+
+                <div class="imp-table-wrap">
+                    <table class="imp-table">
+                        <thead>
+                            <tr><th>Row</th><th>Student Name</th><th>Mobile</th><th>Status</th><th>Error</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in preview.Rows)
+                            {
+                                <tr class="@(r.WillImport ? "" : "imp-row--skip")">
+                                    <td class="mono">@r.ExcelRow</td>
+                                    <td>@(r.FullName ?? "—")</td>
+                                    <td class="mono">@(r.Phone ?? "—")</td>
+                                    <td><span class="imp-pill imp-pill--@StatusClass(r.Status)">@StatusText(r.Status)</span></td>
+                                    <td class="imp-err">@r.Error</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="bulk-modal__foot">
+            @if (preview is not null && importResult is null)
+            {
+                <div class="bulk-count">
+                    <strong>@preview.ValidRows</strong> will be imported
+                    @if (preview.TotalRows - preview.ValidRows > 0)
+                    {
+                        <span>&nbsp;·&nbsp;@(preview.TotalRows - preview.ValidRows) will be skipped</span>
+                    }
+                </div>
+            }
+            <span style="flex:1"></span>
+            <button class="btn btn-outline" @onclick="CloseImport" disabled="@importing">
+                @(importResult is null ? "Cancel" : "Close")
+            </button>
+            @if (preview is not null && importResult is null)
+            {
+                <button class="btn btn-primary" @onclick="ConfirmImport" disabled="@(importing || preview.ValidRows == 0)">
+                    @(importing ? "Importing…" : $"Import {preview.ValidRows} Student{(preview.ValidRows == 1 ? "" : "s")}")
+                </button>
+            }
+        </div>
+    </div>
+}
+
 <style>
     .ss-bar{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:18px 0 14px;flex-wrap:wrap}
     .ss-bar__search{flex:1 1 260px;max-width:380px}
+    .ss-bar__actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .ss-table-wrap{overflow-x:auto;border:1px solid var(--gray-200);border-radius:14px;background:#fff}
     .ss-table{width:100%;border-collapse:collapse;min-width:720px}
     .ss-table th{text-align:left;font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--gray-500);
@@ -279,9 +455,9 @@
     .bulk-grid th.c-dob{width:150px}
     .bulk-grid th.c-gen{width:110px}
     .bulk-grid th.c-cls{width:88px}
-    .bulk-grid th.c-sec{width:78px}
-    .bulk-grid th.c-roll{width:96px}
     .bulk-grid th.c-act{width:44px}
+    /* Quiet, like the asterisk's opposite — it must not read as another requirement. */
+    .bulk-grid th .c-opt{font-weight:500;text-transform:none;color:#9ca3af;font-size:10.5px}
 
     .rst{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700}
     .rst--idle{background:#eef1f6;color:#6b7891}
@@ -306,15 +482,163 @@
     .bulk-addrow__hint{color:var(--gray-500);font-size:12px;margin-left:auto}
 
     .bulk-modal__foot{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:1px solid var(--gray-200);background:#fff}
+
+    /* ── Excel import modal ── */
+    .imp-body{padding:18px 24px;overflow:auto;flex:1}
+    .imp-pick{display:flex;flex-direction:column;gap:14px;align-items:flex-start;padding:22px 0}
+    .imp-file{display:block;padding:18px;border:1px dashed var(--gray-300,#d1d5db);border-radius:12px;
+        background:var(--gray-50,#f9fafb);width:100%}
+    .imp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px}
+    .imp-stat{border:1px solid var(--gray-200);border-radius:12px;padding:12px 14px;background:#fff}
+    .imp-stat span{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-500)}
+    .imp-stat strong{font-size:22px;color:var(--vp-ink)}
+    .imp-stat--ok strong{color:#2e7d32}
+    .imp-stat--bad strong{color:#b91c1c}
+    .imp-stat--warn strong{color:#b45309}
+    .imp-table-wrap{border:1px solid var(--gray-200);border-radius:12px;overflow:auto;max-height:46vh}
+    .imp-table{width:100%;border-collapse:collapse;min-width:640px}
+    .imp-table th{position:sticky;top:0;background:#fff;text-align:left;font-size:11px;letter-spacing:.5px;
+        text-transform:uppercase;color:var(--gray-500);padding:10px 12px;border-bottom:1px solid var(--gray-200)}
+    .imp-table td{padding:9px 12px;border-bottom:1px solid var(--gray-100);font-size:13px;vertical-align:top}
+    .imp-table .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    .imp-row--skip{background:#fffbf5}
+    .imp-err{color:#b91c1c;font-size:12.5px}
+    .imp-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+    .imp-pill--ok{background:#e8f5e9;color:#2e7d32}
+    .imp-pill--bad{background:#fee2e2;color:#b91c1c}
+    .imp-pill--dup{background:#fff4e5;color:#b45309}
+    .imp-done{padding:10px 0}
+    .imp-done__big{font-size:17px;font-weight:700;color:var(--vp-ink);margin-bottom:6px}
     .bulk-legend{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--gray-500)}
     .bulk-legend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
     .bulk-legend .dot--ok{background:#16a34a}
     .bulk-legend .dot--warn{background:#d97706}
     .bulk-legend .dot--err{background:#dc2626}
     .bulk-count{color:var(--vp-ink);font-size:13px}
+    .ss-filters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+    .ss-filter{padding:6px 14px;border-radius:999px;border:1px solid var(--gray-200,#e5e7eb);background:#fff;font-size:12.5px;font-weight:700;color:var(--gray-600,#4b5563);cursor:pointer}
+    .ss-filter.is-on{background:var(--navy,#5d38de);border-color:var(--navy,#5d38de);color:#fff}
+    .ss-pill--fail{background:#FEE2E2;color:#991B1B}
 </style>
 
 @code {
+    // ── Excel import state ───────────────────────────────────────────────────────────────────
+    // The preview lives HERE, in server memory, for the life of this circuit. That is what makes
+    // the confirm step safe: the browser is never handed the parsed rows, so it cannot edit a
+    // status or a field and post it back. Even if it could, ImportAsync only acts on rows the
+    // server marked Valid and routes every one through AddAsync, which takes the school and
+    // AddedByUserId from the authenticated user rather than the row.
+    private bool importOpen, parsing, importing;
+    private string? importError;
+    private SchoolStudentImportPreview? preview;
+    private SchoolStudentImportResult? importResult;
+    private List<SchoolStudentImportRow> skippedRows = new();
+
+    /// <summary>Guards against a huge upload before it ever reaches the parser.</summary>
+    private const long MaxImportBytes = 5 * 1024 * 1024;
+
+    private void OpenImport()
+    {
+        importOpen = true;
+        preview = null; importResult = null; importError = null;
+        skippedRows = new();
+    }
+
+    private void CloseImport()
+    {
+        importOpen = false;
+        preview = null; importResult = null; importError = null;
+        skippedRows = new();
+    }
+
+    private static string StatusClass(SchoolStudentImportStatus s) => s switch
+    {
+        SchoolStudentImportStatus.Valid => "ok",
+        SchoolStudentImportStatus.Invalid => "bad",
+        _ => "dup",
+    };
+
+    private static string StatusText(SchoolStudentImportStatus s) => s switch
+    {
+        SchoolStudentImportStatus.Valid => "Valid",
+        SchoolStudentImportStatus.Invalid => "Invalid",
+        SchoolStudentImportStatus.DuplicateInFile => "Duplicate",
+        _ => "Already exists",
+    };
+
+    private async Task OnImportFileChosen(InputFileChangeEventArgs e)
+    {
+        importError = null;
+        preview = null;
+        importResult = null;
+
+        var file = e.File;
+        if (file is null) return;
+
+        if (!file.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            importError = "Please choose an .xlsx file. Older .xls files are not supported.";
+            return;
+        }
+        if (file.Size > MaxImportBytes)
+        {
+            importError = "That file is larger than 5 MB. Please split it into smaller batches.";
+            return;
+        }
+
+        parsing = true;
+        try
+        {
+            // Copied to memory first: ClosedXML needs a seekable stream, and the browser stream is
+            // forward-only. The size cap above is what keeps this bounded.
+            using var ms = new MemoryStream();
+            await using (var src = file.OpenReadStream(MaxImportBytes))
+                await src.CopyToAsync(ms);
+            ms.Position = 0;
+
+            preview = await Students.ParseImportAsync(actingUserId, ms);
+            if (!preview.Ok)
+            {
+                importError = preview.Error;
+                preview = null;
+            }
+        }
+        catch (Exception)
+        {
+            importError = "That file could not be read. Please use the sample template (.xlsx).";
+            preview = null;
+        }
+        finally
+        {
+            parsing = false;
+        }
+    }
+
+    private async Task ConfirmImport()
+    {
+        if (preview is null || importing) return;
+
+        importing = true;
+        try
+        {
+            var result = await Students.ImportAsync(actingUserId, preview.Rows);
+
+            // Everything the writer should see as "not imported": rows the file failed validation
+            // on, plus any row the server refused at save time.
+            skippedRows = preview.Rows.Where(r => !r.WillImport)
+                .Concat(result.FailedRows)
+                .OrderBy(r => r.ExcelRow)
+                .ToList();
+
+            importResult = result;
+            await Reload();
+        }
+        finally
+        {
+            importing = false;
+        }
+    }
+
     private bool loading = true, addOpen, saving, ok;
     private Guid actingUserId;
     private Guid? schoolId;
@@ -322,13 +646,36 @@
     private string search = "";
     private List<SchoolStudentListItem> rows = new();
 
+    /// <summary>School-paid status keyed by student. Absent = no school enrolment order exists.</summary>
+    private Dictionary<Guid, SchoolStudentPaymentStatus> payStatus = new();
+    private string payFilter = "All";
+
+    /// <summary>Rows after the payment filter. `rows` is already scoped to this school.</summary>
+    private List<SchoolStudentListItem> Visible =>
+        rows.Where(r => Matches(r, payFilter)).ToList();
+
+    private bool Matches(SchoolStudentListItem r, string filter)
+    {
+        if (filter == "All") return true;
+        var has = payStatus.TryGetValue(r.UserId, out var p);
+        return filter switch
+        {
+            "Paid" => has && p!.IsPaid,
+            "Failed" => has && p!.IsFailed,
+            // A student with no school order counts as Pending: the school has not paid for them.
+            "Pending" => !has || (!p!.IsPaid && !p.IsFailed),
+            _ => true,
+        };
+    }
+
+    private int CountFor(string filter) => rows.Count(r => Matches(r, filter));
+
     // Bulk-add state. bulkRows is the working grid. `saveRan` flips to true after a save so
     // the row-status column switches from "waiting for input" (idle) to "missing fields" (warn)
     // for the row where a required field is still empty — no red before the writer has tried.
     private List<BulkRow> bulkRows = new();
     private bool saveRan;
     private string defaultClass = "";
-    private string defaultSection = "";
 
     private int ReadyCount => bulkRows.Count(IsRowReady);
     // A row is "incomplete" only after the writer has engaged with it — an untouched empty
@@ -348,12 +695,21 @@
         {
             actingUserId = parsed;
             schoolId = await Students.ResolveSchoolIdAsync(actingUserId);
-            if (schoolId is not null) rows = await Students.ListAsync(actingUserId);
+            // Goes through Reload() rather than calling ListAsync directly: Reload also loads the
+            // payment verdicts. Loading the roster on its own left payStatus empty on first paint,
+            // so every student rendered as "Pending" even when the school had paid for them.
+            if (schoolId is not null) await Reload();
         }
         loading = false;
     }
 
-    private async Task Reload() => rows = await Students.ListAsync(actingUserId, search);
+    private async Task Reload()
+    {
+        rows = await Students.ListAsync(actingUserId, search);
+        // Re-read the payment verdicts alongside the roster so a settled payment is reflected
+        // immediately after any refresh.
+        payStatus = await Enrollment.GetStudentPaymentStatusesAsync(actingUserId);
+    }
 
     private async Task OnSearchKey(KeyboardEventArgs e)
     {
@@ -369,8 +725,7 @@
 
     private BulkRow NewRow() => new BulkRow
     {
-        StudentClass = string.IsNullOrEmpty(defaultClass) ? null : defaultClass,
-        Section = string.IsNullOrEmpty(defaultSection) ? null : defaultSection
+        StudentClass = string.IsNullOrEmpty(defaultClass) ? null : defaultClass
     };
 
     private void AddBulkRow() { bulkRows.Add(NewRow()); }
@@ -384,12 +739,11 @@
     private static bool HasAnyInput(BulkRow r) =>
         !string.IsNullOrWhiteSpace(r.FullName) || !string.IsNullOrWhiteSpace(r.Email)
         || !string.IsNullOrWhiteSpace(r.Phone) || r.DateOfBirth.HasValue
-        || !string.IsNullOrWhiteSpace(r.Gender) || !string.IsNullOrWhiteSpace(r.StudentClass)
-        || !string.IsNullOrWhiteSpace(r.Section) || !string.IsNullOrWhiteSpace(r.RollNumber);
+        || !string.IsNullOrWhiteSpace(r.Gender) || !string.IsNullOrWhiteSpace(r.StudentClass);
 
-    // Required fields: Name, Mobile, DOB, Gender. Email / Class / Section / Roll No are optional
-    // — a row with just those four filled is submittable. Kept in sync with the server-side
-    // AddAsync gate, so a row that reads "ready" on the client does actually save.
+    // Required fields: Name, Mobile, DOB, Gender. Email and Class are optional — a row with just
+    // those four filled is submittable. Kept in sync with the server-side AddAsync gate, so a row
+    // that reads "ready" on the client does actually save.
     private static bool IsRowReady(BulkRow r) =>
         !string.IsNullOrWhiteSpace(r.FullName)
         && !string.IsNullOrWhiteSpace(r.Phone)
@@ -418,7 +772,7 @@
 
     // A field is drawn red only after the writer has engaged with the row (typed anything
     // or hit save). Otherwise every fresh row would light up entirely red. Only the four
-    // mandatory fields can trigger a red state — Email / Class / Section / Roll No stay neutral.
+    // mandatory fields can trigger a red state — Email and Class stay neutral.
     private bool RowFieldError(BulkRow r, string field)
     {
         if (!saveRan && !HasAnyInput(r)) return false;
@@ -442,13 +796,18 @@
             Rows = bulkRows.Where(IsRowReady).Select(r => new AddSchoolStudentRequest
             {
                 FullName = r.FullName!.Trim(),
-                Email = r.Email!.Trim(),
+                // Email is OPTIONAL, so it is genuinely null on most rows. `r.Email!.Trim()` used
+                // to sit here and threw a NullReferenceException the moment a principal saved a row
+                // without one — which made an "optional" column compulsory in practice. Blank is
+                // normalised to null so the service skips its email lookup and stores NULL, which
+                // is what the partial unique index IX_users_Email requires.
+                Email = string.IsNullOrWhiteSpace(r.Email) ? null : r.Email.Trim(),
                 Phone = r.Phone!.Trim(),
                 DateOfBirth = r.DateOfBirth,
                 Gender = r.Gender,
-                StudentClass = r.StudentClass,
-                Section = r.Section,
-                RollNumber = r.RollNumber
+                StudentClass = r.StudentClass
+                // Section / RollNumber are no longer collected here. They stay on the DTO and the
+                // entity so existing rows keep their values; this screen simply sends nothing.
             }).ToList()
         };
         if (payload.Rows.Count == 0) return;
@@ -502,8 +861,7 @@
         public DateTime? DateOfBirth { get; set; }
         public string? Gender { get; set; }
         public string? StudentClass { get; set; }
-        public string? Section { get; set; }
-        public string? RollNumber { get; set; }
         public string? Error { get; set; }
     }
 }
+

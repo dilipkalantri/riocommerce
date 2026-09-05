@@ -31,4 +31,54 @@ public interface ISchoolEnrollmentService
     /// </summary>
     Task<PlaceSchoolEnrollmentResult> PlaceAsync(
         Guid actingUserId, PlaceSchoolEnrollmentRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// True when this order number is a school-enrolment order (it has a roster). Used to route the
+    /// payment result into the School portal instead of the storefront checkout pages. Takes no
+    /// user: it answers a property of the order, and reveals nothing but its kind.
+    /// </summary>
+    Task<bool> IsSchoolOrderAsync(string orderNumber, CancellationToken ct = default);
+
+    /// <summary>Enrolment orders placed by the caller's school, newest first.</summary>
+    Task<List<SchoolEnrollmentOrderRow>> ListOrdersAsync(Guid actingUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Per-student payment history for the caller's school, newest first. One row per student per
+    /// enrolment, carrying the order's persisted payment status and the invoice when one exists.
+    /// Scoped by the roster's SchoolId — another school's rows are never selected.
+    /// </summary>
+    Task<List<SchoolStudentPaymentRow>> ListStudentPaymentsAsync(
+        Guid actingUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Dashboard headline figures for the caller's school. Every number is counted from persisted
+    /// orders and the school roll — nothing is inferred from the client.
+    /// </summary>
+    Task<SchoolPaymentSummary> GetPaymentSummaryAsync(Guid actingUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// School-paid status per student for the caller's school, keyed by student user id.
+    ///
+    /// <para>A student appears only if the school has actually raised an enrolment order for them.
+    /// Students absent from the result have no school-paid obligation at all — which is the correct
+    /// answer for someone who merely named this school when self-registering.</para>
+    /// </summary>
+    Task<Dictionary<Guid, SchoolStudentPaymentStatus>> GetStudentPaymentStatusesAsync(
+        Guid actingUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Student invoices belonging to the caller's school, optionally narrowed to one order.
+    /// Scoped by the roster, so another school's invoices are not merely hidden — they are
+    /// never selected.
+    /// </summary>
+    Task<List<SchoolStudentInvoiceRow>> ListInvoicesAsync(
+        Guid actingUserId, Guid? orderId = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Renders a student invoice PDF for a principal, or returns null when the invoice does not
+    /// belong to a student on the caller's own roll. Null covers both "no such invoice" and
+    /// "another school's invoice" so an id cannot be probed for existence.
+    /// </summary>
+    Task<(byte[] bytes, string filename)?> RenderInvoicePdfAsync(
+        Guid actingUserId, Guid invoiceId, CancellationToken ct = default);
 }

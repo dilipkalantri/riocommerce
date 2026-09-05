@@ -60,10 +60,32 @@ public sealed class InvoiceService : IInvoiceService
         if (order.PaidFromWallet)
             return (null, null, "Paid from the franchise wallet — invoiced at top-up.");
 
+        // ── School enrolment: one payment, one invoice PER STUDENT ───────────────────────────
+        // A principal pays once for N students; each student is a separate supply and gets their
+        // own tax invoice. Branches BEFORE the single-invoice path below because that path's
+        // "does this order already have an invoice?" probe would see the first student's invoice
+        // and stop, leaving students 2..N uninvoiced.
+        var roster = await _db.SchoolEnrollmentStudents
+            .Where(r => r.OrderId == orderId)
+            .ToListAsync(ct);
+        if (roster.Count > 0)
+        {
+            // Only students the payment path actually CONFIRMED are invoiced. A row left unconfirmed
+            // means CheckoutService found an integrity problem (student no longer on that school's
+            // roll) and refused the grant — raising a tax invoice for them anyway would bill for a
+            // course nobody received.
+            var confirmed = roster.Where(r => r.ConfirmedAt.HasValue).ToList();
+            if (confirmed.Count == 0)
+                return (null, null, "No confirmed students on this enrolment order.");
+
+            return await EnsureSchoolInvoicesAsync(order, confirmed, actorId, actorName, ct);
+        }
+
         // Idempotent — if a live invoice already exists for this order (whether created here
         // or by the legacy OrderAdminService.GetOrCreateInvoiceAsync flow), return it.
+        // StudentUserId == null keeps this to ORDINARY invoices; school ones never reach here.
         var existing = await _db.Set<Invoice>()
-            .Where(i => i.OrderId == orderId && i.Status == InvoiceStatus.Active)
+            .Where(i => i.OrderId == orderId && i.StudentUserId == null && i.Status == InvoiceStatus.Active)
             .Select(i => i.Id)
             .FirstOrDefaultAsync(ct);
         if (existing != Guid.Empty)
@@ -330,6 +352,19 @@ public sealed class InvoiceService : IInvoiceService
     {
         var detail = await GetAsync(invoiceId, ct);
         if (detail == null) return null;
+
+        // Remittance + PAN come from CURRENT settings, not the invoice snapshot: they say where
+        // to pay us and who we are, not what was charged. Every amount on the PDF still comes
+        // from the persisted invoice row. Old invoices therefore gain the footer on reprint
+        // without any of their figures changing.
+        var company = await ReadCompanyAsync();
+        detail.CompanyPan               = company.Pan;
+        detail.CompanyBankName          = company.BankName;
+        detail.CompanyBankAccountName   = company.BankAccountName;
+        detail.CompanyBankAccountNumber = company.BankAccountNumber;
+        detail.CompanyBankIfsc          = company.BankIfsc;
+        detail.CompanyBankBranch        = company.BankBranch;
+
         // Franchise invoices carry the full per-product bifurcation on the PDF.
         if (detail.FranchiseShareAmount > 0 && detail.OrderId != Guid.Empty)
         {
@@ -342,26 +377,209 @@ public sealed class InvoiceService : IInvoiceService
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Numbering — RIO-INV-YYYYMM-NNNN, monthly reset
+    // Numbering — "<series><n>", e.g. VP/26-27/1, VP/26-27/2, …
+    //
+    // The series comes from company settings (company.invoice_series); only the PREFIX is
+    // configurable, the running number is always allocated here. The sequence is scoped to the
+    // series in force, which gives the two properties the business needs:
+    //
+    //   • Editing the series never rewrites an issued number — nothing updates existing rows.
+    //   • Switching VP/26-27/ → VP/27-28/ starts the new series at 1, because only numbers
+    //     carrying the CURRENT prefix are considered when finding the next value. The old
+    //     VP/26-27/* invoices stay exactly as issued and are simply out of scope.
+    //
+    // Collisions under concurrency are still caught by the unique index and the caller's retry
+    // loop, which re-enters this method for a fresh number.
     // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Used only when no series has been configured yet, so numbering can never break
+    /// on a deployment that has not visited the settings screen. Original scheme, unchanged.</summary>
+    private const string LegacySeriesPrefix = "RIO-INV-";
 
     private async Task<string> AllocateInvoiceNumberAsync(DateOnly invoiceDate, CancellationToken ct)
     {
-        // Sequence resets per calendar month. Using the date's own year/month keeps numbering
-        // consistent regardless of how UTC/local conversion would otherwise straddle midnight.
-        var monthPrefix = $"RIO-INV-{invoiceDate:yyyyMM}-";
-        var lastMaxNumber = await _db.Set<Invoice>()
-            .Where(i => i.InvoiceNumber.StartsWith(monthPrefix))
+        var company = await ReadCompanyAsync();
+        var series = Blank(company.InvoiceSeries);
+
+        if (series is null)
+        {
+            // Legacy fallback: monthly reset, zero-padded. Using the date's own year/month keeps
+            // numbering consistent regardless of how UTC/local conversion straddles midnight.
+            var monthPrefix = $"{LegacySeriesPrefix}{invoiceDate:yyyyMM}-";
+            return $"{monthPrefix}{await NextInSeriesAsync(monthPrefix, ct):D4}";
+        }
+
+        // Configured series: plain incrementing integer, no padding — VP/26-27/1, not /0001.
+        return $"{series}{await NextInSeriesAsync(series, ct)}";
+    }
+
+    private async Task<int> NextInSeriesAsync(string prefix, CancellationToken ct)
+    {
+        var existing = await _db.Set<Invoice>()
+            .Where(i => i.InvoiceNumber.StartsWith(prefix))
             .Select(i => i.InvoiceNumber)
             .ToListAsync(ct);
 
         var next = 1;
-        foreach (var num in lastMaxNumber)
+        foreach (var num in existing)
         {
-            var tail = num.Substring(monthPrefix.Length);
+            // Re-checked in memory with an ordinal comparison: the database StartsWith goes through
+            // LIKE, so a prefix containing a wildcard character could otherwise widen the match.
+            if (!num.StartsWith(prefix, StringComparison.Ordinal)) continue;
+
+            var tail = num[prefix.Length..];
             if (int.TryParse(tail, out var n) && n >= next) next = n + 1;
         }
-        return $"{monthPrefix}{next:D4}";
+        return next;
+    }
+
+    /// <summary>
+    /// School enrolment invoicing: ONE order, ONE payment, one tax invoice PER STUDENT.
+    ///
+    /// <para>Buyer name is the STUDENT; the address block is the SCHOOL's. No special-casing is
+    /// needed for the address — SchoolEnrollmentService already stamps the order's billing snapshot
+    /// from the school record, so the order's own Billing* fields ARE the school's.</para>
+    ///
+    /// <para>GST reuses <c>GstRowCalculator.For(order, invoicedValue: unit)</c> — the same call the
+    /// franchise path makes to scale an order's recorded tax onto a smaller invoiced value. No
+    /// second GST implementation, and each invoice satisfies
+    /// <c>TaxableAmount + CGST + SGST + IGST == TotalAmount</c>.</para>
+    ///
+    /// <para>Idempotent per (order, student): a replayed callback or webhook finds each invoice
+    /// already raised and mints no new number. The partial unique index
+    /// IX_invoices_Order_Student_Active is the backstop if two callbacks race.</para>
+    /// </summary>
+    private async Task<(Guid? newId, Guid? existingId, string? error)> EnsureSchoolInvoicesAsync(
+        Order order, List<SchoolEnrollmentStudent> roster, Guid? actorId, string? actorName, CancellationToken ct)
+    {
+        var company = await ReadCompanyAsync();
+        // Section 20: the invoice is dated when payment confirmed, not when the pending order was raised.
+        var invoiceDate = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        Guid? firstNew = null, firstExisting = null;
+
+        // Ordered so a replay allocates the same numbers in the same order.
+        foreach (var row in roster.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id))
+        {
+            var already = await _db.Set<Invoice>()
+                .Where(i => i.OrderId == order.Id
+                         && i.StudentUserId == row.StudentUserId
+                         && i.Status == InvoiceStatus.Active)
+                .Select(i => i.Id)
+                .FirstOrDefaultAsync(ct);
+            if (already != Guid.Empty)
+            {
+                firstExisting ??= already;
+                if (row.InvoiceId is null) { row.InvoiceId = already; row.UpdatedAt = DateTime.UtcNow; }
+                continue;
+            }
+
+            var student = await _db.Users.AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == row.StudentUserId, ct);
+
+            var unit = row.UnitPrice;
+            var tax = GstRowCalculator.For(order, refundedFromLedger: 0m, invoicedValue: unit);
+            var item = order.Items.FirstOrDefault(i => i.ProductId == row.ProductId) ?? order.Items.FirstOrDefault();
+
+            var inv = new Invoice
+            {
+                Id = Guid.NewGuid(),
+                InvoiceDate = invoiceDate,
+                OrderId = order.Id,
+                OrderNumber = order.OrderNumber,
+                StudentUserId = row.StudentUserId,
+
+                // Buyer: the student. Address: the school (already the order's billing snapshot).
+                CustomerName = student?.FullName ?? order.BillingName ?? "Student",
+                CustomerEmail = student?.Email,
+                CustomerPhone = student?.Phone ?? order.StudentPhone,
+                BillingAddress = order.BillingAddress,
+                BillingCity = order.BillingCity ?? order.StudentCity,
+                BillingState = order.BillingState,
+                BillingPincode = order.BillingPincode,
+                CustomerGstin = order.GstNumber,
+                GstClassification = order.GstClassification,
+                ReverseCharge = order.ReverseCharge,
+                GstRate = item?.GstRate ?? 0m,
+
+                Subtotal = unit,
+                DiscountAmount = 0m,
+                TaxableAmount = tax.Taxable,
+                CgstAmount = tax.Cgst,
+                SgstAmount = tax.Sgst,
+                IgstAmount = tax.Igst,
+                FranchiseShareAmount = 0m,
+                TotalAmount = unit,
+                Currency = "INR",
+                PaymentMode = order.PaymentMode,
+                GatewayPaymentMode = order.GatewayPaymentMode,
+                PaidAt = order.ConfirmedAt ?? order.UpdatedAt,
+                Status = InvoiceStatus.Active,
+                GeneratedByUserId = actorId,
+                GeneratedByName = actorName ?? "system",
+                CompanyName = company.Name,
+                CompanyGstin = company.Gstin,
+                CompanyAddress = company.Address,
+                CompanyPhone = company.Phone,
+                CompanyEmail = company.Email,
+                LineItems = new List<InvoiceLineItem>
+                {
+                    new()
+                    {
+                        Id = Guid.NewGuid(),
+                        LineNumber = 1,
+                        OrderItemId = item?.Id,
+                        ProductId = row.ProductId,
+                        Description = item?.ProductTitle ?? item?.Product?.Title ?? "Course",
+                        ModeName = item?.ModeName,
+                        HsnCode = null,
+                        Quantity = 1,               // one student, one seat
+                        UnitPrice = unit,
+                        Discount = 0m,
+                        GstRate = item?.GstRate,
+                        GstAmount = tax.Cgst + tax.Sgst + tax.Igst,
+                        LineTotal = unit,
+                    }
+                },
+            };
+
+            // Same retry-on-collision contract as the single-invoice path. Each invoice is saved
+            // before the next number is allocated, so the sequence cannot hand out a duplicate
+            // within this loop.
+            for (int attempt = 1; attempt <= NumberRetryAttempts; attempt++)
+            {
+                inv.InvoiceNumber = await AllocateInvoiceNumberAsync(inv.InvoiceDate, ct);
+                _db.Set<Invoice>().Add(inv);
+                try
+                {
+                    // ConfirmedAt is owned by CheckoutService (set alongside the course grant);
+                    // this path only records which invoice was raised for the student.
+                    row.InvoiceId = inv.Id;
+                    row.UpdatedAt = DateTime.UtcNow;
+                    await _db.SaveChangesAsync(ct);
+                    firstNew ??= inv.Id;
+                    break;
+                }
+                catch (DbUpdateException ex) when (IsUniqueViolation(ex) && attempt < NumberRetryAttempts)
+                {
+                    _db.Entry(inv).State = EntityState.Detached;
+                    foreach (var li in inv.LineItems) _db.Entry(li).State = EntityState.Detached;
+                    _log.LogWarning(
+                        "School invoice number collision attempt={Attempt} order={Order} student={Student} — retrying",
+                        attempt, order.OrderNumber, row.StudentUserId);
+                }
+            }
+        }
+
+        if (_db.ChangeTracker.HasChanges()) await _db.SaveChangesAsync(ct);
+
+        await _appLog.InfoAsync("Invoices",
+            $"School enrolment invoices ensured for order {order.OrderNumber}: {roster.Count} student(s).",
+            eventCode: "invoice.school.generated",
+            properties: new { order.OrderNumber, Students = roster.Count, order.TotalAmount },
+            orderId: order.Id, ct: ct);
+
+        return (firstNew, firstExisting, null);
     }
 
     private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
@@ -377,18 +595,15 @@ public sealed class InvoiceService : IInvoiceService
     // Company info — read from AppSettings with sensible defaults
     // ─────────────────────────────────────────────────────────────────────────
 
-    private async Task<CompanyProfile> ReadCompanyAsync()
-    {
-        return new CompanyProfile
-        {
-            Name    = (await _settings.GetStringAsync("company.name"))    ?? CompanyDefaultsName,
-            Gstin   =  await _settings.GetStringAsync("company.gstin"),
-            Address =  await _settings.GetStringAsync("company.address"),
-            Phone   =  await _settings.GetStringAsync("company.phone"),
-            Email   =  await _settings.GetStringAsync("company.email"),
-            Website =  await _settings.GetStringAsync("company.website"),
-        };
-    }
+    /// <summary>
+    /// Delegates to CompanySettingsService, which owns the company.* key names and is also what
+    /// the admin screen writes through. Keeping the literals in ONE place is the point: this used
+    /// to spell the eleven keys out itself, so a typo on either side would have blanked a field on
+    /// the tax invoice with nothing failing loudly. All values remain optional — the renderer omits
+    /// each block when unset rather than printing an empty labelled box.
+    /// </summary>
+    private Task<CompanyProfile> ReadCompanyAsync() =>
+        CompanySettingsService.ReadAsync(_settings, CompanyDefaultsName);
 
     private static InvoiceDetail Map(Invoice i) => new()
     {

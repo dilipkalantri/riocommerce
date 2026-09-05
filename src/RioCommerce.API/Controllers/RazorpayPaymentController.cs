@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -32,13 +32,37 @@ public class RazorpayPaymentController : ControllerBase
 {
     private readonly ICheckoutService _checkout;
     private readonly IIntegrationSettingsService _settings;
+    private readonly ISchoolEnrollmentService _schoolEnrollment;
     private readonly ILogger<RazorpayPaymentController> _log;
 
-    public RazorpayPaymentController(ICheckoutService checkout, IIntegrationSettingsService settings, ILogger<RazorpayPaymentController> log)
+    public RazorpayPaymentController(ICheckoutService checkout, IIntegrationSettingsService settings,
+        ISchoolEnrollmentService schoolEnrollment, ILogger<RazorpayPaymentController> log)
     {
         _checkout = checkout;
         _settings = settings;
+        _schoolEnrollment = schoolEnrollment;
         _log = log;
+    }
+
+    /// <summary>
+    /// Where to send the browser when a payment does not complete. School enrolment orders return
+    /// to the School portal; everything else keeps the storefront checkout page byte-for-byte.
+    /// Falls back to the storefront if the lookup throws — a redirect must never be the thing that
+    /// fails a payment response.
+    /// </summary>
+    private async Task<string> FailureUrlAsync(string? orderNumber, string reason)
+    {
+        var encodedReason = Uri.EscapeDataString(reason);
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(orderNumber) && await _schoolEnrollment.IsSchoolOrderAsync(orderNumber))
+                return $"/school/enrollment/payment-failed?order={Uri.EscapeDataString(orderNumber)}&r={encodedReason}";
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not classify order {Order} for the failure redirect; using storefront.", orderNumber);
+        }
+        return $"/checkout/payment-failed?o={orderNumber}&r={encodedReason}";
     }
 
     // ── DTOs ──────────────────────────────────────────────────────────────────
@@ -240,7 +264,7 @@ public class RazorpayPaymentController : ControllerBase
             if (owned == null)
             {
                 _log.LogWarning("Razorpay verify ownership FAIL UserId={UserId} LocalOrderId={Local}", userId, req.LocalOrderId);
-                return Ok(new VerifyResponse { Success = false, RedirectUrl = $"/checkout/payment-failed?o={req.LocalOrderId}&r={Uri.EscapeDataString("Order not found")}", Reason = "not found" });
+                return Ok(new VerifyResponse { Success = false, RedirectUrl = await FailureUrlAsync(req.LocalOrderId, "Order not found"), Reason = "not found" });
             }
 
             var receipt = await _checkout.ConfirmPaymentAsync(new PaymentCallback
@@ -262,7 +286,7 @@ public class RazorpayPaymentController : ControllerBase
                 return Ok(new VerifyResponse
                 {
                     Success = false,
-                    RedirectUrl = $"/checkout/payment-failed?o={req.LocalOrderId}&r={Uri.EscapeDataString("Signature verification failed")}",
+                    RedirectUrl = await FailureUrlAsync(req.LocalOrderId, "Signature verification failed"),
                     Reason = "signature-mismatch"
                 });
             }
@@ -270,10 +294,17 @@ public class RazorpayPaymentController : ControllerBase
             _log.LogInformation("Razorpay verify SUCCESS UserId={UserId} LocalOrderId={Local} GwOrderId={GwOrder} GwPaymentId={GwPayment} Amount={Amount} Invoice={Invoice} ElapsedMs={Elapsed} ClientIp={IP}",
                 userId, req.LocalOrderId, req.razorpay_order_id, req.razorpay_payment_id, receipt.Total, receipt.InvoiceNumber, elapsedMs, ClientIp);
 
+            // School enrolment orders stay inside the School portal; every other order keeps the
+            // storefront checkout pages exactly as before. Branching on the ORDER, not on the
+            // caller's role — a staff member paying for their own cart still gets the storefront.
+            var successUrl = await _schoolEnrollment.IsSchoolOrderAsync(receipt.OrderNumber)
+                ? $"/school/enrollment/payment-success?order={Uri.EscapeDataString(receipt.OrderNumber)}"
+                : $"/checkout/payment-success?order={Uri.EscapeDataString(receipt.OrderNumber)}";
+
             return Ok(new VerifyResponse
             {
                 Success = true,
-                RedirectUrl = $"/checkout/payment-success?order={Uri.EscapeDataString(receipt.OrderNumber)}",
+                RedirectUrl = successUrl,
                 Reason = null
             });
         }
@@ -283,7 +314,7 @@ public class RazorpayPaymentController : ControllerBase
             return Ok(new VerifyResponse
             {
                 Success = false,
-                RedirectUrl = $"/checkout/payment-failed?o={req.LocalOrderId}&r={Uri.EscapeDataString("Verification error")}",
+                RedirectUrl = await FailureUrlAsync(req.LocalOrderId, "Verification error"),
                 Reason = "exception"
             });
         }
@@ -411,3 +442,4 @@ public class RazorpayPaymentController : ControllerBase
         return diff == 0;
     }
 }
+

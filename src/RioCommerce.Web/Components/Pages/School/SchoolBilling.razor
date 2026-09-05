@@ -1,0 +1,342 @@
+﻿@page "/school/billing"
+@page "/school/enrollment/payment-success"
+@page "/school/enrollment/payment-failed"
+@page "/school/enrollment/payment-cancelled"
+@layout SchoolLayout
+@* PRINCIPAL ONLY — this is the payment side of the portal (order history, payment status,
+   invoices) and the landing pages a gateway returns to. A coordinator has no enrolment and
+   therefore no payments, so there is nothing here for them to see. *@
+@attribute [Authorize(Roles = "school_principal")]
+@using RioCommerce.Core.DTOs.School
+@inject ISchoolEnrollmentService Enrollment
+@inject AuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* School enrolment payments + student invoices, and the payment RESULT screens.
+   One page, four routes: the result banner is just a state on top of the same history, so a
+   principal always lands back somewhere useful instead of on the storefront checkout pages.
+
+   Everything shown is scoped by ISchoolEnrollmentService to the caller's own school — the page
+   never passes a SchoolId and cannot widen its own scope. *@
+
+<PageTitle>Payments &amp; Invoices — School Portal</PageTitle>
+
+<div class="sb-wrap">
+    <h1 class="sb-title">Payments &amp; Invoices</h1>
+
+    @if (Result == PaymentResult.Success)
+    {
+        <div class="sb-banner sb-banner--ok">
+            <div class="sb-banner__head">✅ Payment Successful</div>
+            <p>Enrollment completed successfully. Invoices for each student are listed below.</p>
+            @if (!string.IsNullOrEmpty(orderNumber)) { <p class="sb-banner__meta">Order <strong>@orderNumber</strong></p> }
+        </div>
+    }
+    else if (Result == PaymentResult.Failed)
+    {
+        <div class="sb-banner sb-banner--err">
+            <div class="sb-banner__head">⚠️ Payment Failed</div>
+            <p>Your payment could not be completed. The selected students have <strong>not</strong> been confirmed and no invoice was created.</p>
+            <div class="sb-banner__actions">
+                <button class="btn btn-primary" disabled="@retrying" @onclick="Retry">@(retrying ? "Opening…" : "Try Again")</button>
+                <a class="btn btn-outline" href="/school/enrollment">Back to Enrollment</a>
+            </div>
+        </div>
+    }
+    else if (Result == PaymentResult.Cancelled)
+    {
+        <div class="sb-banner sb-banner--warn">
+            <div class="sb-banner__head">Payment Cancelled</div>
+            <p>No payment was completed. Student enrollment has not been confirmed.</p>
+            <div class="sb-banner__actions">
+                <button class="btn btn-primary" disabled="@retrying" @onclick="Retry">@(retrying ? "Opening…" : "Try Payment Again")</button>
+                <a class="btn btn-outline" href="/school/enrollment">Back to Enrollment</a>
+            </div>
+        </div>
+    }
+
+    @if (loading)
+    {
+        <p class="sb-note">Loading…</p>
+    }
+    else
+    {
+        @* ── Summary ───────────────────────────────────────────────────────────── *@
+        <div class="sb-kpis">
+            <div class="sb-kpi"><span class="sb-kpi__label">Total Students</span><span class="sb-kpi__value">@summary.TotalStudents</span></div>
+            <div class="sb-kpi"><span class="sb-kpi__label">Paid Students</span><span class="sb-kpi__value sb-kpi__value--ok">@summary.PaidStudents</span></div>
+            <div class="sb-kpi"><span class="sb-kpi__label">Pending Students</span><span class="sb-kpi__value sb-kpi__value--wait">@summary.PendingStudents</span></div>
+            <div class="sb-kpi"><span class="sb-kpi__label">Total Paid</span><span class="sb-kpi__value">@Money.Inr(summary.TotalPaid)</span></div>
+        </div>
+
+        @* ── Per-student payment history ───────────────────────────────────────── *@
+        <section class="sb-card">
+            <h2 class="sb-h2">Payment History</h2>
+            @if (payments.Count == 0)
+            {
+                <p class="sb-note">No student payments yet. <a href="/school/enrollment">Enroll students →</a></p>
+            }
+            else
+            {
+                <div class="sb-scroll">
+                    <table class="sb-table">
+                        <thead>
+                            <tr>
+                                <th>Student</th><th>Mobile</th><th>Course</th>
+                                <th class="ta-r">Amount</th><th>Date</th><th>Status</th><th>Invoice</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in payments)
+                            {
+                                <tr>
+                                    <td><strong>@p.StudentName</strong></td>
+                                    <td>@(string.IsNullOrWhiteSpace(p.StudentPhone) ? "—" : p.StudentPhone)</td>
+                                    <td>@p.CourseTitle</td>
+                                    <td class="ta-r">@Money.Inr(p.Amount)</td>
+                                    <td>@p.PaymentDate.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                    <td>
+                                        @if (p.IsPaid)
+                                        {
+                                            <span class="sb-pill sb-pill--ok">🟢 Paid</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="sb-pill sb-pill--wait">@p.PaymentStatus</span>
+                                        }
+                                    </td>
+                                    <td style="white-space:nowrap">
+                                        @* Invoice actions are gated on an invoice ACTUALLY existing for a
+                                           paid order — never on the status text alone. Unpaid, failed and
+                                           paid-but-not-yet-invoiced rows all correctly show no button. *@
+                                        @if (p.IsPaid && p.InvoiceId is not null)
+                                        {
+                                            <a class="btn btn-outline btn-sm" href="/school/invoice/@p.InvoiceId/pdf" target="_blank" rel="noopener">View Invoice</a>
+                                            <a class="btn btn-primary btn-sm" href="/school/invoice/@p.InvoiceId/pdf?download=1" download>Download</a>
+                                        }
+                                        else if (p.IsPaid)
+                                        {
+                                            <span class="sb-muted">Invoice pending</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="sb-muted">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="sb-card">
+            <h2 class="sb-h2">Enrollment Payments</h2>
+            @if (orders.Count == 0)
+            {
+                <p class="sb-note">No enrollment payments yet. <a href="/school/enrollment">Enroll students →</a></p>
+            }
+            else
+            {
+                <div class="sb-scroll">
+                    <table class="sb-table">
+                        <thead>
+                            <tr>
+                                <th>Order</th><th>Date</th><th>Course</th>
+                                <th class="ta-r">Students</th><th class="ta-r">Amount</th>
+                                <th>Status</th><th class="ta-r">Invoices</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var o in orders)
+                            {
+                                <tr>
+                                    <td><strong>@o.OrderNumber</strong></td>
+                                    <td>@o.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                    <td>@o.CourseTitle</td>
+                                    <td class="ta-r">@o.StudentCount</td>
+                                    <td class="ta-r">@Money.Inr(o.TotalAmount)</td>
+                                    <td><span class="sb-pill @(o.PaymentStatus == "Success" ? "sb-pill--ok" : "sb-pill--wait")">@(o.PaymentStatus == "Success" ? "Paid" : o.PaymentStatus)</span></td>
+                                    <td class="ta-r">@o.InvoiceCount</td>
+                                    <td class="ta-r">
+                                        @if (o.InvoiceCount > 0)
+                                        {
+                                            <button class="btn btn-outline btn-sm" @onclick="() => Filter(o.OrderId)">View Invoices</button>
+                                        }
+                                        else if (o.PaymentStatus != "Success")
+                                        {
+                                            <button class="btn btn-outline btn-sm" disabled="@retrying" @onclick="() => RetryOrder(o.OrderNumber)">Pay Now</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="sb-card">
+            <div class="sb-h2row">
+                <h2 class="sb-h2">Student Invoices</h2>
+                @if (filterOrderId is not null)
+                {
+                    <button class="btn btn-outline btn-sm" @onclick="() => Filter(null)">Show all</button>
+                }
+            </div>
+
+            @if (invoices.Count == 0)
+            {
+                <p class="sb-note">No invoices yet. An invoice is raised for each student once payment is confirmed.</p>
+            }
+            else
+            {
+                <div class="sb-scroll">
+                    <table class="sb-table">
+                        <thead>
+                            <tr>
+                                <th>Invoice No.</th><th>Date</th><th>Student</th>
+                                <th>Course</th><th class="ta-r">Amount</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var inv in invoices)
+                            {
+                                <tr>
+                                    <td><strong>@inv.InvoiceNumber</strong></td>
+                                    <td>@inv.InvoiceDate.ToString("dd MMM yyyy")</td>
+                                    <td>@inv.StudentName</td>
+                                    <td>@inv.CourseTitle</td>
+                                    <td class="ta-r">@Money.Inr(inv.TotalAmount)</td>
+                                    <td class="ta-r">
+                                        <a class="btn btn-outline btn-sm" href="/school/invoice/@inv.InvoiceId/pdf" target="_blank" rel="noopener">Download PDF</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+<style>
+    .sb-wrap{padding:4px 0 32px}
+    .sb-title{font-size:22px;font-weight:800;color:var(--navy,#5d38de);margin:0 0 16px}
+    .sb-card{background:#fff;border:1px solid var(--gray-200,#e5e7eb);border-radius:16px;padding:18px;margin-bottom:16px}
+    .sb-h2{font-size:15px;font-weight:800;margin:0 0 12px}
+    .sb-h2row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .sb-note{color:var(--gray-500,#6b7280);font-size:13.5px;margin:6px 0}
+    .sb-scroll{overflow-x:auto}
+    .sb-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:720px}
+    .sb-table th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500,#6b7280);padding:8px 10px;border-bottom:1px solid var(--gray-200,#e5e7eb)}
+    .sb-table td{padding:10px;border-bottom:1px solid var(--gray-100,#f0f2f5)}
+    .ta-r{text-align:right}
+    .sb-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700}
+    .sb-pill--ok{background:#DCFCE7;color:#065F46}
+    .sb-pill--wait{background:#FEF3C7;color:#92400E}
+    .sb-muted{color:var(--gray-400,#9ca3af);font-size:12.5px}
+    .sb-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+    .sb-kpi{background:#fff;border:1px solid var(--gray-200,#e5e7eb);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+    .sb-kpi__label{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500,#6b7280);font-weight:700}
+    .sb-kpi__value{font-size:22px;font-weight:800;color:var(--navy,#5d38de)}
+    .sb-kpi__value--ok{color:#065F46}
+    .sb-kpi__value--wait{color:#92400E}
+    .sb-banner{border-radius:14px;padding:16px 18px;margin-bottom:16px;border:1px solid}
+    .sb-banner__head{font-size:16px;font-weight:800;margin-bottom:4px}
+    .sb-banner__meta{font-size:13px;margin-top:6px}
+    .sb-banner__actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+    .sb-banner--ok{background:#F0FDF4;border-color:#BBF7D0;color:#065F46}
+    .sb-banner--err{background:#FEF2F2;border-color:#FECACA;color:#991B1B}
+    .sb-banner--warn{background:#FFF7ED;border-color:#FED7AA;color:#9A3412}
+</style>
+
+@code {
+    private enum PaymentResult { None, Success, Failed, Cancelled }
+
+    private List<SchoolEnrollmentOrderRow> orders = new();
+    private List<SchoolStudentInvoiceRow> invoices = new();
+    private List<SchoolStudentPaymentRow> payments = new();
+    private SchoolPaymentSummary summary = new(0, 0, 0, 0m);
+    private Guid? filterOrderId;
+    private Guid actingUserId;
+    private bool loading = true, retrying;
+    private string? orderNumber;
+
+    private PaymentResult Result => Nav.Uri.Contains("/payment-success", StringComparison.OrdinalIgnoreCase) ? PaymentResult.Success
+        : Nav.Uri.Contains("/payment-failed", StringComparison.OrdinalIgnoreCase) ? PaymentResult.Failed
+        : Nav.Uri.Contains("/payment-cancelled", StringComparison.OrdinalIgnoreCase) ? PaymentResult.Cancelled
+        : PaymentResult.None;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        var id = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        Guid.TryParse(id, out actingUserId);
+
+        // Parsed by hand rather than with QueryHelpers: Microsoft.AspNetCore.WebUtilities is not
+        // referenced by this class library, and one query value does not justify adding it.
+        var query = Nav.ToAbsoluteUri(Nav.Uri).Query.TrimStart('?');
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = pair.IndexOf('=');
+            if (eq <= 0) continue;
+            if (pair[..eq].Equals("order", StringComparison.OrdinalIgnoreCase))
+            {
+                orderNumber = Uri.UnescapeDataString(pair[(eq + 1)..]);
+                break;
+            }
+        }
+
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        summary = await Enrollment.GetPaymentSummaryAsync(actingUserId);
+        payments = await Enrollment.ListStudentPaymentsAsync(actingUserId);
+        orders = await Enrollment.ListOrdersAsync(actingUserId);
+        invoices = await Enrollment.ListInvoicesAsync(actingUserId, filterOrderId);
+
+        // Landing from a successful payment: focus that order's invoices straight away.
+        if (Result == PaymentResult.Success && filterOrderId is null && !string.IsNullOrEmpty(orderNumber))
+        {
+            var match = orders.FirstOrDefault(x => x.OrderNumber == orderNumber);
+            if (match is not null)
+            {
+                filterOrderId = match.OrderId;
+                invoices = await Enrollment.ListInvoicesAsync(actingUserId, filterOrderId);
+            }
+        }
+        loading = false;
+    }
+
+    private async Task Filter(Guid? orderId)
+    {
+        filterOrderId = orderId;
+        invoices = await Enrollment.ListInvoicesAsync(actingUserId, filterOrderId);
+    }
+
+    private Task Retry() => RetryOrder(orderNumber);
+
+    /// <summary>Re-opens the SAME pending order in the existing Razorpay flow — no new order is
+    /// created, so a retry can never duplicate an enrolment.</summary>
+    private async Task RetryOrder(string? number)
+    {
+        if (string.IsNullOrWhiteSpace(number)) { Nav.NavigateTo("/school/enrollment"); return; }
+        retrying = true;
+        try
+        {
+            await JS.InvokeVoidAsync("rc.retryRazorpay", number, null, new
+            {
+                cancelled = "/school/enrollment/payment-cancelled",
+                failed = "/school/enrollment/payment-failed",
+            });
+        }
+        catch { retrying = false; }
+    }
+}

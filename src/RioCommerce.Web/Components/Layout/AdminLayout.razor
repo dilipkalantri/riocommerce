@@ -358,6 +358,7 @@
                                 @if (_serialKeysOn && MatchLink("Superclass Settings")) { <NavLink href="/admin/settings/superclass" class="sidebar__link"><span class="sidebar__txt">Superclass Settings</span></NavLink> }
                                 @if (MatchLink("Scheduled Tasks"))   { <NavLink href="/admin/scheduled-tasks" class="sidebar__link"><span class="sidebar__txt">Scheduled Tasks</span></NavLink> }
                                 @if (MatchLink("Finance Settings"))  { <NavLink href="/admin/settings/finance" class="sidebar__link"><span class="sidebar__txt">Finance Settings</span></NavLink> }
+                                @if (MatchLink("Company / Invoice Settings")) { <NavLink href="/admin/settings/company" class="sidebar__link"><span class="sidebar__txt">Company / Invoice Settings</span></NavLink> }
                                 @if (MatchLink("Application Logs"))  { <NavLink href="/admin/logs" class="sidebar__link"><span class="sidebar__txt">Application Logs</span></NavLink> }
                             </AuthorizeView>
                             @* ── 🔒 Admin Access Control — Super Admin only (no other role should see this) ── *@

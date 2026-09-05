@@ -1,10 +1,12 @@
-@page "/admin/orders/{Id:guid}/invoice"
+﻿@page "/admin/orders/{Id:guid}/invoice"
 @layout PrintLayout
 @attribute [Authorize(Roles = "super_admin,admin,operations,faculty,franchise_admin,backend_user")]
 @inject IOrderAdminService Svc
 @inject AuthenticationStateProvider AuthProvider
 @inject IJSRuntime JS
 @inject ISiteSettingsService Settings
+@inject IInvoiceService Invoices
+@inject NavigationManager Nav
 <PageTitle>Invoice @inv?.InvoiceNumber</PageTitle>
 
 <style>
@@ -53,6 +55,19 @@
                 <button class="btn btn-primary btn-sm" @onclick="PrintInvoice">🖨 Print / Save PDF</button>
             }
         </div>
+
+        @* This page renders ONE invoice for an order. A school enrolment order raises one per
+           student, so showing this document alone would misrepresent it as the whole billing for
+           the order. Warn and point at the full list. Ordinary orders (count <= 1) see nothing. *@
+        @if (siblingCount > 1)
+        {
+            <div style="background:#EEF2FF;border:1px solid #C7D2FE;border-radius:10px;padding:14px 18px;margin-bottom:16px;color:#3730A3;font-size:14px">
+                <strong>🧾 This order has @siblingCount invoices — one per student.</strong>
+                You are viewing only one of them. See
+                <a href="/admin/orders/@Id#od-invoices" style="color:#3730A3;font-weight:700">all @siblingCount invoices</a>
+                for the complete billing of this order.
+            </div>
+        }
 
         @if (inv.PaymentStatus != PaymentStatus.Success)
         {
@@ -215,6 +230,8 @@
     [Parameter] public Guid Id { get; set; }
     private InvoiceView? inv;
     private bool notFound;
+    /// <summary>Total invoices raised against this order; > 1 = school order, one per student.</summary>
+    private int siblingCount;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -223,6 +240,34 @@
         var actorName = state.User.Identity?.Name ?? "admin";
         inv = await Svc.GetOrCreateInvoiceAsync(Id, actorId, actorName);
         notFound = inv == null;
+
+        // Every invoice raised against this order. Reuses the existing list service and its
+        // OrderId filter; > 1 means a school enrolment order billing one invoice per student.
+        var issued = await Invoices.ListAsync(
+            new RioCommerce.Core.DTOs.Invoices.InvoiceListFilter { OrderId = Id, PageSize = 200 });
+        siblingCount = issued.Count;
+
+        // ── One invoice design, not two ────────────────────────────────────────────────────
+        // The markup below is a LEGACY HTML rendering that predates InvoicePdfRenderer. It reads
+        // the ORDER plus SiteSettings, so it shows the site's store name instead of the company
+        // snapshot frozen on the invoice, and it looks nothing like the statutory format the PDF
+        // produces. Now that a real invoice exists it is the wrong document to show, so hand over
+        // to the PDF — the same one the invoice list, the school portal and email attachments use.
+        //
+        // The markup is kept for the ONE case the PDF cannot serve: an unpaid order, where no
+        // invoice has been raised and this page acts as a DRAFT preview.
+        if (issued.Count == 1)
+        {
+            Nav.NavigateTo($"/api/admin/invoices/{issued[0].Id}/pdf", forceLoad: true);
+            return;
+        }
+        if (issued.Count > 1)
+        {
+            // A school order has one invoice per student; no single PDF represents the order.
+            // Send the admin to the list on the order page rather than an arbitrary one of them.
+            Nav.NavigateTo($"/admin/orders/{Id}#od-invoices", forceLoad: true);
+            return;
+        }
         // Never let a settings hiccup keep an invoice from rendering or printing.
         try
         {
@@ -252,3 +297,4 @@
         return Math.Min(Math.Max(0m, share), inv.Subtotal);
     }
 }
+

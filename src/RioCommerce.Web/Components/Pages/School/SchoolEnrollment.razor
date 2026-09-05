@@ -1,10 +1,15 @@
-@page "/school/enrollment"
+﻿@page "/school/enrollment"
 @layout SchoolLayout
 @using RioCommerce.Core.DTOs.School
-@attribute [Authorize(Roles = "school_principal,school_coordinator")]
+@* PRINCIPAL ONLY. Enrolment commits the school to money, so it is not a coordinator's action:
+   a coordinator adds students and manages their own, nothing more. The route guard is only the
+   first of two gates — SchoolEnrollmentService.PlaceAsync refuses a coordinator independently,
+   so removing this attribute would still not let one enrol anybody. *@
+@attribute [Authorize(Roles = "school_principal")]
 @inject ISchoolStudentService Students
 @inject ISchoolEnrollmentService Enrollment
 @inject AuthenticationStateProvider AuthProvider
+@inject IJSRuntime JS
 
 @* Fills the /school/enrollment route. Wrapped by SchoolLayout, which supplies the
    portal sidebar and topbar so this file only owns page content.
@@ -58,7 +63,7 @@
                 <span class="se-stat__ico se-stat__ico--rose" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3a4.5 4.5 0 1 0 0-9"/></svg>
                 </span>
-                <span class="se-stat__value">₹@TotalPayable.ToString("N0")</span>
+                <span class="se-stat__value">@Money.Inr0(TotalPayable)</span>
                 <span class="se-stat__label">Total Payable</span>
             </div>
         </div>
@@ -74,7 +79,7 @@
                     <p class="se-success__line">
                         Order <strong>#@submitted.OrderNumber</strong> ·
                         @submitted.StudentCount student@(submitted.StudentCount == 1 ? "" : "s") ·
-                        ₹@submitted.Total.ToString("N0")
+                        @Money.Inr0(submitted.Total)
                     </p>
                     <p class="se-success__line">
                         Payment status: <span class="se-pill se-pill--wait">Pending</span>
@@ -112,7 +117,7 @@
                                 <option value="">Choose a course…</option>
                                 @foreach (var p in products)
                                 {
-                                    <option value="@p.Id">@p.Title (₹@p.Price.ToString("N0"))</option>
+                                    <option value="@p.Id">@p.Title (@Money.Inr0(p.Price))</option>
                                 }
                             </select>
                             <span class="se-select__chev" aria-hidden="true">
@@ -126,7 +131,7 @@
                         <div class="se-chosen">
                             <span class="se-chosen__label">Selected Course</span>
                             <span class="se-chosen__name">@Chosen.Title</span>
-                            <span class="se-chosen__price">₹@Chosen.Price.ToString("N0") / student</span>
+                            <span class="se-chosen__price">@Money.Inr0(Chosen.Price) / student</span>
                         </div>
                     }
                 }
@@ -140,11 +145,21 @@
                     </a>
                 </div>
 
+                @* Paid students are gone from this list: `Pending` excludes anyone the school has
+                   already paid for, and that verdict comes from the persisted Order status — so a
+                   student drops out the moment their payment settles, with no manual refresh. *@
                 @if (roster.Count == 0)
                 {
                     <div class="se-empty">
                         <p>No students on your roll yet.</p>
                         <a class="btn btn-primary" href="/school/students">Add your first student</a>
+                    </div>
+                }
+                else if (Pending.Count == 0)
+                {
+                    <div class="se-empty">
+                        <p>Every student on your roll has already been paid for.</p>
+                        <a class="btn btn-outline" href="/school/billing">View payments &amp; invoices</a>
                     </div>
                 }
                 else
@@ -163,11 +178,14 @@
                                     <th>Division</th>
                                     <th>Roll No.</th>
                                     <th>Mobile Number</th>
+                                    <th>Course</th>
+                                    <th>Price</th>
+                                    <th>Payment</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @{ var n = 0; }
-                                @foreach (var r in roster)
+                                @foreach (var r in Pending)
                                 {
                                     var isOn = selected.Contains(r.UserId);
                                     n++;
@@ -183,6 +201,20 @@
                                         <td>@(string.IsNullOrWhiteSpace(r.Section) ? "—" : r.Section)</td>
                                         <td>@(string.IsNullOrWhiteSpace(r.RollNumber) ? "—" : r.RollNumber)</td>
                                         <td>@(string.IsNullOrWhiteSpace(r.Phone) ? "—" : r.Phone)</td>
+                                        <td>@(Chosen?.Title ?? "—")</td>
+                                        <td>@(Chosen is null ? "—" : Money.Inr0(Chosen.Price))</td>
+                                        <td>
+                                            @* Failed attempts stay selectable — they still owe — but are
+                                               labelled honestly rather than shown as merely pending. *@
+                                            @if (payStatus.TryGetValue(r.UserId, out var ps) && ps.IsFailed)
+                                            {
+                                                <span class="se-pill se-pill--fail">Failed</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="se-pill se-pill--wait">Pending</span>
+                                            }
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
@@ -198,14 +230,14 @@
                 @* ── Total + submit ─────────────────────────────────────── *@
                 <div class="se-foot">
                     <div class="se-total">
-                        <div class="se-total__row"><span>Fee per student</span><span>@(Chosen is null ? "—" : "₹" + Chosen.Price.ToString("N0"))</span></div>
+                        <div class="se-total__row"><span>Fee per student</span><span>@(Chosen is null ? "—" : Money.Inr0(Chosen.Price))</span></div>
                         <div class="se-total__row"><span>Students selected</span><span>@selected.Count</span></div>
-                        <div class="se-total__row se-total__row--sum"><span>Total Payable</span><span>₹@TotalPayable.ToString("N0")</span></div>
-                        <p class="se-total__hint">No payment is collected here. The order is created pending payment and settled with our team.</p>
+                        <div class="se-total__row se-total__row--sum"><span>Total Payable</span><span>@Money.Inr0(TotalPayable)</span></div>
+                        <p class="se-total__hint">You will be redirected to secure payment after submitting the enrollment.</p>
                     </div>
-                    <button class="btn btn-primary se-submit" disabled="@(!CanSubmit)" @onclick="Submit">
+                    <button class="btn btn-primary se-submit" disabled="@(!CanSubmit || saving)" @onclick="Submit">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="m9 14 2 2 4-4"/></svg>
-                        @(saving ? "Creating enrollment…" : "Submit Enrollment")
+                        @(saving ? "Opening secure payment…" : "Proceed to Payment")
                     </button>
                 </div>
             </section>
@@ -329,6 +361,7 @@
     @@media (max-width:400px){
         .se-stats{grid-template-columns:minmax(0,1fr)}
     }
+    .se-pill--fail{background:#FEE2E2;color:#991B1B}
 </style>
 
 @code {
@@ -339,7 +372,20 @@
 
     private string productId = "";
     private List<SchoolEnrollmentProduct> products = new();
+    /// <summary>Every student on the school roll (principal- and coordinator-added alike).</summary>
     private List<SchoolStudentListItem> roster = new();
+
+    /// <summary>School-paid status per student, from persisted orders. Absent = never enrolled.</summary>
+    private Dictionary<Guid, SchoolStudentPaymentStatus> payStatus = new();
+
+    /// <summary>
+    /// The selectable list: students the school has NOT already paid for. A pupil whose school
+    /// payment succeeded drops out here automatically once the order settles — the status comes
+    /// from the Order row, so nothing has to be refreshed by hand. Failed and pending attempts
+    /// stay, because they still owe.
+    /// </summary>
+    private List<SchoolStudentListItem> Pending =>
+        roster.Where(s => !(payStatus.TryGetValue(s.UserId, out var p) && p.IsPaid)).ToList();
     private readonly HashSet<Guid> selected = new();
     private PlaceSchoolEnrollmentResult? submitted;
 
@@ -349,7 +395,7 @@
     // Total Payable = selected course's catalogue price × students ticked. Never a literal.
     private decimal TotalPayable => (Chosen?.Price ?? 0m) * selected.Count;
 
-    private bool AllSelected => roster.Count > 0 && selected.Count == roster.Count;
+    private bool AllSelected => Pending.Count > 0 && selected.Count == Pending.Count;
     private bool CanSubmit => !saving && Chosen is not null && selected.Count > 0;
 
     protected override async Task OnInitializedAsync()
@@ -364,6 +410,9 @@
             if (schoolId is not null)
             {
                 roster = await Students.ListAsync(actingUserId);
+                // Without this the paid-student filter has nothing to filter ON, so students the
+                // school has already paid for stay selectable and could be charged twice.
+                payStatus = await Enrollment.GetStudentPaymentStatusesAsync(actingUserId);
                 await LoadProductsAsync();
             }
         }
@@ -408,6 +457,14 @@
         error = null;
     }
 
+    /// <summary>Client-side result routes for the shared Razorpay helper, so a dismissed or failed
+    /// popup returns to the School portal. Success is routed by the server's verify response.</summary>
+    private static readonly object SchoolPaymentRoutes = new
+    {
+        cancelled = "/school/enrollment/payment-cancelled",
+        failed = "/school/enrollment/payment-failed",
+    };
+
     private async Task Submit()
     {
         if (!CanSubmit) return;              // guards a double-click before the disable lands
@@ -419,16 +476,43 @@
             StudentUserIds = selected.ToList(),
         });
 
-        saving = false;
-
         if (!res.Ok)
         {
+            saving = false;
             // Selections are deliberately left intact so nothing has to be re-entered.
             error = res.Error ?? "We could not submit this enrollment. Please try again.";
             return;
         }
 
-        submitted = res;
-        roster = await Students.ListAsync(actingUserId);
+        // ── Hand the PENDING order to the existing Razorpay flow ─────────────────────────────
+        // rc.retryRazorpay is the same helper the storefront uses to pay an already-created order:
+        // it calls /api/payments/razorpay/retry-order, opens the Razorpay popup, and POSTs the
+        // result to /api/payments/razorpay/verify. Every state change — PaymentStatus=Success,
+        // OrderStatus=Confirmed, enrolments, invoices — happens server-side inside
+        // ConfirmPaymentAsync behind signature verification. Nothing here decides payment succeeded,
+        // and the browser only follows the redirectUrl the server returns.
+        //
+        // The order is already persisted at this point, so a closed popup or a dropped browser
+        // leaves a recoverable pending order rather than losing the enrolment. `saving` stays true
+        // until the redirect so the button cannot be clicked twice; the roster's unique
+        // (OrderId, StudentUserId) index is the server-side backstop.
+        try
+        {
+            // Third argument keeps a dismissed/failed popup inside the School portal. Storefront
+            // callers omit it and keep the /checkout/* pages unchanged.
+            await JS.InvokeVoidAsync("rc.retryRazorpay", res.OrderNumber, null, SchoolPaymentRoutes);
+        }
+        catch (Exception)
+        {
+            saving = false;
+            submitted = res;   // order exists — show it so the principal can retry payment
+            error = "Your enrolment was saved but the payment window could not be opened. "
+                  + "Open it again from your orders, or try once more.";
+            roster = await Students.ListAsync(actingUserId);
+            payStatus = await Enrollment.GetStudentPaymentStatusesAsync(actingUserId);
+        }
     }
 }
+
+
+

@@ -56,6 +56,19 @@ public class InvoiceDetail : InvoiceListItem
     public string? CompanyPhone { get; set; }
     public string? CompanyEmail { get; set; }
 
+    // ── Remittance + statutory identity, printed in the invoice footer.
+    //    These are NOT snapshotted onto the Invoice row like the fields above: they are
+    //    standing company facts (where to pay us, our PAN), not a record of what was
+    //    transacted. They are stamped from current settings when the PDF is rendered, so
+    //    a bank change is reflected on a reprint instead of reprinting a closed account.
+    //    Nothing here affects any amount.
+    public string? CompanyPan { get; set; }
+    public string? CompanyBankName { get; set; }
+    public string? CompanyBankAccountName { get; set; }
+    public string? CompanyBankAccountNumber { get; set; }
+    public string? CompanyBankIfsc { get; set; }
+    public string? CompanyBankBranch { get; set; }
+
     public List<InvoiceLineItemDto> LineItems { get; set; } = new();
 }
 
@@ -100,4 +113,22 @@ public class CompanyProfile
     public string? BankAccountName { get; set; }
     public string? BankAccountNumber { get; set; }
     public string? BankIfsc { get; set; }
+    public string? BankBranch { get; set; }
+    /// <summary>Company PAN, printed on the invoice footer.</summary>
+    public string? Pan { get; set; }
+
+    /// <summary>
+    /// Invoice number series / prefix, e.g. "VP/26-27/". The numeric part is appended and
+    /// auto-increments per series — VP/26-27/1, VP/26-27/2, … An admin sets only this prefix;
+    /// the full number is never entered by hand. Changing it starts a fresh sequence at 1 under
+    /// the new prefix and leaves every already-issued number untouched.
+    /// </summary>
+    public string? InvoiceSeries { get; set; }
+
+    /// <summary>
+    /// Order number series / prefix, e.g. "VJP-" producing VJP-01, VJP-02 … Blank keeps the
+    /// original RIO- numbering. Like the invoice series, changing it starts a fresh sequence and
+    /// leaves every already-issued order number untouched.
+    /// </summary>
+    public string? OrderSeries { get; set; }
 }

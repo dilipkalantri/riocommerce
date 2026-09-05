@@ -216,6 +216,8 @@ builder.Services.AddScoped<ISubjectAdminService, SubjectAdminService>();
 builder.Services.AddScoped<IAcademicYearService, AcademicYearService>();
 builder.Services.AddScoped<IGeographyService, GeographyService>();
 builder.Services.AddScoped<ISchoolService, SchoolService>();
+builder.Services.AddScoped<IEducationMasterService, EducationMasterService>();
+builder.Services.AddScoped<ICompanySettingsService, CompanySettingsService>();
 builder.Services.AddScoped<ISchoolRegistrationService, SchoolRegistrationService>();
 builder.Services.AddScoped<ISchoolStudentService, SchoolStudentService>();
 builder.Services.AddScoped<ISchoolEnrollmentService, SchoolEnrollmentService>();
@@ -764,38 +766,61 @@ app.MapPost("/account/register", async (HttpContext http, RioCommerceDbContext d
 //   • IVerificationService.SendBothAsync - one code to email AND mobile
 //   • the "student" role row - never school_principal / admin / coordinator
 app.MapPost("/api/student/register", async (HttpContext http, RioCommerceDbContext db,
-    ICustomerDuplicateService dupes, IVerificationService verify) =>
+    ICustomerDuplicateService dupes, IVerificationService verify, IEducationMasterService edu) =>
 {
     var form = await http.Request.ReadFormAsync();
     string F(string k) => form[k].ToString().Trim();
 
     var fullName = F("fullName");
-    var email = F("email");
     var phone = F("phone");
     var password = F("password");
 
-    if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(email) ||
+    // ── Email is OPTIONAL for a student. Many students sign up with only a mobile number. ──
+    // NULL, never "": IX_users_Email is UNIQUE ... WHERE "Email" IS NOT NULL, so Postgres ignores
+    // NULLs but would treat a second empty string as a duplicate and reject the signup. Every
+    // downstream branch below therefore tests for null, and the column is already nullable.
+    var email = string.IsNullOrWhiteSpace(F("email")) ? null : F("email");
+
+    if (string.IsNullOrWhiteSpace(fullName) ||
         string.IsNullOrWhiteSpace(phone) || string.IsNullOrWhiteSpace(password))
         return Results.Json(new { success = false, error = "Please complete every required field." });
+
+    // Optional, but not a free-for-all: a typo'd address would silently swallow the OTP and every
+    // later notification, so an address that IS supplied still has to look like one.
+    if (email is not null && (!email.Contains('@') || !email.Contains('.') || email.Length < 5))
+        return Results.Json(new { success = false, error = "Please enter a valid email address, or leave it blank." });
 
     // ── Education details are mandatory for a student signup, and re-checked HERE rather than
     //    trusted from the wizard: a crafted POST straight at this endpoint must not be able to
     //    create a half-populated student. Checked BEFORE any account is created, so an
     //    incomplete request never leaves a pending row behind. ──
-    var eduState = F("state");
-    var eduDistrict = F("district");
     var eduClass = F("studentClass");
-    var eduBoard = F("board");
-    var eduSchool = F("schoolName");
 
-    if (string.IsNullOrWhiteSpace(eduState) || string.IsNullOrWhiteSpace(eduDistrict) ||
-        string.IsNullOrWhiteSpace(eduClass) || string.IsNullOrWhiteSpace(eduBoard) ||
-        string.IsNullOrWhiteSpace(eduSchool))
-        return Results.Json(new { success = false, error = "Please complete all required education details." });
+    // IDs are the contract now. The wizard still posts the display names, but they are
+    // IGNORED here — every name written to the row below is the one the DATABASE returns
+    // for the submitted ID, so a spoofed "schoolName" cannot be stored.
+    static Guid? Id(string raw) => Guid.TryParse(raw, out var g) ? g : null;
+
+    // otherSchoolName is only honoured when schoolId is absent — the validator refuses to let a
+    // typed name stand in for a real school that failed its checks.
+    var eduCheck = await edu.ValidateSelectionAsync(
+        Id(F("stateId")), Id(F("districtId")), Id(F("schoolId")), Id(F("boardId")), eduClass,
+        Id(F("talukaId")), F("otherSchoolName"));
+
+    // Covers all of: missing fields, a district outside the state, a school outside the
+    // district, an unknown or deactivated board, and a class outside the school's range.
+    if (!eduCheck.Ok)
+        return Results.Json(new { success = false, error = eduCheck.Error ?? "Please complete all required education details." });
+
+    var eduState = eduCheck.StateName!;
+    var eduDistrict = eduCheck.DistrictName!;
+    var eduBoard = eduCheck.BoardName!;
+    var eduSchool = eduCheck.SchoolName!;
 
     // ── Duplicate check: SERVER-SIDE and authoritative. Covers the cross-account case too -
     //    CheckAsync probes email and phone independently, so an email on account A plus a phone
-    //    on account B reports Both and is refused. ──
+    //    on account B reports Both and is refused. A null email simply narrows it to the phone
+    //    check — the service treats blank as "not supplied", never as a value to match on. ──
     var ip = http.Connection.RemoteIpAddress?.ToString();
     var dup = await dupes.CheckAsync(email, phone);
     if (dup.HasDuplicate)
@@ -831,6 +856,12 @@ app.MapPost("/api/student/register", async (HttpContext http, RioCommerceDbConte
         SchoolName = eduSchool,
         StudentClass = eduClass,
         Board = eduBoard,
+        // Authoritative master links. The names above stay for display and for every
+        // existing report that reads them; these are the real relationships.
+        // Null for an "Other" school — nothing is fabricated, and no row is added to the master.
+        SchoolId = eduCheck.SchoolId,
+        BoardId = eduCheck.BoardId,
+        TalukaId = eduCheck.TalukaId,
         IsActive = false,
         IsVerified = false,
     };
@@ -863,7 +894,9 @@ app.MapPost("/api/student/register", async (HttpContext http, RioCommerceDbConte
         return Results.Json(new { success = false, error = msg, duplicate = true });
     }
 
-    // One 6-digit code to BOTH channels. Never returned to the browser or logged.
+    // One 6-digit code to every channel we have. With no email that is SMS alone — SendBothAsync
+    // writes a code row per supplied target and succeeds if at least one delivers, so a
+    // mobile-only student is verified exactly like everyone else.
     var send = await verify.SendBothAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup,
         user.Email, user.Phone, user.Id, user.FullName);
 
@@ -890,11 +923,15 @@ app.MapPost("/api/student/register", async (HttpContext http, RioCommerceDbConte
         return digits.Length < 4 ? p : "+91 " + new string('*', Math.Max(0, digits.Length - 4)) + digits[^4..];
     }
 
+    // `target` is what step 4 posts back to verify/resend. It is the email when there is one and
+    // the phone otherwise — VerifyAsync normalises a submitted target BOTH ways and matches either
+    // channel's row, so a phone works as an identifier exactly as an email does.
     return Results.Json(new
     {
         success = true,
-        email = user.Email,
-        maskedEmail = MaskEmail(user.Email!),
+        target = user.Email ?? user.Phone,
+        email = user.Email,                                              // null for a mobile-only signup
+        maskedEmail = user.Email is null ? null : MaskEmail(user.Email),
         maskedPhone = MaskPhone(user.Phone!),
     });
 }).DisableAntiforgery();
@@ -903,16 +940,32 @@ app.MapPost("/api/account/verify-otp", async (HttpContext http, RioCommerceDbCon
     IDataProtectionProvider dp) =>
 {
     var form = await http.Request.ReadFormAsync();
-    var email = form["email"].ToString().Trim();
+    // `target` is an email OR a phone — a student may register without an email at all. "email"
+    // is still read as a fallback so the school-registration wizard, which posts that name,
+    // keeps working unchanged.
+    var target = form["target"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(target)) target = form["email"].ToString().Trim();
     var code = form["code"].ToString().Trim();
-    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(code))
+    if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(code))
         return Results.Json(new { success = false, error = "Enter the 6-digit code." });
 
-    var check = await verify.VerifyAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup, email, code);
+    var check = await verify.VerifyAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup, target, code);
     if (!check.Success)
         return Results.Json(new { success = false, error = check.ErrorMessage ?? "Invalid or expired code." });
 
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == email.ToLower());
+    // Prefer the SubjectId stored WITH the code: it is the user the code was actually issued for,
+    // so it resolves a mobile-only account and cannot be steered by the target string. The
+    // email/phone lookup stays as a fallback for codes issued before this field was relied on.
+    var user = check.SubjectId is { } sid
+        ? await db.Users.FirstOrDefaultAsync(u => u.Id == sid)
+        : null;
+    if (user == null)
+    {
+        var digits = new string(target.Where(char.IsDigit).ToArray());
+        user = await db.Users.FirstOrDefaultAsync(u =>
+            (u.Email != null && u.Email.ToLower() == target.ToLower()) ||
+            (digits.Length > 0 && u.Phone != null && u.Phone == digits));
+    }
     if (user == null) return Results.Json(new { success = false, error = "Account not found." });
 
     user.IsActive = true;
@@ -930,14 +983,20 @@ app.MapPost("/api/account/verify-otp", async (HttpContext http, RioCommerceDbCon
 app.MapPost("/api/account/resend-otp", async (HttpContext http, RioCommerceDbContext db, IVerificationService verify) =>
 {
     var form = await http.Request.ReadFormAsync();
-    var email = form["email"].ToString().Trim();
-    if (string.IsNullOrWhiteSpace(email)) return Results.Json(new { success = false, error = "Missing email." });
+    // Email OR phone, for the same reason as verify-otp above.
+    var target = form["target"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(target)) target = form["email"].ToString().Trim();
+    if (string.IsNullOrWhiteSpace(target)) return Results.Json(new { success = false, error = "Missing email or mobile number." });
 
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == email.ToLower());
+    var targetDigits = new string(target.Where(char.IsDigit).ToArray());
+    var user = await db.Users.FirstOrDefaultAsync(u =>
+        (u.Email != null && u.Email.ToLower() == target.ToLower()) ||
+        (targetDigits.Length > 0 && u.Phone != null && u.Phone == targetDigits));
     if (user == null) return Results.Json(new { success = true });   // don't reveal non-existence
 
-    // Both channels, matching what registration sent - resending on email only would contradict
-    // the "sent to your email and mobile" wording the user was just shown.
+    // Every channel the account has, matching what registration sent — resending on one channel
+    // only would contradict the wording the user was just shown. For a mobile-only account
+    // SendBothAsync simply sends the SMS.
     var send = await verify.SendBothAsync(RioCommerce.Core.Enums.VerificationPurpose.CustomerSignup,
         user.Email, user.Phone, user.Id, user.FullName);
     return Results.Json(new { success = send.Success, error = send.ErrorMessage });

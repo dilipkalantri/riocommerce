@@ -1,7 +1,8 @@
-@page "/admin/orders/{Id:guid}"
+﻿@page "/admin/orders/{Id:guid}"
 @layout AdminLayout
 @attribute [Authorize(Roles = "super_admin,admin,operations,faculty,franchise_admin,backend_user")]
 @inject IOrderAdminService Svc
+@inject IInvoiceService Invoices
 @inject IRefundService Refunds
 @inject IPaymentTransactionService Txns
 @inject INoteAttachmentService Attachments
@@ -190,6 +191,11 @@
     .note__meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray-400);margin-top:6px;flex-wrap:wrap}
     .note__tag{font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px}
     .note__tag--internal{background:var(--gray-100);color:var(--gray-500)}.note__tag--public{background:#DBEAFE;color:#2563EB}
+    .od-inv-note{font-size:12.5px;color:var(--gray-600,#4b5563);background:var(--gray-50,#f9fafb);border:1px solid var(--gray-200,#e5e7eb);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+    .od-inv-table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
+    .od-inv-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500,#6b7280);padding:7px 9px;border-bottom:1px solid var(--gray-200,#e5e7eb)}
+    .od-inv-table td{padding:9px;border-bottom:1px solid var(--gray-100,#f0f2f5)}
+    .od-inv-table .ta-r{text-align:right}
 </style>
 
 @if (notFound)
@@ -221,7 +227,17 @@ else
             <a href="/api/admin/orders/@o.Id/receipt.pdf" target="_blank" class="btn btn-outline btn-sm">📄 Receipt (PDF)</a>
             @if (o.PaymentStatus == PaymentStatus.Success)
             {
-                <a href="/admin/orders/@o.Id/invoice" target="_blank" class="btn btn-outline btn-sm">🧾 Invoice (PDF)</a>
+                @* A school enrolment order raises ONE INVOICE PER STUDENT, so a single
+                   "Invoice (PDF)" button would silently hand over one of several. When there is
+                   more than one, point at the list below instead of an arbitrary member of it. *@
+                @if (orderInvoices.Count > 1)
+                {
+                    <a href="#od-invoices" class="btn btn-outline btn-sm">🧾 Invoices (@orderInvoices.Count)</a>
+                }
+                else
+                {
+                    <a href="/admin/orders/@o.Id/invoice" target="_blank" class="btn btn-outline btn-sm">🧾 Invoice (PDF)</a>
+                }
             }
             else
             {
@@ -353,6 +369,52 @@ else
 
             @* ── Installment plan (only renders when this order has one) ── *@
             <OrderInstallmentPanel OrderId="o.Id" OnChanged="Reload" />
+
+            @* ── Invoices ──────────────────────────────────────────────────────────────
+               Rendered ONLY when the order carries more than one invoice, which today means a
+               school enrolment order (one invoice per student). Ordinary orders keep exactly the
+               UI they had — a single Invoice (PDF) button in the action bar and no extra card.
+
+               CustomerName is the buyer on each invoice, which for a school invoice IS the
+               individual student — so no school-specific read model is needed here. *@
+            @if (orderInvoices.Count > 1)
+            {
+                <div class="od-card" id="od-invoices">
+                    <div class="od-card__head"><span>🧾 Invoices (@orderInvoices.Count)</span></div>
+                    <div class="od-card__body">
+                        <div class="od-inv-note">
+                            This order raised <strong>@orderInvoices.Count separate tax invoices</strong> —
+                            one per student. Each is its own document with its own number and amount;
+                            together they total <strong>₹@orderInvoices.Sum(i => i.TotalAmount).ToString("N2")</strong>.
+                        </div>
+                        <div style="overflow-x:auto">
+                            <table class="od-inv-table">
+                                <thead>
+                                    <tr>
+                                        <th>Invoice No.</th><th>Date</th><th>Student / Buyer</th>
+                                        <th class="ta-r">Amount</th><th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var i in orderInvoices)
+                                    {
+                                        <tr>
+                                            <td><strong>@i.InvoiceNumber</strong></td>
+                                            <td>@i.InvoiceDate.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                            <td>@i.CustomerName</td>
+                                            <td class="ta-r">₹@i.TotalAmount.ToString("N2")</td>
+                                            <td class="ta-r" style="white-space:nowrap">
+                                                <a class="btn btn-ghost btn-xs" href="/admin/invoices/@i.Id">View</a>
+                                                <a class="btn btn-primary btn-xs" href="/api/admin/invoices/@i.Id/pdf?download=1" target="_blank">PDF</a>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
 
             @* ── Billing & contact ── *@
             <div class="od-card @(IsCollapsed("billing") ? "is-collapsed" : "")">
@@ -1207,6 +1269,10 @@ else
     };
     private bool IsCollapsed(string key) => collapsed.Contains(key);
 
+    /// <summary>Every invoice raised against this order. More than one means a school enrolment
+    /// order billing one invoice per student.</summary>
+    private List<RioCommerce.Core.DTOs.Invoices.InvoiceListItem> orderInvoices = new();
+
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
@@ -1230,6 +1296,14 @@ else
         notFound = o == null;
         if (o != null)
         {
+            // Every invoice raised against this order. Reuses the existing invoice list service
+            // and its OrderId filter — no new query, no new relationship. Returns one row for an
+            // ordinary order and one per student for a school enrolment order.
+            orderInvoices = (await Invoices.ListAsync(
+                    new RioCommerce.Core.DTOs.Invoices.InvoiceListFilter { OrderId = Id, PageSize = 200 }))
+                .OrderBy(i => i.InvoiceNumber)
+                .ToList();
+
             notes = await Svc.ListNotesAsync(Id);
             history = await Svc.GetHistoryAsync(Id);
             txns = await Txns.ListAsync(Id);
@@ -1716,3 +1790,4 @@ else
         _ => ("Not Activated", "neutral")
     };
 }
+

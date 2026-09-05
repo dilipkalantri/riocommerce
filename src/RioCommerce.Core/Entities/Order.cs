@@ -118,5 +118,26 @@ public class Order : BaseEntity
     public ICollection<OrderNote> Notes { get; set; } = new List<OrderNote>();
     public ICollection<PaymentTransaction> Transactions { get; set; } = new List<PaymentTransaction>();
     public ICollection<Refund> Refunds { get; set; } = new List<Refund>();
-    public Invoice? Invoice { get; set; }
+    /// <summary>
+    /// Invoices raised against this order. A collection, not a single reference, since a school
+    /// enrolment order raises ONE INVOICE PER STUDENT (0048). Ordinary orders still hold exactly
+    /// one live invoice — that is enforced by the partial unique index
+    /// IX_invoices_Order_Student_Active, not by the object model.
+    ///
+    /// <para>This used to be a one-to-one <c>Invoice</c> reference. EF then treated a second
+    /// invoice for the same order as SEVERING the first and nulled its OrderId, which would have
+    /// thrown on the first multi-student payment. Use <see cref="Invoice"/> below where a single
+    /// "the invoice" still makes sense.</para>
+    /// </summary>
+    public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
+
+    /// <summary>
+    /// The order's primary invoice — the live one, else whatever exists. Preserves the semantics
+    /// every existing caller had when this was a one-to-one navigation: for an ordinary order there
+    /// is at most one, so this is exactly the old value. Not mapped; read it only after the
+    /// <see cref="Invoices"/> collection has been loaded.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public Invoice? Invoice =>
+        Invoices?.FirstOrDefault(i => i.Status == Enums.InvoiceStatus.Active) ?? Invoices?.FirstOrDefault();
 }

@@ -1,4 +1,4 @@
-using RioCommerce.Infrastructure.Services.Catalog;
+﻿using RioCommerce.Infrastructure.Services.Catalog;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -34,15 +34,19 @@ public class OrderAdminService : IOrderAdminService
     /// <summary>The same sender checkout uses, so a resent confirmation is identical to the original.</summary>
     private readonly INotificationSender _sender;
     private readonly IPermissionService _perm;
+    /// <summary>Optional: supplies the configured order series. Null (as in unit tests that build
+    /// this service by hand) falls back to the original RIO- numbering.</summary>
+    private readonly ICompanySettingsService? _company;
     public OrderAdminService(RioCommerceDbContext db, IAuditService audit, IRealtimeBus bus,
         INotificationCenterService notify, IOrderCalculationService calc, INotificationService customerNotify,
         IFranchiseService franchise, IFacultySharingService facultySharing, ISerialKeyService serialKeys,
         IInvoiceService invoices, IInstallmentService installments, INotificationSender sender,
-        IPermissionService perm, ILogger<OrderAdminService> log)
+        IPermissionService perm, ILogger<OrderAdminService> log, ICompanySettingsService? company = null)
     {
         _db = db; _audit = audit; _bus = bus; _notify = notify; _calc = calc; _customerNotify = customerNotify;
         _franchise = franchise; _facultySharing = facultySharing; _serialKeys = serialKeys;
-        _invoices = invoices; _installments = installments; _sender = sender; _perm = perm; _log = log;
+        _invoices = invoices; _installments = installments; _sender = sender; _perm = perm;
+        _company = company; _log = log;
     }
 
     private const string SuperAdminOnly = "Only a Super Admin can do this.";
@@ -728,7 +732,7 @@ public class OrderAdminService : IOrderAdminService
             .Include(x => x.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Images)
             .Include(x => x.Payments)
             .Include(x => x.Franchise)
-            .Include(x => x.Invoice)
+            .Include(x => x.Invoices)
             .Include(x => x.CreatedBy)      // the staff member who raised the order
             .FirstOrDefaultAsync(x => x.Id == id);
         if (o == null) return null;
@@ -836,7 +840,7 @@ public class OrderAdminService : IOrderAdminService
             ShippingState = o.ShippingState, ShippingPincode = o.ShippingPincode,
             // Drives the frozen-state notice on the address form: an issued tax invoice fixes the
             // billing state, because it already states CGST+SGST or IGST.
-            HasInvoice = o.Invoice != null,
+            HasInvoice = o.Invoices.Any(i => i.Status == InvoiceStatus.Active),
             // Dispatch — mirrors what the dispatch board shows for this same order, including its
             // "no record yet means Pending" default.
             HasShipment = shipment != null,
@@ -864,7 +868,7 @@ public class OrderAdminService : IOrderAdminService
             CreatedByName = o.CreatedBy != null
                 ? (string.IsNullOrWhiteSpace(o.CreatedBy.FullName) ? o.CreatedBy.Email : o.CreatedBy.FullName)
                 : null,
-            IsDeleted = o.IsDeleted, InvoiceNumber = o.Invoice != null ? o.Invoice.InvoiceNumber : null,
+            IsDeleted = o.IsDeleted, InvoiceNumber = o.Invoices.Where(i => i.Status == InvoiceStatus.Active).Select(i => i.InvoiceNumber).FirstOrDefault(),
             Items = o.Items.Select(i => new OrderItemLine
             {
                 Id = i.Id, ProductId = i.ProductId, ProductTitle = i.ProductTitle, ModeName = i.ModeName,
@@ -1165,7 +1169,7 @@ public class OrderAdminService : IOrderAdminService
     // treatment that only IInvoiceService applies.
     public async Task<InvoiceView?> GetOrCreateInvoiceAsync(Guid id, Guid? actorId, string actorName)
     {
-        var o = await _db.Orders.IgnoreQueryFilters().Include(x => x.Items).Include(x => x.Invoice).Include(x => x.Franchise)
+        var o = await _db.Orders.IgnoreQueryFilters().Include(x => x.Items).Include(x => x.Invoices).Include(x => x.Franchise)
             .FirstOrDefaultAsync(x => x.Id == id);
         if (o == null) return null;
 
@@ -1174,8 +1178,10 @@ public class OrderAdminService : IOrderAdminService
         {
             await _invoices.EnsureForOrderAsync(o.Id, actorId, actorName);
             // Re-read so the view below renders the number that was actually persisted.
-            o.Invoice = await _db.Set<Invoice>()
+            // Re-read into the mapped collection — Order.Invoice is now a computed view over it.
+            var issued = await _db.Set<Invoice>()
                 .FirstOrDefaultAsync(i => i.OrderId == o.Id && i.Status == InvoiceStatus.Active);
+            if (issued != null) o.Invoices.Add(issued);
         }
 
         // Build the view from the persisted invoice if it exists, otherwise from the order
@@ -1373,14 +1379,12 @@ public class OrderAdminService : IOrderAdminService
 
     private static string Trunc(string s, int n) => s.Length <= n ? s : s[..n] + "…";
 
-    private async Task<string> GenerateOrderNumberAsync()
-    {
-        var last = await _db.Orders.IgnoreQueryFilters().Where(o => o.OrderNumber.StartsWith("RIO"))
-            .OrderByDescending(o => o.CreatedAt).FirstOrDefaultAsync();
-        var next = 1043;
-        if (last != null && int.TryParse(last.OrderNumber.Split('-').Last(), out var n)) next = n + 1;
-        return $"RIO-{next}";
-    }
+    /// <summary>IgnoreQueryFilters on purpose: a soft-deleted order still owns its number, so it
+    /// must count as taken or the next allocation would collide with it.</summary>
+    private async Task<string> GenerateOrderNumberAsync() =>
+        await OrderNumberGenerator.NextAsync(
+            _db.Orders.IgnoreQueryFilters(),
+            _company is null ? null : (await _company.GetAsync()).OrderSeries);
 
     // ═══════════════════════════════════════════════════════════════════════════
     //   V2 admin Create Order — wizard support
@@ -1752,3 +1756,6 @@ public class OrderAdminService : IOrderAdminService
         return order.Id;
     }
 }
+
+
+

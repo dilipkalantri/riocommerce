@@ -2,8 +2,10 @@
    Reuses the admin's erp-styles CSS classes so the sidebar/topbar match the admin
    look exactly. Only the menu contents and the role pill differ:
    - Principal sees Dashboard, Students, Enroll Students, Coordinators.
-   - Coordinator sees the same list minus Coordinators (that link is wrapped
-     in AuthorizeView).
+   - Coordinator sees ONLY Dashboard and Students. Enrolment is a principal action (it commits
+     the school to payment), so its link is wrapped in AuthorizeView — but the link is cosmetic:
+     /school/enrollment is [Authorize(Roles="school_principal")] and PlaceAsync refuses a
+     coordinator on its own, so typing the URL gets them nowhere either.
    The admin's collapse and mobile-drawer behaviour is preserved. *@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
@@ -61,10 +63,10 @@
             <NavLink href="/school/students" class="sidebar__link sidebar__link--top">
                 <span class="sidebar__ico">👥</span><span class="sidebar__txt">Students</span>
             </NavLink>
-            <NavLink href="/school/enrollment" class="sidebar__link sidebar__link--top">
-                <span class="sidebar__ico">📝</span><span class="sidebar__txt">Enroll Students</span>
-            </NavLink>
             <AuthorizeView Roles="school_principal" Context="pc">
+                <NavLink href="/school/enrollment" class="sidebar__link sidebar__link--top">
+                    <span class="sidebar__ico">📝</span><span class="sidebar__txt">Enroll Students</span>
+                </NavLink>
                 <NavLink href="/school/coordinators" class="sidebar__link sidebar__link--top">
                     <span class="sidebar__ico">🧑‍🏫</span><span class="sidebar__txt">Coordinators</span>
                 </NavLink>

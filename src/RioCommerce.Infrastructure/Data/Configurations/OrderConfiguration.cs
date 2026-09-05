@@ -29,7 +29,14 @@ public class OrderConfiguration : IEntityTypeConfiguration<Order>
         b.HasIndex(o => o.IsDeleted);
         b.HasOne(o => o.User).WithMany(u => u.Orders).HasForeignKey(o => o.UserId);
         b.HasOne(o => o.Franchise).WithMany(f => f.Orders).HasForeignKey(o => o.FranchiseId);
-        b.HasOne(o => o.Invoice).WithOne(i => i.Order).HasForeignKey<Invoice>(i => i.OrderId);
+        // One-to-MANY since 0048: a school enrolment order carries one invoice per student.
+        // As a one-to-one, EF severed the first invoice's OrderId the moment a second was added
+        // for the same order — the feature could not have worked at runtime. Uniqueness for
+        // ordinary orders is still absolute, enforced by IX_invoices_Order_Student_Active.
+        b.HasMany(o => o.Invoices)
+            .WithOne(i => i.Order!)
+            .HasForeignKey(i => i.OrderId)
+            .OnDelete(DeleteBehavior.Restrict);
         b.HasMany(o => o.Notes).WithOne(n => n.Order).HasForeignKey(n => n.OrderId).OnDelete(DeleteBehavior.Cascade);
         // Soft delete: deleted orders are invisible everywhere unless IgnoreQueryFilters() is used.
         b.HasQueryFilter(o => !o.IsDeleted);

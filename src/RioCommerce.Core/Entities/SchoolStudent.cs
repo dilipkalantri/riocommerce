@@ -23,6 +23,13 @@ public class SchoolStudent : BaseEntity
     public Guid? AcademicYearId { get; set; }
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// The staff member (Principal or Coordinator) who added this student. Drives the coordinator
+    /// dashboard's "students you added" figure. NULL for rows created before 0050 — that history
+    /// was never recorded, so it is attributed to nobody rather than guessed.
+    /// </summary>
+    public Guid? AddedByUserId { get; set; }
+
     public School School { get; set; } = null!;
     public User User { get; set; } = null!;
 }

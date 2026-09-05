@@ -30,6 +30,17 @@ public class Invoice : BaseEntity
     // ── Order linkage ──
     public Guid OrderId { get; set; }
     public Order? Order { get; set; }
+
+    /// <summary>
+    /// The individual student this invoice bills, for school-enrolment orders where one payment
+    /// covers several students and each gets their own tax invoice (0048).
+    ///
+    /// <para>NULL on every ordinary invoice — those are billed to the order's buyer and behave
+    /// exactly as before. The partial unique index keys on (OrderId, COALESCE(StudentUserId,
+    /// sentinel)) so an ordinary order still allows only ONE live invoice, while a school order
+    /// allows one per student.</para>
+    /// </summary>
+    public Guid? StudentUserId { get; set; }
     /// <summary>Snapshot of the order number at issuance — held separately so legacy code that
     /// reads <c>Invoice.OrderNumber</c> doesn't have to traverse the navigation.</summary>
     public string OrderNumber { get; set; } = string.Empty;

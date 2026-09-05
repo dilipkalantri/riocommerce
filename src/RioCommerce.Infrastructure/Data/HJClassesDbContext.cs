@@ -145,6 +145,8 @@ public class RioCommerceDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<District> Districts => Set<District>();
     public DbSet<Taluka> Talukas => Set<Taluka>();
     public DbSet<School> Schools => Set<School>();
+    public DbSet<Board> Boards => Set<Board>();
+    public DbSet<SchoolEnrollmentStudent> SchoolEnrollmentStudents => Set<SchoolEnrollmentStudent>();
     public DbSet<SchoolUser> SchoolUsers => Set<SchoolUser>();
     public DbSet<SchoolStudent> SchoolStudents => Set<SchoolStudent>();
 
@@ -261,6 +263,29 @@ public class RioCommerceDbContext : DbContext, IDataProtectionKeyContext
         modelBuilder.Entity<State>().HasIndex(s => s.Code).IsUnique();
         modelBuilder.Entity<District>().HasIndex(d => new { d.StateId, d.Name }).IsUnique();
         modelBuilder.Entity<Taluka>().HasIndex(t => new { t.DistrictId, t.Name }).IsUnique();
+        modelBuilder.Entity<Board>().Property(b => b.Name).HasMaxLength(100).IsRequired();
+
+        // School enrolment roster (0048). One row per student per order — the unique index makes a
+        // double-submitted enrolment idempotent and guarantees one invoice per student downstream.
+        modelBuilder.Entity<SchoolEnrollmentStudent>(e =>
+        {
+            e.ToTable("SchoolEnrollmentStudents");
+            e.HasIndex(x => new { x.OrderId, x.StudentUserId }).IsUnique();
+            e.Property(x => x.UnitPrice).HasPrecision(18, 2);
+            e.HasOne(x => x.Order).WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.School).WithMany().HasForeignKey(x => x.SchoolId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.StudentUser).WithMany().HasForeignKey(x => x.StudentUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
+
+            // InvoiceId MUST be mapped, not just a bare Guid column. The FK exists in the database
+            // (0048), but EF only orders writes it knows about: without this it issued the roster
+            // UPDATE before the invoice INSERT in the same SaveChanges and PostgreSQL rejected it
+            // with 23503, rolling back every school invoice. No navigation property — the roster
+            // points at the invoice, nothing needs to walk back.
+            e.HasOne<Invoice>().WithMany()
+             .HasForeignKey(x => x.InvoiceId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
 
         // Apply all IEntityTypeConfiguration from this assembly
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RioCommerceDbContext).Assembly);

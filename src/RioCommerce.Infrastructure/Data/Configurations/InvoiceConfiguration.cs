@@ -59,11 +59,16 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.Property(i => i.Status).HasConversion<int>().HasColumnType("integer");
 
         b.HasIndex(i => i.InvoiceNumber).IsUnique();
-        // One live invoice per order. If an admin cancels, a new one can be generated.
-        b.HasIndex(i => i.OrderId)
-            .HasDatabaseName("IX_invoices_OrderId_Active")
-            .HasFilter("\"Status\" = 0")
-            .IsUnique();
+
+        // Uniqueness of the live invoice is enforced by IX_invoices_Order_Student_Active, created
+        // in 0048_school_enrollment_payment.sql. It is an EXPRESSION index —
+        //     UNIQUE ("OrderId", COALESCE("StudentUserId", <sentinel>)) WHERE "Status" = 0
+        // — which EF's HasIndex cannot model, so it is declared in SQL only. That is consistent
+        // with this repo: migration scripts own the schema, the DbContext only queries it
+        // (see README). Declaring a plain unique HasIndex here instead would be WRONG twice over:
+        // it would still block the second student's invoice, and PostgreSQL treats NULLs as
+        // distinct, so a two-column version would quietly let ordinary orders have several.
+        b.HasIndex(i => i.StudentUserId).HasDatabaseName("IX_invoices_StudentUserId");
         b.HasIndex(i => i.InvoiceDate).HasDatabaseName("IX_invoices_InvoiceDate");
 
         b.HasOne(i => i.Order)

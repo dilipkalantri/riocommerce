@@ -26,6 +26,27 @@ public class User : BaseEntity
     public string? StudentClass { get; set; }         // "5", "8", "10" …
     public string? Board { get; set; }                // CBSE | ICSE | State Board | Other
 
+    // ── Authoritative master links (0047_student_school_link_and_boards.sql).
+    //    SchoolName above is display text and is NOT unique — the imported data has
+    //    several schools sharing a name in one district — so SchoolId is the real
+    //    relationship. Both stay nullable: existing accounts, school-flow accounts and
+    //    anything whose old text could not be resolved unambiguously keep NULL rather
+    //    than a guessed FK.
+    public Guid? SchoolId { get; set; }
+    public School? School { get; set; }
+
+    /// <summary>
+    /// Taluka the student selected (0049). For a student who picked a school from the master this
+    /// duplicates Schools.TalukaId, but it is the ONLY record of the taluka for a student who chose
+    /// "Other" and typed their school name — there is no SchoolId to derive it from.
+    /// </summary>
+    public Guid? TalukaId { get; set; }
+
+    /// <summary>FK to the Boards master. The <see cref="Board"/> string above is kept as the
+    /// historical display value; there is deliberately no navigation property, because it
+    /// would collide with that property name.</summary>
+    public Guid? BoardId { get; set; }
+
     public string? Attempt { get; set; }               // target exam attempt, e.g. "Sept 2026"
     public string? AdminComment { get; set; }          // internal admin note
     public string? ReferralCode { get; set; }

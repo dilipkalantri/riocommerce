@@ -1,8 +1,10 @@
 @page "/school"
 @layout SchoolLayout
 @attribute [Authorize(Roles = "school_principal,school_coordinator")]
+@using RioCommerce.Core
 @inject ISchoolRegistrationService RegSvc
 @inject ISchoolStudentService StudentSvc
+@inject ISchoolEnrollmentService Enrollment
 @inject AuthenticationStateProvider AuthProvider
 
 <PageTitle>School Portal</PageTitle>
@@ -29,32 +31,84 @@ else
         <span style="font-family:monospace;color:var(--gray-400)">(@dash.UdiseCode)</span>
     </p>
 
-    <div class="kpi-grid">
-        <div class="kpi-card"><div class="kpi-card__label">Students</div><div class="kpi-card__value">@studentCount</div></div>
-        <div class="kpi-card"><div class="kpi-card__label">Coordinators</div><div class="kpi-card__value">@dash.CoordinatorCount</div></div>
-        <div class="kpi-card"><div class="kpi-card__label">Active Enrollments</div><div class="kpi-card__value">@dash.EnrollmentCount</div></div>
-    </div>
+    @if (isCoordinator)
+    {
+        @* A coordinator gets NO school-wide view: no payment totals, no staff count, no
+           school-wide enrolment figure. Those describe the school's business, which is the
+           principal's to see. All that is shown is this coordinator's own contribution. *@
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-card__label">Students You Added</div>
+                <div class="kpi-card__value">@myStudentCount</div>
+            </div>
+        </div>
 
-    <div style="margin:18px 0">
-        <a href="/school/students" class="btn btn-primary">Manage Students</a>
-    </div>
+        <div style="margin:18px 0;display:flex;gap:10px;flex-wrap:wrap">
+            <a href="/school/students" class="btn btn-primary">Manage Students</a>
+        </div>
+    }
+    else
+    {
+        @* Payment figures come from GetPaymentSummaryAsync, which counts persisted orders for THIS
+           school only. Amounts go through Money so the rupee symbol is defined in one place. *@
+        <div class="kpi-grid">
+            <div class="kpi-card"><div class="kpi-card__label">Total Students</div><div class="kpi-card__value">@pay.TotalStudents</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Paid Students</div><div class="kpi-card__value" style="color:#065F46">@pay.PaidStudents</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Pending Payments</div><div class="kpi-card__value" style="color:#92400E">@pay.PendingStudents</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Total Paid</div><div class="kpi-card__value">@Money.Inr(pay.TotalPaid)</div></div>
+        </div>
+
+        <div class="kpi-grid" style="margin-top:12px">
+            <div class="kpi-card"><div class="kpi-card__label">Coordinators</div><div class="kpi-card__value">@dash.CoordinatorCount</div></div>
+            <div class="kpi-card"><div class="kpi-card__label">Active Enrollments</div><div class="kpi-card__value">@dash.EnrollmentCount</div></div>
+        </div>
+
+        <div style="margin:18px 0;display:flex;gap:10px;flex-wrap:wrap">
+            <a href="/school/students" class="btn btn-primary">Manage Students</a>
+            <a href="/school/billing" class="btn btn-outline">Payment History &amp; Invoices →</a>
+        </div>
+    }
 }
 
 @code {
     private int studentCount;
+    private int myStudentCount;
     private bool loading = true;
+    private bool isCoordinator;
     private RioCommerce.Core.DTOs.School.SchoolPortalDashboard? dash;
+
+    /// <summary>Payment headline figures, counted from persisted orders for THIS school only.</summary>
+    private RioCommerce.Core.DTOs.School.SchoolPaymentSummary pay = new(0, 0, 0, 0m);
 
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthProvider.GetAuthenticationStateAsync();
+
+        // Read from the authenticated principal, not from anything the page holds. A user who is
+        // BOTH — which the data model permits — is treated as a principal, so the wider view is
+        // never taken away from someone entitled to it.
+        isCoordinator = auth.User.IsInRole("school_coordinator")
+                        && !auth.User.IsInRole("school_principal");
+
         var uid = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (uid != null && Guid.TryParse(uid, out var userId))
         {
             dash = await RegSvc.GetDashboardAsync(userId);
-            // GetDashboardAsync still reports 0 (its student count was a Phase-3 placeholder);
-            // take the real figure from the scoped student service instead.
-            studentCount = await StudentSvc.CountAsync(userId);
+
+            if (isCoordinator)
+            {
+                // Only this one figure is fetched for a coordinator. The school-wide payment
+                // summary is not merely hidden in the markup — it is never queried, so the numbers
+                // do not reach the browser at all.
+                myStudentCount = await StudentSvc.CountAddedByAsync(userId);
+            }
+            else
+            {
+                // GetDashboardAsync still reports 0 (its student count was a Phase-3 placeholder);
+                // take the real figure from the scoped student service instead.
+                studentCount = await StudentSvc.CountAsync(userId);
+                pay = await Enrollment.GetPaymentSummaryAsync(userId);
+            }
         }
         loading = false;
     }

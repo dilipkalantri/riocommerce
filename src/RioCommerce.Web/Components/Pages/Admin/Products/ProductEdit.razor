@@ -355,12 +355,21 @@ else
         <div class="pe-card__head" @onclick='() => Toggle("prices")'><span>💲 Prices</span><span class="chev">▾</span></div>
         <div class="pe-card__body">
             <div class="form-grid form-grid--3col">
-                <div class="form-group"><label class="form-label">Price (₹) <span class="required">*</span></label><input type="number" class="form-input" @bind="model.SellingPrice" /></div>
+                <div class="form-group">
+                    <label class="form-label">Student Self Registration Price (₹) <span class="required">*</span></label>
+                    <input type="number" class="form-input" @bind="model.SellingPrice" />
+                    <div class="form-hint">Charged to individually self-registered students. This is the product's standard price and is used everywhere no school tier applies.</div>
+                </div>
                 <div class="form-group"><label class="form-label">Old price / MRP (₹)</label><input type="number" class="form-input" @bind="model.Mrp" /></div>
                 <div class="form-group">
-                    <label class="form-label">School student price (₹)</label>
-                    <input type="number" step="0.01" min="0" class="form-input" @bind="model.SchoolStudentPrice" placeholder="Leave blank for no discount" />
-                    <div class="form-hint">Applied only when the buyer is on a registered school's roll. If both this and Special Price are set, the student pays whichever is lower.</div>
+                    <label class="form-label">School Registration Price (₹)</label>
+                    <input type="number" step="0.01" min="0" class="form-input" @bind="model.SchoolStudentPrice" placeholder="Leave blank for no school price" />
+                    <div class="form-hint">
+                        Charged only to buyers a school has actually enrolled — an active school roll entry,
+                        or school staff (principal / coordinator). A student who merely picked a school on the
+                        registration form does NOT qualify. Leave blank for no school price. If this and a
+                        Special Price are both set, the buyer pays whichever is lower.
+                    </div>
                 </div>
                 <div class="form-group"><label class="form-label">Product cost (₹)</label><input type="number" class="form-input" @bind="model.ProductCost" /></div>
                 <div class="form-group"><label class="form-label">GST rate (%)</label><input type="number" class="form-input" @bind="model.GstRate" /></div>

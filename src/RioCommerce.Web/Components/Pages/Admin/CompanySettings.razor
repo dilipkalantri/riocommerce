@@ -1,0 +1,276 @@
+@page "/admin/settings/company"
+@layout AdminLayout
+@attribute [Authorize(Roles = "super_admin,admin")]
+@using System.Text.RegularExpressions
+@using RioCommerce.Core.DTOs.Invoices
+@inject ICompanySettingsService Svc
+@inject AuthenticationStateProvider AuthProvider
+
+@* Company / Invoice Settings — the issuer block printed on every tax invoice.
+   Values are stored in the existing AppSettings store under company.*, read back by
+   InvoiceService through CompanySettingsService. No new table, no second settings system.
+
+   Restricted to super_admin/admin: these are the statutory identifiers on a tax document, so
+   backend_user (who may edit SMTP) is deliberately NOT allowed here. *@
+
+<PageTitle>Company / Invoice Settings — Vijaypath Admin</PageTitle>
+
+<div class="page__header">
+    <h1>Company / Invoice Settings</h1>
+</div>
+
+@if (model == null)
+{
+    <p style="color:var(--gray-400);padding:30px 0">Loading…</p>
+}
+else
+{
+    @if (savedMsg != null) { <div class="inline-alert inline-alert--ok" style="margin-bottom:14px">@savedMsg</div> }
+
+    @if (errors.Count > 0)
+    {
+        <div class="inline-alert" style="margin-bottom:14px;background:#FEF2F2;border-color:#FECACA;color:#991B1B">
+            <strong>Please correct the following:</strong>
+            <ul style="margin:6px 0 0 18px">
+                @foreach (var e in errors) { <li>@e</li> }
+            </ul>
+        </div>
+    }
+    else if (Incomplete)
+    {
+        <div class="inline-alert" style="margin-bottom:14px;background:#FFF7ED;border-color:#FED7AA;color:#9A3412">
+            ⚠️ Some fields are not yet configured. Until every field below is filled, generated invoices
+            will be missing statutory details (GSTIN, PAN or bank information).
+        </div>
+    }
+
+    <div class="account-grid">
+        <div class="form-card">
+            <div class="form-card__title">Seller Details</div>
+            <div class="form-group">
+                <label class="form-label">Company Name <span class="required">*</span></label>
+                <input class="form-input" @bind="model.Name" placeholder="India International Multiversity" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Address <span class="required">*</span></label>
+                <textarea class="form-input" rows="3" @bind="model.Address"
+                          placeholder="1A, I-SPACE, S. No.51, Off Bombay Bangalore Highway, Bavdhan Khurd, Pune 411 021"></textarea>
+                <div class="form-hint">Printed as one block under the company name on the invoice.</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">GSTIN <span class="required">*</span></label>
+                <input class="form-input" @bind="model.Gstin" placeholder="27AAATI2969N1Z2" style="text-transform:uppercase" />
+                <div class="form-hint">15 characters: 2-digit state code, 10-character PAN, entity digit, Z, checksum.</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Phone <span class="required">*</span></label>
+                <input class="form-input" @bind="model.Phone" placeholder="+91 84118 82618" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email <span class="required">*</span></label>
+                <input class="form-input" @bind="model.Email" placeholder="contact@@vijaypath.org" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">PAN <span class="required">*</span></label>
+                <input class="form-input" @bind="model.Pan" placeholder="AAATI2969N" style="text-transform:uppercase" />
+                <div class="form-hint">10 characters: five letters, four digits, one letter.</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Order Series / Prefix</label>
+                <input class="form-input" @bind="model.OrderSeries" placeholder="VJP-" />
+                <div class="form-hint">
+                    Prefix for ORDER numbers (@(PreviewOrder)01, @(PreviewOrder)02 …). Applies to every
+                    order source — storefront checkout, the admin counter and school enrolment.
+                    Leave blank to keep the existing RIO- numbering. Changing it starts the new series
+                    at 01; orders already issued keep their numbers.
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Invoice Series / Prefix <span class="required">*</span></label>
+                <input class="form-input" @bind="model.InvoiceSeries" placeholder="VP/26-27/" />
+                <div class="form-hint">
+                    Prefix only — the running number is added automatically and increments per invoice
+                    (@(PreviewSeries)1, @(PreviewSeries)2, @(PreviewSeries)3 …). You cannot type a full
+                    invoice number. Changing the series later starts the new one at 1 and leaves every
+                    already-issued number exactly as it was.
+                </div>
+            </div>
+        </div>
+
+        <div class="form-card">
+            <div class="form-card__title">Bank Details</div>
+            <div class="form-group">
+                <label class="form-label">Account Holder Name <span class="required">*</span></label>
+                <input class="form-input" @bind="model.BankAccountName" placeholder="India International Multiversity" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Bank Name <span class="required">*</span></label>
+                <input class="form-input" @bind="model.BankName" placeholder="HDFC Bank" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Account Number <span class="required">*</span></label>
+                <input class="form-input" @bind="model.BankAccountNumber" placeholder="50200041362036" autocomplete="off" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">IFSC Code <span class="required">*</span></label>
+                <input class="form-input" @bind="model.BankIfsc" placeholder="HDFC0002690" style="text-transform:uppercase" />
+                <div class="form-hint">11 characters: four letters, 0, then six alphanumerics.</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Branch <span class="required">*</span></label>
+                <input class="form-input" @bind="model.BankBranch" placeholder="Bavdhan" />
+            </div>
+            <div class="form-hint" style="margin-top:10px">
+                These appear in the “Company's Bank Details” block on the invoice. They are read at
+                render time, so correcting them here fixes future reprints of existing invoices too —
+                no invoice amount is affected.
+            </div>
+        </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:4px">
+        <button class="btn btn-primary" disabled="@saving" @onclick="Save">
+            @(saving ? "Saving…" : "Save Company Settings")
+        </button>
+        <a href="/admin/invoices" class="btn btn-outline">Invoices →</a>
+    </div>
+}
+
+@code {
+    private CompanyProfile? model;
+    private bool saving;
+    private string? savedMsg;
+    private List<string> errors = new();
+
+    // Statutory formats. Deliberately the standard shapes only — nothing stricter, so a legitimate
+    // value is never rejected for cosmetic reasons.
+    private static readonly Regex GstinRx = new(@"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$", RegexOptions.Compiled);
+    private static readonly Regex PanRx = new(@"^[A-Z]{5}[0-9]{4}[A-Z]$", RegexOptions.Compiled);
+    private static readonly Regex IfscRx = new(@"^[A-Z]{4}0[A-Z0-9]{6}$", RegexOptions.Compiled);
+
+    // Letters, digits and the separators used in real series (VP/26-27/, VP-2627-, INV_). No
+    // spaces: an invoice number is quoted in payment references and file names.
+    private static readonly Regex SeriesRx = new(@"^[A-Za-z0-9/_.\-]{1,24}$", RegexOptions.Compiled);
+
+    private bool Incomplete => model is not null && Missing(model).Count > 0;
+
+    /// <summary>Live example shown in the hint, so the admin sees the shape before saving.</summary>
+    private string PreviewSeries =>
+        string.IsNullOrWhiteSpace(model?.InvoiceSeries) ? "VP/26-27/" : model!.InvoiceSeries!.Trim();
+
+    /// <summary>Live example for the order-series hint; RIO- is what applies when left blank.</summary>
+    private string PreviewOrder =>
+        string.IsNullOrWhiteSpace(model?.OrderSeries) ? "RIO-" : model!.OrderSeries!.Trim();
+
+    protected override async Task OnInitializedAsync() => model = await Svc.GetAsync();
+
+    private static List<string> Missing(CompanyProfile m)
+    {
+        var missing = new List<string>();
+        void Need(string? v, string label) { if (string.IsNullOrWhiteSpace(v)) missing.Add(label); }
+        Need(m.Name, "Company Name");
+        Need(m.Address, "Address");
+        Need(m.Gstin, "GSTIN");
+        Need(m.Phone, "Phone");
+        Need(m.Email, "Email");
+        Need(m.Pan, "PAN");
+        Need(m.BankName, "Bank Name");
+        Need(m.BankAccountName, "Account Holder Name");
+        Need(m.BankAccountNumber, "Account Number");
+        Need(m.BankIfsc, "IFSC Code");
+        Need(m.BankBranch, "Branch");
+        Need(m.InvoiceSeries, "Invoice Series / Prefix");
+        return missing;
+    }
+
+    private async Task Save()
+    {
+        if (model == null) return;
+        savedMsg = null;
+        errors = Validate(model);
+        if (errors.Count > 0) return;
+
+        saving = true;
+        try
+        {
+            // Actor is recorded so the write lands in SettingHistory / the audit log with a name
+            // rather than "system" — these are statutory values and changes must be attributable.
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            var user = auth.User;
+            var idClaim = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            Guid? actorId = Guid.TryParse(idClaim, out var g) ? g : null;
+            var actorName = user.Identity?.Name ?? "admin";
+
+            await Svc.SaveAsync(model, actorId, actorName);
+            model = await Svc.GetAsync();   // read back so the form shows the normalised values
+            savedMsg = "Company / invoice settings saved.";
+        }
+        finally { saving = false; }
+    }
+
+    private static List<string> Validate(CompanyProfile m)
+    {
+        var errs = Missing(m).Select(f => $"{f} is required.").ToList();
+
+        var gstin = m.Gstin?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(gstin) && !GstinRx.IsMatch(gstin))
+            errs.Add("GSTIN must be 15 characters, e.g. 27AAATI2969N1Z2.");
+
+        var pan = m.Pan?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(pan) && !PanRx.IsMatch(pan))
+            errs.Add("PAN must be 10 characters, e.g. AAATI2969N.");
+
+        var ifsc = m.BankIfsc?.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(ifsc) && !IfscRx.IsMatch(ifsc))
+            errs.Add("IFSC must be 11 characters, e.g. HDFC0002690.");
+
+        // GSTIN embeds the holder's PAN at positions 3–12. When both are supplied they must agree —
+        // a mismatch means one of them was mistyped, and both are printed on the tax invoice.
+        if (gstin is { Length: 15 } && pan is { Length: 10 } && gstin.Substring(2, 10) != pan)
+            errs.Add("GSTIN and PAN do not match — characters 3–12 of the GSTIN are the PAN.");
+
+        var email = m.Email?.Trim();
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            // Parse rather than regex-match: accepts every legitimate address shape without the
+            // false rejections a hand-rolled pattern produces.
+            var ok = System.Net.Mail.MailAddress.TryCreate(email, out var parsed)
+                     && parsed!.Host.Contains('.');
+            if (!ok) errs.Add("Email is not a valid address.");
+        }
+
+        // Phone: count digits only, so +91, spaces, hyphens and brackets are all accepted.
+        var digits = new string((m.Phone ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length > 0 && (digits.Length < 8 || digits.Length > 15))
+            errs.Add("Phone must contain between 8 and 15 digits (country code optional).");
+
+        var series = (m.InvoiceSeries ?? "").Trim();
+        if (series.Length > 0)
+        {
+            if (!SeriesRx.IsMatch(series))
+                errs.Add("Invoice Series may use letters, digits and / - _ . only (no spaces), up to 24 characters.");
+
+            // A series ending in a digit runs straight into the sequence number: "VP26" + 1 reads
+            // as "VP261", which is ambiguous to anyone reading the invoice and can collide with a
+            // differently-split series. Requiring a separator keeps every number unambiguous.
+            else if (char.IsDigit(series[^1]))
+                errs.Add("Invoice Series must not end with a digit — end it with a separator, e.g. VP/26-27/ or VP-2627-.");
+        }
+
+        // Optional — blank keeps RIO- — but if supplied it must be a usable prefix.
+        var order = (m.OrderSeries ?? "").Trim();
+        if (order.Length > 0)
+        {
+            if (!SeriesRx.IsMatch(order))
+                errs.Add("Order Series may use letters, digits and / - _ . only (no spaces), up to 24 characters.");
+            else if (char.IsDigit(order[^1]))
+                errs.Add("Order Series must not end with a digit — end it with a separator, e.g. VJP-.");
+        }
+
+        var acct = (m.BankAccountNumber ?? "").Trim();
+        if (acct.Length > 0 && (acct.Length < 5 || acct.Length > 20 || !acct.All(char.IsLetterOrDigit)))
+            errs.Add("Account Number must be 5–20 letters or digits.");
+
+        return errs;
+    }
+}

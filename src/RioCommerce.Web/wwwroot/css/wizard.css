@@ -61,7 +61,10 @@
     .sr-link { background:none; border:0; color:var(--orange); font-weight:700; cursor:pointer; font-size:13.5px; }
     .sr-link:disabled { opacity:.5; cursor:not-allowed; }
 
-    @@media (max-width:480px) {
+    /* Was `@@media` — a leftover from when this block lived inside a Razor <style> tag, where
+       `@@` escapes to a literal `@`. In a plain .css file that is an unknown at-rule, so the
+       browser dropped the whole block and these phone rules never applied. */
+    @media (max-width:480px) {
         .sr-card { padding:20px 16px; }
         .sr-step__label { font-size:10px; }
         .sr-step__line { width:24px; }
@@ -75,6 +78,9 @@
 .sr-field { display:flex; flex-direction:column; gap:6px; text-align:left; }
 .sr-field__label { font-size:12.5px; font-weight:700; color:var(--gray-600); }
 .sr-field__label .req { color:var(--orange); }
+/* Deliberately quiet — it marks the ABSENCE of a requirement, so it must not compete with the
+   orange asterisk that marks a real one. */
+.sr-field__opt { color:var(--gray-400,#9ca3af); font-weight:500; font-size:11.5px; }
 /* ── Action row ───────────────────────────────────────────────────────────────
    There used to be TWO .sr-actions definitions in this file: an earlier one that
    set flex-direction:column, and this one, which assumed a row but never declared
@@ -106,4 +112,187 @@
        does not apply here, so no override is needed. */
     .sr-step__label { display:none; }
     .sr-step__line { width:22px; margin-bottom:0; }
+}
+
+/* ── Searchable school picker (.sr-combo) ─────────────────────────────────────
+   Used by /student/register for the School field. A native <select> is not an
+   option: one district holds thousands of imported schools, so the list is
+   fetched from the server per keystroke and rendered here.
+
+   Colour note: --navy is re-pointed to the Vijaypath purple (#5d38de) by the
+   brand stylesheet, so var(--navy,#5d38de) is the purple in the mock. */
+.sr-combo { position:relative; }
+/* Lifted above the click-catcher (z-index 30) — otherwise the backdrop covers the
+   textbox while the panel is open and the user cannot click back in to edit. */
+.sr-combo__input { width:100%; padding-right:36px; position:relative; z-index:40; }
+/* Machine-readable-ish: school names are already upper-case in the import, and the
+   site-wide .rc-app{capitalize} would fight the UDISE digits in the meta line. */
+.sr-combo__input, .sr-combo__opt { text-transform:none; }
+.sr-combo__input:disabled { background:var(--gray-50,#f9fafb); cursor:not-allowed; }
+
+/* Below the panel (z-index 40) so option clicks reach the option, not the catcher. */
+.sr-combo__backdrop { position:fixed; inset:0; z-index:30; }
+
+.sr-combo__ok { position:absolute; right:12px; top:50%; transform:translateY(-50%);
+    color:#16a34a; display:grid; place-items:center; pointer-events:none; }
+
+.sr-combo__panel { position:absolute; z-index:40; left:0; right:0; top:calc(100% + 6px);
+    background:#fff; border:1px solid var(--gray-200,#e5e7eb); border-radius:14px;
+    box-shadow:0 20px 44px -18px rgba(16,42,67,.45); overflow:hidden; text-align:left;
+    animation:sr-combo-in .14s ease-out; }
+@keyframes sr-combo-in { from { opacity:0; transform:translateY(-4px) } to { opacity:1; transform:none } }
+@media (prefers-reduced-motion:reduce) { .sr-combo__panel { animation:none; } }
+
+.sr-combo__list { max-height:270px; overflow-y:auto; overscroll-behavior:contain; }
+.sr-combo__opt { display:flex; flex-direction:column; gap:2px; width:100%; padding:9px 13px;
+    background:none; border:0; border-bottom:1px solid var(--gray-100,#f0f2f5);
+    text-align:left; cursor:pointer; font-family:inherit; }
+.sr-combo__opt:last-child { border-bottom:0; }
+.sr-combo__opt:hover, .sr-combo__opt--on { background:rgba(93,56,222,.07); }
+.sr-combo__name { font-size:13.5px; font-weight:700; color:var(--navy,#5d38de); line-height:1.35; }
+.sr-combo__meta { font-size:11.5px; color:var(--gray-500,#6b7280); }
+
+/* Always the last row of the panel, visually separated so it reads as an escape hatch
+   rather than another school. */
+.sr-combo__other { display:block; width:100%; padding:11px 13px; text-align:left;
+    background:var(--gray-50,#f9fafb); border:0; border-top:1px solid var(--gray-200,#e5e7eb);
+    color:var(--navy,#5d38de); font-size:12.5px; font-weight:700; font-family:inherit; cursor:pointer; }
+.sr-combo__other:hover { background:rgba(93,56,222,.08); }
+
+.sr-combo__msg, .sr-combo__more { padding:11px 13px; font-size:12.5px; color:var(--gray-500,#6b7280); }
+.sr-combo__more { border-top:1px solid var(--gray-100,#f0f2f5); background:var(--gray-50,#f9fafb); }
+
+.sr-combo__empty { display:flex; flex-direction:column; gap:4px; padding:14px 13px; }
+.sr-combo__empty strong { font-size:13.5px; color:var(--navy,#5d38de); }
+.sr-combo__empty span { font-size:12.5px; color:var(--gray-500,#6b7280); line-height:1.5; }
+.sr-combo__help { align-self:flex-start; margin-top:6px; padding:7px 13px; border-radius:999px;
+    background:rgba(93,56,222,.08); border:1px solid rgba(93,56,222,.2);
+    color:var(--navy,#5d38de); font-size:12px; font-weight:700; font-family:inherit; cursor:pointer; }
+.sr-combo__help:hover { background:rgba(93,56,222,.14); }
+
+/* Small helper line under a field (class range, empty-district warning). */
+.sr-hint { display:block; margin-top:5px; font-size:11.5px; line-height:1.5; color:var(--gray-500,#6b7280); }
+.sr-hint--warn { color:#b45309; }
+.sr-hint__link { padding:0 0 0 2px; background:none; border:0; font-family:inherit; font-size:11.5px;
+    font-weight:700; color:var(--navy,#5d38de); text-decoration:underline; cursor:pointer; }
+
+@media (max-width:560px) {
+    .sr-combo__list { max-height:220px; }
+    .sr-combo__name { font-size:13px; }
+}
+
+/* ── Support popup ────────────────────────────────────────────────────────────
+   "UDISE code not found? Get help" on step 1 of /school/register, plus the modal
+   it opens. Purely additive: nothing here restyles the stepper, the Find School
+   button or .sr-back.
+
+   Colour note: --navy is re-pointed to the Vijaypath purple (#5d38de) by the
+   brand stylesheet — same trick header-premium.css uses — so var(--navy,#5d38de)
+   is the purple in the mock, not a blue. Fallbacks are spelled out so the modal
+   still lands on-brand if it is ever rendered outside the themed shell. */
+.sr-help-link { display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    margin:10px auto 0; padding:7px 14px; background:rgba(93,56,222,.07);
+    border:1px solid rgba(93,56,222,.18); border-radius:999px;
+    color:var(--navy,#5d38de); font-size:12.5px; font-weight:700; line-height:1.3;
+    font-family:inherit; cursor:pointer; transition:background .15s, border-color .15s; }
+.sr-help-link:hover { background:rgba(93,56,222,.12); border-color:rgba(93,56,222,.32); }
+.sr-help-link:focus-visible { outline:2px solid var(--navy,#5d38de); outline-offset:2px; }
+.sr-help-link svg { flex:0 0 auto; }
+
+/* z-index must clear .site-topbar (99999 in app.css) and the floating chat FAB
+   (1200 in home-premium.css). At 1200 the sticky header painted OVER the modal
+   and cut the title in half on phones. */
+.sr-help-overlay { position:fixed; inset:0; z-index:100000; display:flex; align-items:flex-start;
+    justify-content:center; padding:16px; background:rgba(16,42,67,.55);
+    -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px);
+    animation:sr-help-fade .16s ease-out; overflow-y:auto; overscroll-behavior:contain; }
+/* margin:auto (not align-items:center) does the centring. A flex item centred by
+   align-items overflows EQUALLY in both directions once it is taller than the
+   line, and the overflow above the container is unreachable by scrolling — that
+   is what hid the heading. auto margins centre only the leftover space, so the
+   top edge always stays scrollable.
+   The modal is also a column flexbox capped to the viewport: header and subtitle
+   are fixed, the option list scrolls, so the title can never be pushed off. */
+.sr-help-modal { position:relative; width:100%; max-width:440px; margin:auto; background:#fff;
+    border-radius:18px; padding:28px 24px 24px; text-align:center;
+    max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px);
+    display:flex; flex-direction:column;
+    box-shadow:0 24px 64px -20px rgba(16,42,67,.45); animation:sr-help-pop .18s ease-out; }
+
+.sr-help-close { position:absolute; top:12px; right:12px; width:34px; height:34px;
+    display:flex; align-items:center; justify-content:center; padding:0;
+    background:var(--gray-50,#f9fafb); border:1px solid var(--gray-200,#e5e7eb);
+    border-radius:50%; color:var(--gray-500,#6b7280); cursor:pointer;
+    transition:background .15s, color .15s; }
+.sr-help-close:hover { background:var(--gray-100,#f0f2f5); color:var(--navy,#5d38de); }
+.sr-help-close:focus-visible { outline:2px solid var(--navy,#5d38de); outline-offset:2px; }
+
+.sr-help-title { flex:0 0 auto; font-size:19px; font-weight:800; color:var(--navy,#5d38de);
+    margin:0 28px 6px; line-height:1.35; }
+.sr-help-sub { flex:0 0 auto; font-size:13.5px; line-height:1.6; color:var(--gray-500,#6b7280); margin:0 0 20px; }
+
+/* min-height:0 is required — a flex child defaults to min-height:auto, which
+   refuses to shrink below its content and would make the MODAL scroll (title and
+   all) instead of just this list. */
+.sr-help-list { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+    display:flex; flex-direction:column; gap:10px; padding:2px; margin:-2px; }
+.sr-help-item { display:flex; align-items:center; gap:12px; text-align:left; padding:12px;
+    background:var(--gray-50,#f9fafb); border:1px solid var(--gray-200,#e5e7eb);
+    border-radius:14px; transition:border-color .15s, background .15s; }
+.sr-help-item:hover { background:#fff; border-color:rgba(93,56,222,.28); }
+
+.sr-help-ico { flex:0 0 auto; width:40px; height:40px; border-radius:11px;
+    display:flex; align-items:center; justify-content:center; }
+.sr-help-ico--call { background:rgba(93,56,222,.1); color:var(--navy,#5d38de); }
+.sr-help-ico--mail { background:rgba(232,114,42,.12); color:var(--orange,#e8722a); }
+.sr-help-ico--wa   { background:rgba(37,211,102,.14); color:#1da851; }
+
+.sr-help-text { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.sr-help-label { font-size:12px; font-weight:700; color:var(--gray-500,#6b7280);
+    text-transform:uppercase; letter-spacing:.4px; }
+/* text-transform:none opts out of the site-wide .rc-app{capitalize} rule, which
+   was rendering the address as "Contact@Vijaypath.Org". Same reasoning as the
+   a[href^="mailto:"] opt-out in home-premium.css — machine-readable strings must
+   display verbatim; this value is a <span>, so it was not covered there.
+   Long addresses wrap instead of pushing the CTA off the card on narrow phones. */
+.sr-help-value { font-size:14px; font-weight:700; color:var(--navy,#5d38de);
+    text-transform:none; overflow-wrap:anywhere; }
+
+.sr-help-cta { flex:0 0 auto; padding:9px 15px; border-radius:10px;
+    background:#fff; border:1.5px solid var(--navy,#5d38de); color:var(--navy,#5d38de);
+    font-size:12.5px; font-weight:700; line-height:1.2; white-space:nowrap;
+    text-decoration:none; transition:background .15s, color .15s; }
+.sr-help-cta:hover { background:var(--navy,#5d38de); color:#fff; }
+.sr-help-cta:focus-visible { outline:2px solid var(--navy,#5d38de); outline-offset:2px; }
+
+@keyframes sr-help-fade { from { opacity:0 } to { opacity:1 } }
+@keyframes sr-help-pop { from { opacity:0; transform:translateY(10px) scale(.98) } to { opacity:1; transform:none } }
+
+@media (prefers-reduced-motion:reduce) {
+    .sr-help-overlay, .sr-help-modal { animation:none; }
+}
+
+/* Phones: keep each option on ONE row and shrink it instead of stacking the CTA
+   full-width. Stacking added ~40px per option, which is what made the card taller
+   than the screen in the first place. */
+@media (max-width:460px) {
+    .sr-help-overlay { padding:12px; }
+    .sr-help-modal { padding:22px 14px 16px; border-radius:16px;
+        max-height:calc(100vh - 24px); max-height:calc(100dvh - 24px); }
+    .sr-help-close { top:10px; right:10px; width:30px; height:30px; }
+    .sr-help-title { font-size:16.5px; margin:0 30px 5px; }
+    .sr-help-sub { font-size:12.5px; margin-bottom:14px; }
+    .sr-help-list { gap:8px; }
+    .sr-help-item { gap:10px; padding:10px; border-radius:12px; }
+    .sr-help-ico { width:34px; height:34px; border-radius:9px; }
+    .sr-help-ico svg { width:17px; height:17px; }
+    .sr-help-label { font-size:10.5px; letter-spacing:.3px; }
+    .sr-help-value { font-size:12.5px; }
+    .sr-help-cta { padding:8px 11px; font-size:11.5px; border-radius:9px; }
+}
+
+/* Only on genuinely tiny screens is there no room for a row. */
+@media (max-width:339px) {
+    .sr-help-item { flex-wrap:wrap; }
+    .sr-help-cta { width:100%; text-align:center; }
 }

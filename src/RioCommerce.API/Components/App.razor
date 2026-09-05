@@ -462,7 +462,9 @@
                     amount: handoff.amount,
                     currency: handoff.currency || 'INR',
                     order_id: handoff.orderId,
-                    name: 'RioCommerce',
+                    // Merchant name shown in the Razorpay checkout sheet. Display only — it does
+                    // not touch the amount, the order id, or the signature that verify() checks.
+                    name: 'Vijaypath',
                     description: 'Order ' + (handoff.orderNumber || ''),
                     image: '/_content/RioCommerce.Web.Storefront/images/vijaypath-icon-192.png',
                     prefill: prefill || {},
@@ -513,7 +515,25 @@
 
         // Shared post-popup handler: takes the popup outcome + localOrderId, runs
         // server verification on success, and redirects via window.location.replace.
-        window.rc._handlePopupOutcome = async function (outcome, localOrderId, prefill) {
+        // `routes` is OPTIONAL. Omit it (every storefront caller does) and the storefront
+        // /checkout/* pages are used exactly as before — this is purely additive. The School
+        // portal passes {cancelled, failed} so a dismissed or failed enrolment payment stays
+        // inside the School portal instead of dumping a principal on the storefront checkout.
+        //
+        // The SUCCESS redirect is never overridden here: it comes from the server's verify
+        // response, which already branches on the order itself. Only the two outcomes the browser
+        // resolves on its own — dismiss and popup failure — need a client-side route.
+        window.rc._handlePopupOutcome = async function (outcome, localOrderId, prefill, routes) {
+            const oid = encodeURIComponent(localOrderId || '');
+            const cancelledUrl = (routes && routes.cancelled)
+                ? routes.cancelled + '?order=' + oid
+                : '/checkout/payment-cancelled?o=' + oid;
+            const failedUrl = function (reason) {
+                return (routes && routes.failed)
+                    ? routes.failed + '?order=' + oid + '&r=' + encodeURIComponent(reason)
+                    : '/checkout/payment-failed?o=' + oid + '&r=' + encodeURIComponent(reason);
+            };
+
             if (outcome.outcome === 'success') {
                 console.log('[Razorpay] verifying with server…');
                 const v = await window.rc._postJson('/api/payments/razorpay/verify', {
@@ -527,18 +547,16 @@
                 if (v.body && v.body.redirectUrl) {
                     window.location.replace(v.body.redirectUrl);
                 } else {
-                    window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId || '') +
-                        '&r=' + encodeURIComponent('Verification call failed'));
+                    window.location.replace(failedUrl('Verification call failed'));
                 }
                 return;
             }
             if (outcome.outcome === 'dismissed') {
-                window.location.replace('/checkout/payment-cancelled?o=' + encodeURIComponent(localOrderId || ''));
+                window.location.replace(cancelledUrl);
                 return;
             }
             // 'failed' (Razorpay-side) or 'error' (couldn't open the popup) → failed page.
-            window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId || '') +
-                '&r=' + encodeURIComponent(outcome.reason || 'Payment failed'));
+            window.location.replace(failedUrl(outcome.reason || 'Payment failed'));
         };
 
         // PUBLIC: new-order entry point. Called from Checkout.razor's Pay button.
@@ -650,15 +668,26 @@
             }
         };
 
-        // PUBLIC: retry entry point. Called from /checkout/payment-failed and -cancelled.
-        window.rc.retryRazorpay = async function (localOrderId, prefill) {
+        // PUBLIC: retry entry point. Called from /checkout/payment-failed and -cancelled, and
+        // from the School portal (which passes `routes`).
+        //
+        // `routes` is OPTIONAL and defaults to the storefront pages — existing callers pass two
+        // arguments and behave identically. School callers pass
+        //   { cancelled: '/school/enrollment/payment-cancelled',
+        //     failed:    '/school/enrollment/payment-failed' }
+        window.rc.retryRazorpay = async function (localOrderId, prefill, routes) {
+            const oid = encodeURIComponent(localOrderId || '');
+            const failedUrl = function (reason) {
+                return (routes && routes.failed)
+                    ? routes.failed + '?order=' + oid + '&r=' + encodeURIComponent(reason)
+                    : '/checkout/payment-failed?o=' + oid + '&r=' + encodeURIComponent(reason);
+            };
             try {
                 const r = await window.rc._postJson('/api/payments/razorpay/retry-order', { localOrderId: localOrderId });
                 if (!r.ok || !r.body || !r.body.success) {
                     const reason = (r.body && r.body.error) || ('Could not retry the payment (' + r.status + ').');
                     console.error('[Razorpay] retry-order failed:', reason, r.body || r.raw);
-                    window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId) +
-                        '&r=' + encodeURIComponent(reason));
+                    window.location.replace(failedUrl(reason));
                     return;
                 }
                 const handoff = {
@@ -669,11 +698,10 @@
                     orderNumber: r.body.orderNumber
                 };
                 const outcome = await window.rc._launchRazorpay(handoff, prefill);
-                await window.rc._handlePopupOutcome(outcome, r.body.orderNumber, prefill);
+                await window.rc._handlePopupOutcome(outcome, r.body.orderNumber, prefill, routes);
             } catch (ex) {
                 console.error('[Razorpay] retryRazorpay threw', ex);
-                window.location.replace('/checkout/payment-failed?o=' + encodeURIComponent(localOrderId) +
-                    '&r=' + encodeURIComponent((ex && ex.message) || 'Unexpected error'));
+                window.location.replace(failedUrl((ex && ex.message) || 'Unexpected error'));
             }
         };
 
@@ -729,7 +757,8 @@
                     amount: opts.amount,         // already in paise from the server
                     currency: opts.currency || 'INR',
                     order_id: opts.gatewayOrderId,
-                    name: opts.name || 'RioCommerce',
+                    // Same display-only merchant name; callers may still override via opts.name.
+                    name: opts.name || 'Vijaypath',
                     description: opts.description || ('Order ' + (opts.orderNumber || '')),
                     image: opts.image || '/_content/RioCommerce.Web.Storefront/images/vijaypath-icon-192.png',
                     prefill: {

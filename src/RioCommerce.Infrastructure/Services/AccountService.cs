@@ -1,4 +1,4 @@
-using RioCommerce.Core.DTOs.Account;
+﻿using RioCommerce.Core.DTOs.Account;
 using RioCommerce.Core.Entities;
 using RioCommerce.Core.Enums;
 using RioCommerce.Core.Interfaces;
@@ -37,7 +37,7 @@ public class AccountService : IAccountService
         };
 
         var recentOrders = await _db.Orders.Where(o => o.UserId == userId)
-            .Include(o => o.Items).Include(o => o.Invoice)
+            .Include(o => o.Items).Include(o => o.Invoices)
             .OrderByDescending(o => o.CreatedAt).Take(5).ToListAsync();
         dash.RecentOrders = recentOrders.Select(ToOrderItem).ToList();
 
@@ -60,7 +60,7 @@ public class AccountService : IAccountService
     public async Task<List<MyOrderItem>> GetMyOrdersAsync(Guid userId)
     {
         var rows = await _db.Orders.Where(o => o.UserId == userId)
-            .Include(o => o.Items).Include(o => o.Invoice)
+            .Include(o => o.Items).Include(o => o.Invoices)
             .OrderByDescending(o => o.CreatedAt).ToListAsync();
         return rows.Select(ToOrderItem).ToList();
     }
@@ -153,3 +153,4 @@ public class AccountService : IAccountService
         _ => null
     };
 }
+

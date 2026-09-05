@@ -2,6 +2,9 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject IGeographyService Geo
+@inject ISchoolService Schools
+@inject IEducationMasterService Edu
+@implements IDisposable
 @using RioCommerce.Core.DTOs.Admin
 
 @* Individual student registration, as a 4-step wizard mirroring /school/register.
@@ -11,11 +14,16 @@
      • Steps 1–3 collect and validate input in component state.
      • "Create Account" POSTs to /api/student/register, which runs the server-side
        duplicate check (ICustomerDuplicateService), creates a PENDING account
-       (IsActive=false), grants the "student" role and sends ONE OTP to email + mobile
-       via IVerificationService.SendBothAsync.
+       (IsActive=false), grants the "student" role and sends ONE OTP to every channel the
+       account has via IVerificationService.SendBothAsync.
      • Step 4 then opens IN PAGE and calls the EXISTING /api/account/verify-otp and
        /api/account/resend-otp endpoints, finishing through the existing sign-in bridge.
    No second auth path, no second duplicate checker, no second OTP infrastructure.
+
+   EMAIL IS OPTIONAL. A student may register with a mobile number alone; the OTP then goes to
+   SMS only and the mobile is the login identifier (the login endpoint already accepts either).
+   The account stores Email = NULL, never "" — IX_users_Email is unique WHERE Email IS NOT NULL,
+   so blanks would collide on the second mobile-only signup while NULLs never do.
 
    Styling comes from wwwroot/css/wizard.css — the same .sr-* system /school/register uses. *@
 
@@ -67,7 +75,9 @@
                 </div>
                 <div class="sr-grid sr-grid--1" style="margin-top:12px">
                     <div class="sr-field">
-                        <label class="sr-field__label">Email <span class="req">*</span></label>
+                        @* Optional: many students have only a mobile number. The OTP then goes to
+                           SMS alone and the mobile becomes their login id. *@
+                        <label class="sr-field__label">Email <span class="sr-field__opt">(optional)</span></label>
                         <input class="form-input" type="email" @bind="email" placeholder="your@email.com" />
                     </div>
                 </div>
@@ -101,8 +111,9 @@
                     </div>
                     <div class="sr-field">
                         <label class="sr-field__label">District <span class="req">*</span></label>
-                        <select class="form-input" @bind="districtId" disabled="@(string.IsNullOrEmpty(stateId))">
-                            <option value="">@(string.IsNullOrEmpty(stateId) ? "Select a state first" : "Select District")</option>
+                        <select class="form-input" value="@districtId" @onchange="OnDistrictChanged"
+                                disabled="@(string.IsNullOrEmpty(stateId) || districtsLoading)">
+                            <option value="">@DistrictPlaceholder</option>
                             @foreach (var d in districts)
                             {
                                 <option value="@d.Id">@d.Name</option>
@@ -110,26 +121,174 @@
                         </select>
                     </div>
                     <div class="sr-field">
-                        <label class="sr-field__label">Class / Standard <span class="req">*</span></label>
-                        <select class="form-input" @bind="studentClass">
-                            <option value="">Select Class</option>
-                            @for (var c = 1; c <= 12; c++) { <option>@c</option> }
+                        @* Taluka sits between District and School. It narrows the school list, which
+                           in a district like Pune runs to thousands of rows. *@
+                        <label class="sr-field__label">Taluka <span class="req">*</span></label>
+                        <select class="form-input" value="@talukaId" @onchange="OnTalukaChanged"
+                                disabled="@(string.IsNullOrEmpty(districtId) || talukasLoading)">
+                            <option value="">@TalukaPlaceholder</option>
+                            @foreach (var t in talukas)
+                            {
+                                <option value="@t.Id">@t.Name</option>
+                            }
                         </select>
                     </div>
                     <div class="sr-field">
+                        @* The range narrows to the chosen school's LowestClass..HighestClass,
+                           which the school import already stores per row. Before a school is
+                           picked the full 1-12 is offered. *@
+                        <label class="sr-field__label">Class / Standard <span class="req">*</span></label>
+                        <select class="form-input" @bind="studentClass">
+                            <option value="">Select Class</option>
+                            @for (var c = ClassMin; c <= ClassMax; c++) { <option>@c</option> }
+                        </select>
+                        @if (selectedSchool is not null)
+                        {
+                            <span class="sr-hint">@selectedSchool.Name teaches classes @ClassMin–@ClassMax.</span>
+                        }
+                    </div>
+                    <div class="sr-field">
+                        @* Boards come from the Boards master (active rows only) — no list in
+                           this page. See 0047_student_school_link_and_boards.sql. *@
                         <label class="sr-field__label">Board <span class="req">*</span></label>
-                        <select class="form-input" @bind="board">
-                            <option value="">Select Board</option>
-                            <option>CBSE</option><option>ICSE</option>
-                            <option>State Board</option><option>Other</option>
+                        <select class="form-input" @bind="boardId" disabled="@(boards.Count == 0)">
+                            <option value="">@(boards.Count == 0 ? "Loading boards…" : "Select Board")</option>
+                            @foreach (var b in boards)
+                            {
+                                <option value="@b.Id">@b.Name</option>
+                            }
                         </select>
                     </div>
                 </div>
 
+                @* ── School: searchable, database-backed, selection-only ──
+                   The old free-text input is gone. `selectedSchool` is the single source of
+                   truth and can only ever be set from a row returned by ISchoolService, so a
+                   typed-but-unmatched name cannot reach the submit. *@
                 <div class="sr-grid sr-grid--1" style="margin-top:12px">
                     <div class="sr-field">
                         <label class="sr-field__label">School Name <span class="req">*</span></label>
-                        <input class="form-input" @bind="schoolName" placeholder="Enter your school name" />
+
+                        @* ── "Other": the student could not find their school ──────────────────
+                           The searchable selector is replaced by a plain text box. No SchoolId is
+                           sent, nothing is written to the Schools master, and the server accepts the
+                           typed name only when schoolId is absent. *@
+                        @if (otherSchool)
+                        {
+                            <input class="form-input" @bind="otherSchoolName"
+                                   placeholder="Enter your school name" maxlength="200" />
+                            <span class="sr-hint">
+                                Can't find your school in the list?
+                                <button type="button" class="sr-hint__link" @onclick="UseSchoolList">Back to school list</button>
+                            </span>
+                        }
+                        else
+                        {
+                        <div class="sr-combo @(schoolOpen ? "sr-combo--open" : "")">
+                            @* Full-screen catcher so a click anywhere outside closes the panel —
+                               and closing reverts the text to the last valid pick. It sits BELOW
+                               the panel, so option clicks land on the option. *@
+                            @if (schoolOpen)
+                            {
+                                <div class="sr-combo__backdrop" @onclick="CloseSchoolPanel"></div>
+                            }
+                            @* NEVER put a Razor comment between an element's attributes. Razor does
+                               not strip it there — it parses the comment text as an ATTRIBUTE NAME,
+                               the browser throws InvalidCharacterError on setAttribute, and the whole
+                               element silently fails to render. That is exactly how this input went
+                               invisible once before. Element-level notes belong out here.
+
+                               `disabled` is bound ONLY to "no taluka chosen" — the taluka is what
+                               LoadSchools needs, so typing before that would search nothing.
+                               Disabling it while a search is in flight would instead yank focus away
+                               mid-word; the panel's "Loading schools…" row carries that state. *@
+                            <input class="form-input sr-combo__input"
+                                   value="@schoolQuery"
+                                   @oninput="OnSchoolInput"
+                                   @onfocus="OpenSchoolPanel"
+                                   @onkeydown="OnSchoolKeyDown"
+                                   disabled="@(string.IsNullOrEmpty(talukaId))"
+                                   placeholder="@SchoolPlaceholder"
+                                   autocomplete="off" role="combobox" aria-expanded="@schoolOpen"
+                                   aria-autocomplete="list" />
+
+                            @if (selectedSchool is not null && !schoolOpen)
+                            {
+                                <span class="sr-combo__ok" aria-hidden="true">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5" /></svg>
+                                </span>
+                            }
+
+                            @if (schoolOpen)
+                            {
+                                <div class="sr-combo__panel" role="listbox"
+                                     @onmousedown:preventDefault="true" @onmousedown:stopPropagation="true">
+                                    @if (schoolsLoading)
+                                    {
+                                        <div class="sr-combo__msg">Loading schools…</div>
+                                    }
+                                    else if (schoolResults.Count == 0)
+                                    {
+                                        @* Two different dead ends, two different messages — telling a
+                                           student "no schools in this taluka" when their spelling was
+                                           simply wrong would send them to support for nothing. *@
+                                        @if (!talukaHasSchools)
+                                        {
+                                            <div class="sr-combo__empty">
+                                                <strong>No schools listed for @CurrentTalukaName yet.</strong>
+                                                <span>Choose “Other” below and type your school's name, or contact us.</span>
+                                                <button type="button" class="sr-combo__help" @onclick="OpenHelp">Contact support</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="sr-combo__empty">
+                                                <strong>No school in @CurrentTalukaName matches “@schoolQuery”.</strong>
+                                                <span>Try a shorter name, or search by UDISE code or village.</span>
+                                                <button type="button" class="sr-combo__help" @onclick="OpenHelp">Can't find your school?</button>
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="sr-combo__list">
+                                            @foreach (var (opt, i) in schoolResults.Select((o, i) => (o, i)))
+                                            {
+                                                var idx = i;
+                                                <button type="button" role="option" aria-selected="@(idx == highlight)"
+                                                        class="sr-combo__opt @(idx == highlight ? "sr-combo__opt--on" : "")"
+                                                        @onclick="() => SelectSchool(opt)">
+                                                    <span class="sr-combo__name">@opt.Name</span>
+                                                    <span class="sr-combo__meta">
+                                                        @(string.IsNullOrWhiteSpace(opt.CityOrVillage) ? "" : opt.CityOrVillage + " · ")UDISE @opt.UdiseCode
+                                                    </span>
+                                                </button>
+                                            }
+                                        </div>
+                                        @if (schoolTotal > schoolResults.Count)
+                                        {
+                                            <div class="sr-combo__more">
+                                                Showing @schoolResults.Count of @schoolTotal — type to narrow the search.
+                                            </div>
+                                        }
+                                    }
+
+                                    @* Always the last entry, whatever the list shows. *@
+                                    <button type="button" class="sr-combo__other" @onclick="UseOtherSchool">
+                                        Other — my school is not listed
+                                    </button>
+                                </div>
+                            }
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(talukaId) && !schoolOpen && selectedSchool is null && !talukaHasSchools && !schoolsLoading)
+                        {
+                            <span class="sr-hint sr-hint--warn">
+                                No schools found for this taluka.
+                                <button type="button" class="sr-hint__link" @onclick="UseOtherSchool">Enter it manually</button>
+                            </span>
+                        }
+                        }
                     </div>
                 </div>
 
@@ -146,14 +305,16 @@
             <div class="sr-body">
                 <div class="sr-icon">🔐</div>
                 <h1>Create Your Account</h1>
-                <p class="sr-sub">Set a password. We'll send a verification code to your email and mobile.</p>
+                <p class="sr-sub">Set a password. We'll send a verification code to @ChannelWords.</p>
 
                 @* Everything collected in steps 1–2 rides along as hidden inputs, so the existing
                    /account/register endpoint receives exactly the form it already expects. *@
                 <div class="sr-grid sr-grid--1">
                     <div class="sr-field">
-                        <label class="sr-field__label">Mobile / Email</label>
-                        <input class="form-input" value="@email" readonly />
+                        @* Falls back to the mobile so this never shows an empty box: with no email
+                           the mobile IS the account's identifier, and what the student will log in with. *@
+                        <label class="sr-field__label">@(HasEmail ? "Mobile / Email" : "Mobile")</label>
+                        <input class="form-input" value="@(HasEmail ? email : phone)" readonly />
                     </div>
                     <div class="sr-field">
                         <label class="sr-field__label">Password <span class="req">*</span></label>
@@ -187,11 +348,19 @@
         @if (step == 4)
         {
             <div class="sr-body">
-                <div class="sr-icon">✉️</div>
+                <div class="sr-icon">@(HasEmail ? "✉️" : "📱")</div>
                 <h1>Verify Your Account</h1>
                 <p class="sr-sub">
-                    We've sent a 6-digit verification code to your registered email and mobile number.<br />
-                    <strong>@maskedEmail</strong> &nbsp;·&nbsp; <strong>@maskedPhone</strong>
+                    @* Never promise an email that was never sent — with no address on the account
+                       the code goes to SMS alone, and saying otherwise sends the student hunting
+                       through an inbox that will never receive it. *@
+                    We've sent a 6-digit verification code to your registered @ChannelWords.<br />
+                    @if (!string.IsNullOrEmpty(maskedEmail))
+                    {
+                        <strong>@maskedEmail</strong>
+                        <span> &nbsp;·&nbsp; </span>
+                    }
+                    <strong>@maskedPhone</strong>
                 </p>
 
                 <div class="otp-boxes">
@@ -225,6 +394,12 @@
     </div>
 </div>
 
+@* Same support popup /school/register uses — reached from the school picker when a
+   district has no imported schools, or when a search finds nothing. *@
+<SupportHelpModal Visible="showHelp" OnClose="CloseHelp"
+                  Title="Need help finding your school?"
+                  Subtitle="If your school is not listed for your district, please contact our support team." />
+
 @code {
     private int step = 1;
     private string? error;
@@ -234,13 +409,75 @@
     private DateTime? dob;
     // Step 2 — the wizard keeps the selected IDs, and resolves the NAMES on submit because
     // /api/student/register (and the users table) store State/District as plain text.
-    private string schoolName = "", studentClass = "", board = "";
-    private string stateId = "", districtId = "";
+    private string studentClass = "";
+    private string stateId = "", districtId = "", talukaId = "", boardId = "";
     private List<StateItem> states = new();
     private List<DistrictItem> districts = new();
+    private List<TalukaItem> talukas = new();
+    private List<BoardItem> boards = new();
+    private bool districtsLoading, talukasLoading;
+
+    /// <summary>True once the student chooses "Other" — the picker is swapped for a text box and
+    /// no SchoolId is sent.</summary>
+    private bool otherSchool;
+    private string otherSchoolName = "";
+
+    private string board => boards.FirstOrDefault(b => b.Id.ToString() == boardId)?.Name ?? "";
 
     private string state => states.FirstOrDefault(s => s.Id.ToString() == stateId)?.Name ?? "";
     private string district => districts.FirstOrDefault(d => d.Id.ToString() == districtId)?.Name ?? "";
+
+    // ── School picker ────────────────────────────────────────────────────────────
+    // selectedSchool is the ONLY thing that counts as a choice. schoolQuery is just what
+    // is in the textbox; it is reverted to the selected school's name whenever the panel
+    // closes, so free text can never survive as an apparent selection.
+    private const int SchoolPageSize = 40;
+    private SchoolOption? selectedSchool;
+    private string schoolQuery = "";
+    private List<SchoolOption> schoolResults = new();
+    private int schoolTotal, highlight = -1;
+    private bool schoolOpen, schoolsLoading, talukaHasSchools = true, showHelp;
+    private CancellationTokenSource? schoolCts;
+
+    // One scoped DbContext backs both injected services, and EF Core forbids two
+    // concurrent operations on it. Fast typing overlaps debounced searches, so every DB
+    // call in this component goes through this gate.
+    private readonly SemaphoreSlim dbGate = new(1, 1);
+
+    private string CurrentTalukaName =>
+        talukas.FirstOrDefault(t => t.Id.ToString() == talukaId)?.Name ?? "this taluka";
+
+    private string DistrictPlaceholder =>
+        districtsLoading ? "Loading districts…"
+        : string.IsNullOrEmpty(stateId) ? "Select a state first"
+        : "Select District";
+
+    private string TalukaPlaceholder =>
+        talukasLoading ? "Loading talukas…"
+        : string.IsNullOrEmpty(districtId) ? "Select a district first"
+        : "Select Taluka";
+
+    // Naming the taluka makes the scope of the search visible before the student types, so a
+    // school they know is in the district but not in this taluka is not a surprise.
+    private string SchoolPlaceholder =>
+        string.IsNullOrEmpty(talukaId) ? "Select a taluka first"
+        : schoolsLoading ? "Loading schools…"
+        : !talukaHasSchools ? $"No schools listed for {CurrentTalukaName}"
+        : $"Search schools in {CurrentTalukaName} by name or UDISE";
+
+    // Class range comes from the selected school's own record (set by the school import),
+    // falling back to the full 1-12 while no school is chosen.
+    private int ClassMin => selectedSchool is not null && selectedSchool.LowestClass > 0
+        ? selectedSchool.LowestClass : 1;
+
+    private int ClassMax
+    {
+        get
+        {
+            if (selectedSchool is null || selectedSchool.HighestClass <= 0) return 12;
+            return Math.Max(selectedSchool.HighestClass, ClassMin);
+        }
+    }
     // Step 3
     private string password = "", confirm = "";
     private bool busy, duplicate;
@@ -251,12 +488,25 @@
     private int cooldown;
     private System.Threading.Timer? cooldownTimer;
 
+    /// <summary>True when the student supplied an email. Drives every "email and mobile" wording,
+    /// none of which may claim a channel the account does not have.</summary>
+    private bool HasEmail => !string.IsNullOrWhiteSpace(email);
+
+    private string ChannelWords => HasEmail ? "email and mobile number" : "mobile number";
+
+    /// <summary>What verify/resend post back as the account identifier: the email when there is
+    /// one, the mobile otherwise. The server normalises a target both ways and matches either
+    /// channel's code row, so a phone identifies the signup just as well as an address.
+    /// Set from the register response so it is always the value the SERVER stored.</summary>
+    private string verifyTarget = "";
+
     private bool OtpComplete => digits.All(d => d.Length == 1 && char.IsDigit(d[0]));
     private string Code => string.Concat(digits);
 
     protected override async Task OnInitializedAsync()
     {
         states = await Geo.ListStatesAsync();
+        boards = await Edu.ListActiveBoardsAsync();
 
         // Default to Maharashtra when the master contains it, then preload its districts so the
         // dependent dropdown is usable immediately. Pune is NOT preselected - it is just one of
@@ -271,15 +521,203 @@
         }
     }
 
-    /// <summary>Changing the state ALWAYS clears the district, so a stale selection from the
-    /// previous state can never be submitted.</summary>
+    public void Dispose()
+    {
+        cooldownTimer?.Dispose();
+        schoolCts?.Cancel();
+        schoolCts?.Dispose();
+        dbGate.Dispose();
+    }
+
+    /// <summary>State → clears District, Taluka and School. Nothing from the previous state
+    /// survives, so a stale selection can never be submitted.</summary>
     private async Task OnStateChanged(ChangeEventArgs e)
     {
         stateId = e.Value?.ToString() ?? "";
         districtId = "";
-        districts = Guid.TryParse(stateId, out var sid)
-            ? await Geo.ListDistrictsAsync(sid)
-            : new();
+        talukaId = "";
+        talukas = new();
+        ResetSchool();
+
+        districts = new();
+        if (!Guid.TryParse(stateId, out var sid)) return;
+
+        districtsLoading = true;
+        try { districts = await Gated(() => Geo.ListDistrictsAsync(sid)); }
+        catch { districts = new(); }
+        finally { districtsLoading = false; }
+    }
+
+    /// <summary>District → clears Taluka and School, then loads that district's talukas.
+    /// Schools are NOT loaded yet: the list is only meaningful once a taluka is chosen.</summary>
+    private async Task OnDistrictChanged(ChangeEventArgs e)
+    {
+        districtId = e.Value?.ToString() ?? "";
+        talukaId = "";
+        ResetSchool();
+
+        talukas = new();
+        if (!Guid.TryParse(districtId, out var did)) return;
+
+        talukasLoading = true;
+        try { talukas = await Gated(() => Geo.ListTalukasAsync(did)); }
+        catch { talukas = new(); }
+        finally { talukasLoading = false; }
+    }
+
+    /// <summary>Taluka → clears the School and reloads the list for the new taluka. A school picked
+    /// under the previous taluka can never survive the change.</summary>
+    private async Task OnTalukaChanged(ChangeEventArgs e)
+    {
+        talukaId = e.Value?.ToString() ?? "";
+        ResetSchool();
+        if (!string.IsNullOrEmpty(talukaId)) await LoadSchools();
+    }
+
+    /// <summary>Switches to manual entry. Any picked school is dropped, so a stale SchoolId can
+    /// never be submitted alongside a typed name.</summary>
+    private void UseOtherSchool()
+    {
+        ResetSchool();
+        otherSchool = true;
+    }
+
+    /// <summary>Back to the searchable list; the typed name is discarded.</summary>
+    private void UseSchoolList()
+    {
+        otherSchool = false;
+        otherSchoolName = "";
+    }
+
+    /// <summary>Drops the school choice and everything derived from it. Called on every
+    /// state/district change — the reset is centralised so no path can forget a field.</summary>
+    private void ResetSchool()
+    {
+        otherSchool = false;
+        otherSchoolName = "";
+        selectedSchool = null;
+        schoolQuery = "";
+        schoolResults = new();
+        schoolTotal = 0;
+        highlight = -1;
+        schoolOpen = false;
+        talukaHasSchools = true;   // unknown until loaded; assume yes so no false warning flashes
+    }
+
+    private async Task LoadSchools(CancellationToken ct = default)
+    {
+        if (!Guid.TryParse(districtId, out var did))
+        {
+            schoolResults = new(); schoolTotal = 0; return;
+        }
+        // Taluka is required before any school is listed. Bailing out here — rather than calling
+        // with a null taluka — is what keeps a district-wide list off the screen entirely.
+        if (!Guid.TryParse(talukaId, out var tid))
+        {
+            schoolResults = new(); schoolTotal = 0; return;
+        }
+
+        schoolsLoading = true;
+        StateHasChanged();
+        try
+        {
+            var (items, total) = await Gated(() => Schools.SearchInTalukaAsync(did, tid, schoolQuery, SchoolPageSize));
+            if (ct.IsCancellationRequested) return;
+
+            schoolResults = items;
+            schoolTotal = total;
+            highlight = items.Count > 0 ? 0 : -1;
+
+            // "This district has nothing at all" is only true when an UNFILTERED search comes
+            // back empty. With a search term in play an empty result just means no match.
+            if (string.IsNullOrWhiteSpace(schoolQuery)) talukaHasSchools = total > 0;
+        }
+        catch
+        {
+            schoolResults = new(); schoolTotal = 0; highlight = -1;
+        }
+        finally
+        {
+            schoolsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenSchoolPanel()
+    {
+        // Guarded on the taluka, not the district: LoadSchools returns nothing without one, so
+        // opening earlier would show an empty panel offering only "Other".
+        if (string.IsNullOrEmpty(talukaId)) return;
+        schoolOpen = true;
+        // Re-open on an existing pick shows the whole district again rather than the one
+        // school whose name happens to be sitting in the box.
+        if (selectedSchool is not null) schoolQuery = "";
+        await LoadSchools();
+    }
+
+    /// <summary>Typing invalidates nothing yet — it only searches. The selection itself is
+    /// only ever changed by SelectSchool or by ClosePanel reverting the text.</summary>
+    private async Task OnSchoolInput(ChangeEventArgs e)
+    {
+        schoolQuery = e.Value?.ToString() ?? "";
+        schoolOpen = true;
+
+        schoolCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        schoolCts = cts;
+        try
+        {
+            await Task.Delay(250, cts.Token);   // debounce: one query per pause, not per keystroke
+            if (!cts.IsCancellationRequested) await LoadSchools(cts.Token);
+        }
+        catch (OperationCanceledException) { /* superseded by a newer keystroke */ }
+    }
+
+    private void SelectSchool(SchoolOption opt)
+    {
+        selectedSchool = opt;
+        schoolQuery = opt.Name;
+        schoolOpen = false;
+        highlight = -1;
+
+        // A class picked before the school may fall outside what this school teaches.
+        if (int.TryParse(studentClass, out var c) && (c < ClassMin || c > ClassMax))
+            studentClass = "";
+    }
+
+    /// <summary>Closing without a pick restores the last valid selection's name (or empties the
+    /// box). This is what makes a manually typed school impossible to submit.</summary>
+    private void CloseSchoolPanel()
+    {
+        schoolOpen = false;
+        highlight = -1;
+        schoolQuery = selectedSchool?.Name ?? "";
+    }
+
+    private void OnSchoolKeyDown(KeyboardEventArgs e)
+    {
+        if (!schoolOpen) return;
+        switch (e.Key)
+        {
+            case "ArrowDown": highlight = Math.Min(highlight + 1, schoolResults.Count - 1); break;
+            case "ArrowUp": highlight = Math.Max(highlight - 1, 0); break;
+            case "Enter":
+                if (highlight >= 0 && highlight < schoolResults.Count) SelectSchool(schoolResults[highlight]);
+                break;
+            case "Escape": CloseSchoolPanel(); break;
+        }
+    }
+
+    private void OpenHelp() { schoolOpen = false; showHelp = true; }
+    private void CloseHelp() => showHelp = false;
+
+    /// <summary>Serialises DB work so two overlapping searches can never hit the shared scoped
+    /// DbContext at once (EF Core throws on concurrent operations).</summary>
+    private async Task<T> Gated<T>(Func<Task<T>> work)
+    {
+        await dbGate.WaitAsync();
+        try { return await work(); }
+        finally { dbGate.Release(); }
     }
 
     /// <summary>Per-step validation. A step cannot be left until it is valid, and moving
@@ -296,8 +734,11 @@
             if (string.IsNullOrWhiteSpace(gender)) { error = "Please select your gender."; return; }
             var digits = new string(phone.Where(char.IsDigit).ToArray());
             if (digits.Length != 10) { error = "Enter a valid 10-digit mobile number."; return; }
-            if (string.IsNullOrWhiteSpace(email) || !email.Contains('@') || !email.Contains('.'))
-            { error = "Enter a valid email address."; return; }
+            // Email is optional — but a typo'd one is worse than none, because the OTP and every
+            // later notification would go nowhere. So validate the format only when it is filled in.
+            email = email.Trim();
+            if (email.Length > 0 && (!email.Contains('@') || !email.Contains('.')))
+            { error = "Enter a valid email address, or leave it blank."; return; }
             step = 2; return;
         }
 
@@ -306,11 +747,36 @@
             // Every education field is mandatory - there is no "independent student" path.
             if (string.IsNullOrEmpty(stateId)) { error = "Please select your state."; return; }
             if (string.IsNullOrEmpty(districtId)) { error = "Please select your district."; return; }
+            if (string.IsNullOrEmpty(talukaId)) { error = "Please select your taluka."; return; }
             if (string.IsNullOrWhiteSpace(studentClass)) { error = "Please select your class / standard."; return; }
-            if (string.IsNullOrWhiteSpace(board)) { error = "Please select your board."; return; }
-            // Whitespace-only is not a school name.
-            if (string.IsNullOrWhiteSpace(schoolName)) { error = "Please enter your school name."; return; }
-            schoolName = schoolName.Trim();
+            if (string.IsNullOrWhiteSpace(boardId)) { error = "Please select your board."; return; }
+            // Only a row that came back from the database counts. Text left in the search box
+            // without a pick is not a school, however complete it looks.
+            // "Other" needs a typed name instead of a picked school; everything else is identical.
+            if (otherSchool)
+            {
+                if (string.IsNullOrWhiteSpace(otherSchoolName) || otherSchoolName.Trim().Length < 3)
+                {
+                    error = "Please enter your school's name.";
+                    return;
+                }
+                otherSchoolName = otherSchoolName.Trim();
+                step = 3; return;   // no class-range check: there is no school record to read one from
+            }
+
+            if (selectedSchool is null)
+            {
+                error = talukaHasSchools
+                    ? "Please select your school from the list, or choose Other and type its name."
+                    : "No schools are listed for this taluka yet — choose Other and type your school's name.";
+                return;
+            }
+            // Belt and braces: the class must sit inside the school's own range.
+            if (int.TryParse(studentClass, out var cls) && (cls < ClassMin || cls > ClassMax))
+            {
+                error = $"{selectedSchool.Name} teaches classes {ClassMin}–{ClassMax}. Please pick a class in that range.";
+                return;
+            }
             step = 3; return;
         }
     }
@@ -339,9 +805,20 @@
                     ["password"] = password,
                     ["dob"] = dob?.ToString("yyyy-MM-dd") ?? "",
                     ["gender"] = gender,
+                    // IDs are what the endpoint validates and stores. The names ride along only
+                    // for logging/back-compat — the server re-resolves every one of them from
+                    // the ID and ignores whatever text arrives here.
+                    ["stateId"] = stateId,
+                    ["districtId"] = districtId,
+                    ["talukaId"] = talukaId,
+                    // Exactly one of these carries the school. "Other" sends no id at all, so the
+                    // server cannot mistake a typed name for a validated master row.
+                    ["schoolId"] = otherSchool ? "" : selectedSchool?.Id.ToString() ?? "",
+                    ["otherSchoolName"] = otherSchool ? otherSchoolName : "",
+                    ["boardId"] = boardId,
                     ["state"] = state,
                     ["district"] = district,
-                    ["schoolName"] = schoolName,
+                    ["schoolName"] = otherSchool ? otherSchoolName : selectedSchool?.Name ?? "",
                     ["studentClass"] = studentClass,
                     ["board"] = board,
                 });
@@ -353,8 +830,12 @@
                 return;   // stays on step 3
             }
 
-            maskedEmail = resp.maskedEmail ?? email;
+            // maskedEmail stays EMPTY when the server reports no address — it drives whether step 4
+            // shows an email line at all, so falling back to the typed value would resurrect a
+            // channel the account does not have.
+            maskedEmail = resp.maskedEmail ?? (HasEmail ? email : "");
             maskedPhone = resp.maskedPhone ?? phone;
+            verifyTarget = resp.target ?? (HasEmail ? email : phone);
             step = 4;
             StartCooldown();
         }
@@ -374,7 +855,7 @@
             // The EXISTING signup verifier: consumes the code, activates the account, and hands
             // back a one-time token for the existing sign-in bridge.
             var resp = await JS.InvokeAsync<ApiResult>("rc.postForm", "/api/account/verify-otp",
-                new Dictionary<string, string> { ["email"] = email, ["code"] = Code });
+                new Dictionary<string, string> { ["target"] = verifyTarget, ["code"] = Code });
 
             if (resp is not null && resp.success && !string.IsNullOrEmpty(resp.token))
             {
@@ -394,7 +875,7 @@
         try
         {
             var resp = await JS.InvokeAsync<ApiResult>("rc.postForm", "/api/account/resend-otp",
-                new Dictionary<string, string> { ["email"] = email });
+                new Dictionary<string, string> { ["target"] = verifyTarget });
             if (resp is null || !resp.success)
                 error = resp?.error ?? "We couldn't send the verification code. Please try again.";
             else
@@ -454,6 +935,8 @@
         public string? error { get; set; }
         public string? token { get; set; }
         public bool duplicate { get; set; }
+        /// <summary>Email or phone — whichever the server stored as the account's identifier.</summary>
+        public string? target { get; set; }
         public string? maskedEmail { get; set; }
         public string? maskedPhone { get; set; }
     }

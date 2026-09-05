@@ -15,6 +15,16 @@ public interface ISchoolStudentService
     /// <summary>The school the given user administers, or null if they administer none.</summary>
     Task<Guid?> ResolveSchoolIdAsync(Guid actingUserId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The full access scope for this user: their school PLUS the added-by restriction that applies
+    /// to a Coordinator. Null when they administer no school.
+    ///
+    /// Every query in the school module builds its predicate from this, which is what keeps
+    /// "a Coordinator sees only their own students" enforced in the database rather than the UI.
+    /// The role is read from the SchoolUsers table, never from a claim the client could influence.
+    /// </summary>
+    Task<SchoolAccessScope?> ResolveScopeAsync(Guid actingUserId, CancellationToken ct = default);
+
     /// <summary>Students of the acting user's own school. Empty when they administer none.</summary>
     Task<List<SchoolStudentListItem>> ListAsync(Guid actingUserId, string? search = null, CancellationToken ct = default);
 
@@ -35,8 +45,38 @@ public interface ISchoolStudentService
     /// <summary>Removes a student from the acting user's school. Scoped to that school.</summary>
     Task<(bool ok, string? error)> RemoveAsync(Guid actingUserId, Guid schoolStudentId, CancellationToken ct = default);
 
-    /// <summary>Live student count for the dashboard tile.</summary>
+    /// <summary>
+    /// The blank .xlsx template for the bulk import — header row plus one example line. Generated,
+    /// not shipped as a file, so the columns can never drift from what <see cref="ParseImportAsync"/>
+    /// reads.
+    /// </summary>
+    byte[] BuildImportTemplate();
+
+    /// <summary>
+    /// Parses and validates a whole workbook WITHOUT writing anything, so the caller can show the
+    /// writer exactly what will happen before committing. Duplicate detection covers both repeats
+    /// inside the file and students already on the acting user's school roll.
+    /// </summary>
+    Task<SchoolStudentImportPreview> ParseImportAsync(Guid actingUserId, Stream xlsx, CancellationToken ct = default);
+
+    /// <summary>
+    /// Commits a previewed import. Only rows the SERVER judged valid are created, each through the
+    /// existing <see cref="AddAsync"/> path — so school scoping, duplicate rules and the
+    /// AddedByUserId stamp are identical to adding a student by hand, and none of them can be
+    /// influenced by the spreadsheet.
+    /// </summary>
+    Task<SchoolStudentImportResult> ImportAsync(
+        Guid actingUserId, IReadOnlyList<SchoolStudentImportRow> rows, CancellationToken ct = default);
+
+    /// <summary>Live student count for the dashboard tile — the whole school.</summary>
     Task<int> CountAsync(Guid actingUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// How many of the school's active students THIS user added. Powers the coordinator
+    /// dashboard, which shows only the caller's own contribution rather than school-wide figures.
+    /// Students added before 0050 have no recorded creator and are counted for nobody.
+    /// </summary>
+    Task<int> CountAddedByAsync(Guid actingUserId, CancellationToken ct = default);
 
     /// <summary>
     /// True when the user is linked to a registered school in ANY capacity — a student on the

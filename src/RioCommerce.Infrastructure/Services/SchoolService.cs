@@ -42,6 +42,47 @@ public class SchoolService(RioCommerceDbContext db) : ISchoolService
             .ToListAsync();
     }
 
+    public async Task<(List<SchoolOption> Items, int Total)> SearchInTalukaAsync(
+        Guid districtId, Guid talukaId, string? search = null, int limit = 40)
+    {
+        // The taluka filter is part of the base predicate, NOT a conditional narrowing applied
+        // afterwards, so every path through this method — empty search, name search, UDISE search —
+        // is confined to the one taluka. A district-wide result is not reachable from here.
+        //
+        // TalukaId == null is deliberately NOT included. Roughly 29% of the import carries no
+        // taluka; admitting those would mean Baramati's list showed schools that are not in
+        // Baramati, which is precisely what this filter exists to prevent. They stay reachable
+        // through "Other" until the import backfills their taluka.
+        //
+        // Inactive schools are excluded: a student must not be able to enrol against a school the
+        // admin has switched off. ListAsync (admin grid) deliberately keeps them.
+        var q = _db.Schools.AsNoTracking()
+            .Where(s => s.DistrictId == districtId
+                     && s.TalukaId == talukaId
+                     && s.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            q = q.Where(s => s.Name.ToLower().Contains(term)
+                          || s.UdiseCode.Contains(term)
+                          || (s.CityOrVillage != null && s.CityOrVillage.ToLower().Contains(term)));
+        }
+
+        // Counted before Take so the caller can say "40 of 812" and prompt for a narrower
+        // search, instead of the list looking complete when it is not.
+        var total = await q.CountAsync();
+
+        var items = await q
+            .OrderBy(s => s.Name)
+            .Take(limit)
+            .Select(s => new SchoolOption(
+                s.Id, s.Name, s.UdiseCode, s.CityOrVillage, s.LowestClass, s.HighestClass))
+            .ToListAsync();
+
+        return (items, total);
+    }
+
     public async Task<SchoolEditModel?> GetAsync(Guid id)
     {
         var s = await _db.Schools.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
