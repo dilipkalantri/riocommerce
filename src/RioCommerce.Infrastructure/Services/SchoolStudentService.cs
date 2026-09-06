@@ -565,7 +565,10 @@ public class SchoolStudentService(
             {
                 var result = await AddAsync(actingUserId, new AddSchoolStudentRequest
                 {
-                    FullName = row.FullName,
+                    // A Valid row always carries a name — ParseImportAsync rejects a blank one —
+                    // but AddSchoolStudentRequest.FullName is non-nullable, so say so explicitly
+                    // rather than leaving a nullable-assignment warning standing.
+                    FullName = row.FullName ?? string.Empty,
                     Email = row.Email,               // already null (never "") when blank
                     Phone = row.Phone,
                     DateOfBirth = row.DateOfBirth,

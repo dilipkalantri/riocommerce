@@ -49,7 +49,7 @@
                 <span class="se-stat__ico se-stat__ico--green" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
                 </span>
-                <span class="se-stat__value">@selected.Count</span>
+                <span class="se-stat__value">@SelectedCount</span>
                 <span class="se-stat__label">Confirmed</span>
             </div>
             <div class="se-stat">
@@ -271,7 +271,7 @@
                 <div class="se-foot">
                     <div class="se-total">
                         <div class="se-total__row"><span>Fee per student</span><span>@(Chosen is null ? "—" : Money.Inr0(Chosen.Price))</span></div>
-                        <div class="se-total__row"><span>Students selected</span><span>@selected.Count</span></div>
+                        <div class="se-total__row"><span>Students selected</span><span>@SelectedCount</span></div>
                         <div class="se-total__row se-total__row--sum"><span>Total Payable</span><span>@Money.Inr0(TotalPayable)</span></div>
                         <p class="se-total__hint">You will be redirected to secure payment after submitting the enrollment.</p>
                     </div>
@@ -531,11 +531,41 @@
     private SchoolEnrollmentProduct? Chosen =>
         Guid.TryParse(productId, out var id) ? products.FirstOrDefault(p => p.Id == id) : null;
 
-    // Total Payable = selected course's catalogue price × students ticked. Never a literal.
-    private decimal TotalPayable => (Chosen?.Price ?? 0m) * selected.Count;
+    /// <summary>
+    /// THE single source of truth for "how many, and which, students are actually being billed".
+    ///
+    /// `selected` records every id a checkbox has ever ticked, but the only ids that may count are
+    /// ones currently on THIS list — <see cref="Pending"/>. Without that intersection, a ticked id
+    /// that stops being Pending (their payment settles, or the roster reloads after an interrupted
+    /// submit) stays in `selected` forever with nothing to remove it, and everything downstream —
+    /// the displayed count, Total Payable, and the ids actually sent to the server — silently drifts
+    /// away from what the table shows checked. That mismatch, not a duplicate id, is what produced
+    /// "2 rows checked" next to "Students selected: 4" in the screenshot this fixes: the school's
+    /// roster held 4 students, 2 of them already paid and hidden from the table, and "Select All"
+    /// (see below) had ticked all 4 — `selected.Count` doesn't know two of them are no longer
+    /// choices at all.
+    ///
+    /// Every reader — the two "selected" stats, TotalPayable, AllSelected, CanSubmit, and the ids
+    /// Submit() posts to PlaceAsync — goes through this ONE property, computed fresh each time. That
+    /// is what guarantees the four can never again disagree with each other, regardless of how
+    /// `selected` got into whatever state it is in.
+    /// </summary>
+    private List<Guid> SelectedIds
+    {
+        get
+        {
+            var pendingIds = new HashSet<Guid>(Pending.Select(p => p.UserId));
+            return selected.Where(pendingIds.Contains).ToList();
+        }
+    }
 
-    private bool AllSelected => Pending.Count > 0 && selected.Count == Pending.Count;
-    private bool CanSubmit => !saving && Chosen is not null && selected.Count > 0;
+    private int SelectedCount => SelectedIds.Count;
+
+    // Total Payable = selected course's catalogue price × students actually billable. Never a literal.
+    private decimal TotalPayable => (Chosen?.Price ?? 0m) * SelectedCount;
+
+    private bool AllSelected => Pending.Count > 0 && SelectedCount == Pending.Count;
+    private bool CanSubmit => !saving && Chosen is not null && SelectedCount > 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -552,6 +582,7 @@
                 // Without this the paid-student filter has nothing to filter ON, so students the
                 // school has already paid for stay selectable and could be charged twice.
                 payStatus = await Enrollment.GetStudentPaymentStatusesAsync(actingUserId);
+                PruneSelection();   // no-op here (selected starts empty) — see the reload path below
                 await LoadProductsAsync();
             }
         }
@@ -608,12 +639,37 @@
         error = null;
     }
 
+    /// <summary>
+    /// THE root cause of the reported bug: this used to add every id in <c>roster</c> — the whole
+    /// school roll, including students already paid for and therefore not in <see cref="Pending"/>
+    /// — while the table only ever renders and ticks <c>Pending</c> rows. A roster of 4 with 2
+    /// already paid meant Select All added 4 ids to `selected` while only 2 checkboxes existed to
+    /// show it, so "Students selected" read 4 against 2 visibly ticked rows.
+    ///
+    /// It now adds exactly the ids the checkboxes on screen represent — nothing more — so "select
+    /// every currently visible/available student exactly once" is enforced by the source, not by a
+    /// display-side correction. Ticking All twice cannot grow the count either: `selected` is a
+    /// HashSet, and Clear()-then-add from the same Pending list lands on the same ids both times.
+    /// </summary>
     private void ToggleAll(ChangeEventArgs e)
     {
         selected.Clear();
         if (e.Value is bool on && on)
-            foreach (var r in roster) selected.Add(r.UserId);
+            foreach (var r in Pending) selected.Add(r.UserId);
         error = null;
+    }
+
+    /// <summary>
+    /// Drops any id from `selected` that is no longer in <see cref="Pending"/> — called whenever
+    /// <see cref="roster"/> or <see cref="payStatus"/> is reloaded. <see cref="SelectedIds"/> already
+    /// filters these out for every display and for Submit(), so nothing is ever shown or billed
+    /// incorrectly even without this; this exists so the raw `selected` set itself stays honest
+    /// rather than quietly accumulating ids for students who are no longer choices.
+    /// </summary>
+    private void PruneSelection()
+    {
+        var pendingIds = new HashSet<Guid>(Pending.Select(p => p.UserId));
+        selected.RemoveWhere(id => !pendingIds.Contains(id));
     }
 
     private void StartAnother()
@@ -637,10 +693,14 @@
         if (!CanSubmit) return;              // guards a double-click before the disable lands
         saving = true; error = null;
 
+        // SelectedIds, not `selected` — the same currently-billable set the UI displayed and priced,
+        // so what gets submitted can never diverge from what the principal was shown before pressing
+        // this button. The service also de-duplicates independently (SchoolEnrollmentService.cs),
+        // so a tampered or replayed request is safe regardless of what this page sends.
         var res = await Enrollment.PlaceAsync(actingUserId, new PlaceSchoolEnrollmentRequest
         {
             ProductId = Chosen!.Id,
-            StudentUserIds = selected.ToList(),
+            StudentUserIds = SelectedIds,
         });
 
         if (!res.Ok)
@@ -677,6 +737,11 @@
                   + "Open it again from your orders, or try once more.";
             roster = await Students.ListAsync(actingUserId);
             payStatus = await Enrollment.GetStudentPaymentStatusesAsync(actingUserId);
+            // This is the real reload-safety case: the students just submitted are now mid-payment
+            // and have dropped out of Pending, but `selected` still holds their ids from before the
+            // click. SelectedIds would already filter them out for display, but pruning the
+            // underlying set too means a stale id is never sitting there waiting to resurface.
+            PruneSelection();
         }
     }
 }

@@ -21,7 +21,9 @@
     .pd--2col{max-width:1180px;display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,32vw,400px);gap:34px;align-items:start}
     .pd-buybox{position:sticky;top:96px;display:flex;flex-direction:column;gap:14px;background:#fff;border:1px solid var(--gray-200);border-radius:18px;padding:22px;box-shadow:0 18px 50px -26px rgba(15,23,42,.5)}
     .pd-buybox__rating{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--gray-500)}
-    .pd-buybox__cta-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+    /* One column: Add To Cart is gone, so Buy Now takes the full width of the buy box. */
+    .pd-buybox__cta-row{display:grid;grid-template-columns:1fr;gap:10px;margin-top:8px}
+    .pd-buybox__cta-row .pd-buynow{min-height:48px}
     .pd-buybox .btn{padding:13px 14px;font-weight:800;font-size:14.5px;border-radius:12px;justify-content:center;display:inline-flex;align-items:center;gap:8px}
     .pd-buybox .btn svg{width:17px;height:17px;flex:none}
     .pd-buybox .btn:disabled{opacity:.55;cursor:not-allowed;filter:grayscale(.2)}
@@ -361,13 +363,14 @@
       .pd-save{font-size:11px;padding:3px 9px;border-radius:999px}
       .product-detail__tax{font-size:11.5px;width:100%}
 
-      /* 3 ─ ADD TO CART / BUY NOW ─ sticky bottom 56px equal-width buttons */
+      /* 3 ─ BUY NOW ─ sticky bottom 56px bar. One column now that Add To Cart is gone; the old
+         `1fr 1fr` would have left the single button stranded on the left half. */
       .pd-buybox__cta-row{position:fixed;left:0;right:0;bottom:0;z-index:50;
         margin:0;padding:10px 12px calc(10px + env(safe-area-inset-bottom));
         background:rgba(255,255,255,.97);backdrop-filter:saturate(180%) blur(10px);
         border-top:1px solid var(--gray-200);
         box-shadow:0 -10px 28px -10px rgba(15,23,42,.18);
-        grid-template-columns:1fr 1fr;gap:10px}
+        grid-template-columns:1fr;gap:10px}
       .pd-buybox .pd-buybox__cta-row .btn{height:56px;padding:0;font-size:15px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;gap:6px}
       .pd-buybox__cta-row .btn svg{width:18px;height:18px}
       /* OOS box (replaces CTA when batch is unavailable) — same sticky treatment */
@@ -819,13 +822,11 @@ else
                                     @if (rc.DiscountPercent > 0)
                                     { <span class="reco-card__disc">@rc.DiscountPercent% OFF</span> }
                                 </div>
-                                <div class="reco-card__actions">
+                                @* "Quick Add" put the course straight into the cart. With no cart
+                                   in the student flow, the card sends them to the course page,
+                                   where Buy Now is the single purchase action. *@
+                                <div class="reco-card__actions reco-card__actions--single">
                                     <a href="/@rc.Slug" class="reco-card__details">View details</a>
-                                    <button type="button" class="reco-card__add"
-                                            disabled="@(recoAddingIds.Contains(rc.Id))"
-                                            @onclick="() => AddToCartReco(rc.Id)">
-                                        @(recoAddingIds.Contains(rc.Id) ? "Adding…" : "🛒 Quick Add")
-                                    </button>
                                 </div>
                             </article>
                         }
@@ -988,24 +989,17 @@ else
             }
             else
             {
-                <div class="pd-buybox__cta-row">
-                    @* Inline SVGs rather than emoji: emoji render as a different
-                       glyph on every OS (and in colour), which looked pasted-on
-                       next to the site's stroked icon set. The cart path is the
-                       same one the header uses, so the two now match exactly. *@
-                    <button class="btn btn-primary" disabled="@adding" @onclick="AddToCart">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/><path d="M2 3h2.2l2 12.4a2 2 0 0 0 2 1.6h9a2 2 0 0 0 2-1.6L22 7H5.2"/></svg>
-                        Add To Cart
-                    </button>
-                    <button class="btn btn-secondary" disabled="@adding" @onclick="BuyNow">
+                @* Vijaypath sells direct: Buy Now → Checkout → Payment. The "Add To Cart" button
+                   that stood beside this one is gone, and with it the "Added to cart · View cart"
+                   confirmation, because there is no cart for a student to view. The row keeps its
+                   class so the sticky mobile CTA bar still positions it; it now holds one button,
+                   full width. *@
+                <div class="pd-buybox__cta-row pd-buybox__cta-row--single">
+                    <button class="btn btn-primary pd-buynow" disabled="@adding" @onclick="BuyNow">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>
-                        Buy Now
+                        @(adding ? "Please wait…" : "Buy Now")
                     </button>
                 </div>
-            }
-            @if (added)
-            {
-                <div class="added-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> Added To Cart! <a href="/cart">View Cart →</a></div>
             }
 
             @if (product.Inclusions.Any())
@@ -1141,7 +1135,9 @@ else
     [Parameter] public string Slug { get; set; } = "";
 
     private ProductDetailResponse? product;
-    private bool loading = true, added, adding;
+    // `added` drove the removed "Added to cart" confirmation; `recoAddingIds` drove the removed
+    // "Quick Add" spinner on recommendation cards. Both are gone with the cart.
+    private bool loading = true, adding;
     // True when the signed-in user is a franchise account — such users order via the Franchise
     // Portal, so the customer Add To Cart / Buy Now controls are replaced with a notice.
     private bool isFranchiseUser;
@@ -1159,7 +1155,6 @@ else
 
     // Offer / Combo Recommendations (admin-curated cross-sells)
     private List<RecommendationCard>? recommendations;
-    private HashSet<Guid> recoAddingIds = new();
 
     // Attribute selection state, keyed by mapping id.
     private readonly Dictionary<Guid, Guid?> attrSingle = new();           // dropdown / radio
@@ -1352,7 +1347,6 @@ else
     protected override async Task OnParametersSetAsync()
     {
         loading = true;
-        added = false;
         galleryInit = false;
         tab = "overview";
         reviews = null;
@@ -1391,21 +1385,8 @@ else
         return Guid.TryParse(state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var g) ? g : null;
     }
 
-    private async Task AddToCartReco(Guid productId)
-    {
-        if (isFranchiseUser) { Nav.NavigateTo(FranchiseOrderUrl(productId)); return; }
-        var uid = await CurrentUserIdAsync();
-        if (uid == null) { Nav.NavigateTo("/login?returnUrl=" + Uri.EscapeDataString($"/{Slug}")); return; }
-        if (recoAddingIds.Contains(productId)) return;
-        recoAddingIds.Add(productId);
-        try
-        {
-            var (ok, _) = await Cart.AddAsync(uid.Value, productId, null);
-            // silently ignore duplicates for reco cards
-        }
-        catch { }
-        finally { recoAddingIds.Remove(productId); }
-    }
+    // AddToCartReco backed the recommendation cards' "Quick Add" button, which is gone: those
+    // cards now link to the course page, where Buy Now is the only purchase action.
 
     // Enum -> CSS variant only. Display text reads from product.BatchStatusText / rc.BatchStatusText
     // (single source of truth on the DTO — never hardcode the labels here).
@@ -1497,25 +1478,25 @@ else
         return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper() : name[..Math.Min(2, name.Length)].ToUpper();
     }
 
-    private async Task AddToCart()
-    {
-        if (product == null) return;
-        if (isFranchiseUser) { Nav.NavigateTo(CurrentFranchiseOrderUrl); return; }
-        if (!ValidateRequired()) return;
-        var state = await AuthProvider.GetAuthenticationStateAsync();
-        var id = state.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(id, out var userId))
-        {
-            Nav.NavigateTo($"/login?returnUrl=/{Slug}", forceLoad: true);
-            return;
-        }
-        adding = true;
-        var (ok, err) = await Cart.AddAsync(userId, product.Id, selectedModeId, BuildSelections(), SelectedOptionIds());
-        adding = false;
-        if (ok) { added = true; }
-        else { attrError = err; }
-    }
-
+    /// <summary>
+    /// Buy Now — the ONLY purchase action a student has. Add To Cart was removed from this page.
+    ///
+    /// The cart table is still the mechanism underneath: Cart.AddAsync writes the line and
+    /// /checkout reads it. That has NOT changed. What changed is that the cart is now a one-item
+    /// buy buffer rather than a basket the student manages, so this method REPLACES its contents
+    /// instead of adding to them.
+    ///
+    /// Why replacing matters, and why it is not optional:
+    ///   • /checkout bills every row in the cart. With no cart page left to review or empty it, a
+    ///     row left over from before this change — or one added by "Reorder" — would silently be
+    ///     charged alongside the course the student actually clicked.
+    ///   • Cart.AddAsync returns (false, "already in cart") for a duplicate. Without clearing, a
+    ///     student who pressed Buy Now, abandoned checkout, then pressed it again would hit that
+    ///     error with no way to clear the line, and could never buy that course again.
+    ///
+    /// Only existing service methods are used (GetAsync / RemoveAsync / AddAsync). No checkout,
+    /// pricing, GST, order or payment logic is touched.
+    /// </summary>
     private async Task BuyNow()
     {
         if (product == null) return;
@@ -1528,11 +1509,24 @@ else
             Nav.NavigateTo($"/login?returnUrl=/{Slug}", forceLoad: true);
             return;
         }
+
         adding = true;
-        var (ok, err) = await Cart.AddAsync(userId, product.Id, selectedModeId, BuildSelections(), SelectedOptionIds());
-        adding = false;
-        if (ok) { Nav.NavigateTo("/checkout"); }
-        else { attrError = err; }
+        try
+        {
+            // Clear anything already staged so checkout bills exactly this one course.
+            var existing = await Cart.GetAsync(userId);
+            foreach (var line in existing.Items)
+                await Cart.RemoveAsync(userId, line.Id);
+
+            var (ok, err) = await Cart.AddAsync(userId, product.Id, selectedModeId, BuildSelections(), SelectedOptionIds());
+            if (!ok) { attrError = err; return; }
+        }
+        finally
+        {
+            adding = false;
+        }
+
+        Nav.NavigateTo("/checkout");
     }
 
     // ── Book Preview ─────────────────────────────────────────────────────────

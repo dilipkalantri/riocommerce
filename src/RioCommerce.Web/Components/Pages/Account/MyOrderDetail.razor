@@ -229,10 +229,16 @@
         _            => status
     };
 
+    /// <summary>
+    /// Reorder still stages the previous order's lines through AccountService.ReorderAsync — that
+    /// service is unchanged — but it now lands on /checkout rather than /cart, because the cart is
+    /// no longer a page a student can open. Checkout shows exactly the same lines and the same
+    /// totals, so the feature works as before with one screen fewer.
+    /// </summary>
     private async Task Reorder()
     {
         reordering = true;
         await AccountSvc.ReorderAsync(userId, OrderNumber);
-        Nav.NavigateTo("/cart");
+        Nav.NavigateTo("/checkout");
     }
 }

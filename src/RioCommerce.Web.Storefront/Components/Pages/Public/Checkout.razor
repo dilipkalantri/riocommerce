@@ -1,7 +1,6 @@
 @page "/checkout"
 @implements IDisposable
 @inject ICheckoutService CheckoutSvc
-@inject IReferralService ReferralSvc
 @inject IIntegrationSettingsService IntegrationSvc
 @inject ISiteSettingsService SiteSvc
 @inject AuthenticationStateProvider AuthProvider
@@ -13,9 +12,11 @@
 
 <div class="container cart-page checkout-v2">
     <nav class="co-crumbs" aria-label="Breadcrumb">
+        @* The trail used to read Home / Cart / Checkout. Students arrive here straight from
+           Buy Now, so "Courses" is where "back" actually leads now. *@
         <a href="/">Home</a>
         <span class="co-crumbs__sep" aria-hidden="true">/</span>
-        <a href="/cart">Cart</a>
+        <a href="/courses">Courses</a>
         <span class="co-crumbs__sep" aria-hidden="true">/</span>
         <span class="co-crumbs__current" aria-current="page">Checkout</span>
     </nav>
@@ -186,7 +187,7 @@
                         }
 
                         <div class="form-actions co-actions">
-                            <a href="/cart" class="co-back">← Continue Shopping</a>
+                            <a href="/courses" class="co-back">← Continue Shopping</a>
                             <button class="co-cta" @onclick="ToReview">
                                 Proceed To Payment <span class="co-cta__arrow">→</span>
                             </button>
@@ -240,18 +241,12 @@
                                         {
                                             <div class="co-review__attrs">@item.Attributes</div>
                                         }
-                                        <div class="co-review__ed">
-                                            <div class="co-review__ed-row co-review__ed-row--orange">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                                                <span class="co-review__ed-lbl">Lecture Access</span>
-                                                <strong>@item.LectureAccessTiming</strong>
-                                            </div>
-                                            <div class="co-review__ed-row co-review__ed-row--blue">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.27 6.96 8.73 5.04 8.73-5.04"/><path d="M12 22.08V12"/></svg>
-                                                <span class="co-review__ed-lbl">Notes Dispatch</span>
-                                                <strong>@item.NotesDispatchTimeline</strong>
-                                            </div>
-                                        </div>
+                                        @* The "Lecture Access · Within 24 Hours" and "Notes Dispatch ·
+                                           Within 48 Hours" rows sat here. Removed from Review on
+                                           request — the same timings were already taken off the
+                                           product page for the same reason. The values themselves
+                                           (item.LectureAccessTiming / item.NotesDispatchTimeline)
+                                           are untouched on the DTO and still stored per product. *@
                                     </div>
                                     <div class="co-review__price">
                                         <div class="co-review__now">₹@((item.UnitPrice * item.Quantity).ToString("N0"))</div>
@@ -331,65 +326,15 @@
                         </div>
                     </div>
 
-                    @* ── Referred By (MANDATORY) — admin-managed, snapshotted onto order ── *@
-                    <div class="form-card co-card co-ref @(referralTouched && string.IsNullOrWhiteSpace(selectedReferralId) ? "co-ref--err" : "")">
-                        <div class="co-card__title">
-                            <svg class="co-card__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-                            Referred By <span class="required">*</span>
-                        </div>
-                        <p class="co-card__sub">Tell us who referred you so we can thank them.</p>
-                        @if (referralOptions == null)
-                        {
-                            <p style="color:var(--co-mute);font-size:13px">Loading options…</p>
-                        }
-                        else if (referralOptions.Count == 0)
-                        {
-                            <p style="color:var(--co-mute);font-size:13px">No referral sources configured.</p>
-                        }
-                        else
-                        {
-                            <div class="co-ref__field co-field">
-                                <span class="co-field__ico">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                                </span>
-                                <select class="form-input co-input" @bind="selectedReferralId" @bind:after="OnReferralChanged">
-                                    <option value="">Select referral source…</option>
-                                    @foreach (var opt in referralOptions)
-                                    {
-                                        <option value="@opt.Id">@opt.Name@(opt.Type != ReferralSourceType.Other && opt.Type != ReferralSourceType.Self ? " — " + TypeShort(opt.Type) : "")</option>
-                                    }
-                                </select>
-                            </div>
-                            @if (SelectedOption != null && SelectedOption.Type == ReferralSourceType.Self)
-                            {
-                                <div class="co-ref__ok">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                                    Thanks for finding us yourself.
-                                </div>
-                            }
-                            else if (SelectedOption != null && SelectedOption.Type == ReferralSourceType.Other)
-                            {
-                                <div class="co-ref__other">
-                                    <label class="co-ref__other-lbl">Please specify</label>
-                                    <input class="co-ref__other-inp" maxlength="100" placeholder="Where did you hear about us?" @bind="customReferralText" />
-                                    <div class="co-ref__other-count">@((customReferralText ?? string.Empty).Length) / 100</div>
-                                </div>
-                            }
-                            else if (SelectedOption != null)
-                            {
-                                <div class="co-ref__hint">
-                                    Picked: <strong>@SelectedOption.Name</strong> &middot; <em>@TypeShort(SelectedOption.Type)</em>
-                                </div>
-                            }
-                            @if (referralTouched && string.IsNullOrWhiteSpace(selectedReferralId))
-                            {
-                                <div class="co-ref__err">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
-                                    Please select a referral source to continue.
-                                </div>
-                            }
-                        }
-                    </div>
+                    @* The mandatory "Referred By" card stood here — heading, description, the
+                       admin-managed source dropdown, the "Other / please specify" box and the
+                       inline error. Removed on request: nothing about paying for a course should
+                       depend on naming who recommended it.
+
+                       IReferralService, the ReferralSources admin screen and the order's
+                       ReferralSourceId / ReferralCustomText columns are all untouched — the
+                       fields simply arrive null now, which they were already nullable for, so
+                       there is no migration and no change to order creation. *@
 
                     @* Payment Method now lives inside the sticky sidebar (co-rail) — directly above
                        the Pay button so users don't have to scroll back up after selecting a gateway. *@
@@ -428,13 +373,12 @@
                     </div>
                 </div>
 
-                @* ── Shared motivational nudge — title-only variant. Lives OUTSIDE the order-summary
-                      box (which has overflow:hidden) so it always renders correctly on both steps. ── *@
-                <CheckoutMotivationCard Compact="true" />
+                @* The "You are one step away from starting your preparation" nudge
+                   (CheckoutMotivationCard) sat here on every step. Removed on request; the
+                   component itself is untouched and still used by /cart. *@
 
                 @if (step == 2)
                 {
-                    var referralMissing = referralOptions != null && referralOptions.Count > 0 && string.IsNullOrWhiteSpace(selectedReferralId);
                     var busy = placing || _popupOpen;
 
                     @* ── Sidebar Payment Method — compact radio cards, visible ONLY on Step 2
@@ -470,8 +414,12 @@
                         }
                     </div>
 
+                    @* The Pay button no longer carries a locked state. It used to grey out with
+                       "Select Referred By to enable payment" until a referral source was picked;
+                       that requirement is gone, so the only thing that disables it now is the
+                       payment itself already being in flight. *@
                     <div class="co-pay-wrap">
-                        <button class="co-cta co-cta--pay @(referralMissing ? "co-cta--locked" : "") @(busy ? "co-cta--busy" : "")"
+                        <button class="co-cta co-cta--pay @(busy ? "co-cta--busy" : "")"
                                 disabled="@busy" @onclick="PlaceAndPay">
                             @if (busy)
                             {
@@ -480,18 +428,10 @@
                             }
                             else
                             {
-                                @if (referralMissing)
-                                {
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                }
                                 <span>@($"Pay ₹{summary.Total:N0}")</span>
                                 <span class="co-cta__arrow">→</span>
                             }
                         </button>
-                        @if (referralMissing)
-                        {
-                            <div class="co-cta__lockmsg">Select <strong>Referred By</strong> to enable payment.</div>
-                        }
                     </div>
                 }
 
@@ -900,27 +840,11 @@
     private int step = 1;
     private Guid userId;
     private bool isFranchisee;
-    private List<ReferralSourceOption>? referralOptions;
-    private string selectedReferralId = "";        // bound to the <select>; empty = none picked
-    private string? customReferralText;
-    private bool referralTouched;                  // true once user has attempted to proceed without picking
+    // The referral picker's state (referralOptions / selectedReferralId / customReferralText /
+    // referralTouched / SelectedOption / TypeShort) lived here. All of it went with the card —
+    // leaving the fields behind would only have produced "assigned but never used" warnings.
     private string? toast;                          // transient toast message (auto-clears)
     private int toastTick;                          // monotonic id so a newer toast cancels older auto-clear
-    private ReferralSourceOption? SelectedOption =>
-        Guid.TryParse(selectedReferralId, out var g) ? referralOptions?.FirstOrDefault(o => o.Id == g) : null;
-
-    private static string TypeShort(ReferralSourceType t) => t switch
-    {
-        ReferralSourceType.Counsellor => "Counsellor",
-        ReferralSourceType.Faculty => "Faculty",
-        ReferralSourceType.Franchise => "Franchise",
-        ReferralSourceType.Affiliate => "Affiliate",
-        ReferralSourceType.MarketingCampaign => "Campaign",
-        ReferralSourceType.Friend => "Friend",
-        ReferralSourceType.Self => "Self",
-        ReferralSourceType.Other => "Other",
-        _ => t.ToString()
-    };
     private string couponInput = "";
     private string? appliedCoupon;
     private string? affiliateCode;
@@ -966,8 +890,6 @@
                 await Reload();   // fold any pre-selected checkout-attribute adjustments into the totals
             }
         }
-        // Active referred-by options for the dropdown — non-blocking failure (the dropdown just won't render).
-        try { referralOptions = await ReferralSvc.ListActiveAsync(); } catch { referralOptions = new(); }
 
         // Which gateways the admin has enabled drives the payment-method cards.
         try
@@ -1125,12 +1047,6 @@
         step = 2;
     }
 
-    private void OnReferralChanged()
-    {
-        // First selection clears the touched-error highlight. A subsequent clear re-arms it.
-        if (!string.IsNullOrWhiteSpace(selectedReferralId)) referralTouched = false;
-    }
-
     private async Task ShowToastAsync(string message)
     {
         toast = message;
@@ -1161,13 +1077,9 @@
     {
         error = null;
 
-        // Referred By is mandatory at Step 2 — block payment and surface inline + toast feedback.
-        if (referralOptions != null && referralOptions.Count > 0 && string.IsNullOrWhiteSpace(selectedReferralId))
-        {
-            referralTouched = true;
-            _ = ShowToastAsync("Please select 'Referred By' before continuing.");
-            return;
-        }
+        // A "Referred By is mandatory" gate stood here and returned early, blocking payment until
+        // a referral source was chosen. Removed: referral is no longer part of buying a course.
+        // Everything below — order creation, gateway selection, verification — is unchanged.
 
         if (placing || _popupOpen) return;            // guard against duplicate clicks
         placing = true;
@@ -1231,9 +1143,11 @@
             PaymentMode = PaymentMode.Razorpay,
             AffiliateCode = string.IsNullOrWhiteSpace(refCode) ? null : refCode,
             CheckoutSelections = BuildCheckoutSelections(),
-            ReferralSourceId = Guid.TryParse(selectedReferralId, out var rsg) ? rsg : (Guid?)null,
-            ReferralCustomText = SelectedOption?.Type == ReferralSourceType.Other && !string.IsNullOrWhiteSpace(customReferralText)
-                ? customReferralText.Trim() : null
+            // Both stay on the request and both are nullable on the order. Nothing collects them
+            // from the student any more, so they arrive null — no schema or service change, and an
+            // admin can still set a referral on an order from the back office.
+            ReferralSourceId = null,
+            ReferralCustomText = null
         };
     }
 
