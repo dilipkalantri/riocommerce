@@ -112,21 +112,23 @@
                     <tbody>
                         @foreach (var r in rows)
                         {
+                            @* data-label feeds the mobile card layout (erp-styles.css); the first
+                               cell is the card title so it carries none. *@
                             <tr>
-                                <td><div class="ss-name">@r.FullName</div></td>
-                                <td>
+                                <td class="td-title"><div class="ss-name">@r.FullName</div></td>
+                                <td data-label="Contact">
                                     <div class="ss-sub">@(r.Email ?? "—")</div>
                                     <div class="ss-sub">@(r.Phone ?? "—")</div>
                                 </td>
-                                <td>@(string.IsNullOrWhiteSpace(r.Standard) ? "—" : r.Standard)</td>
-                                <td>@(string.IsNullOrWhiteSpace(r.Medium) ? "—" : r.Medium)</td>
-                                <td><div class="ss-sub">@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</div></td>
-                                <td>
+                                <td data-label="Standard">@(string.IsNullOrWhiteSpace(r.Standard) ? "—" : r.Standard)</td>
+                                <td data-label="Medium">@(string.IsNullOrWhiteSpace(r.Medium) ? "—" : r.Medium)</td>
+                                <td data-label="Added"><div class="ss-sub">@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</div></td>
+                                <td data-label="Status">
                                     <span class="ss-pill @(r.IsActive ? "ss-pill--ok" : "ss-pill--wait")">
                                         @(r.IsActive ? "Active" : "Disabled")
                                     </span>
                                 </td>
-                                <td>
+                                <td class="td-action">
                                     <button class="btn btn-ghost btn-sm" @onclick="() => Toggle(r.UserId)">
                                         @(r.IsActive ? "Deactivate" : "Activate")
                                     </button>
@@ -138,6 +140,24 @@
             </div>
         }
     }
+
+<style>
+    /* Seven columns need roughly this much room before the cells start clipping. The wrapper's
+       scroll behaviour comes from erp-styles.css (.admin-layout .ss-table-wrap) so it is shared
+       with /school/students rather than copied; only this page's own width lives here, because
+       the two tables have different column counts. */
+    .ss-table { min-width: 700px; }
+    .ss-table th { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--gray-200);
+        color: var(--gray-500); text-transform: uppercase; letter-spacing: .5px; white-space: nowrap }
+    .ss-table td { padding: 12px 14px; border-bottom: 1px solid var(--gray-100); font-size: 14px;
+        vertical-align: top }
+    .ss-table tbody tr:last-child td { border-bottom: none }
+    .ss-name { font-weight: 600; color: var(--vp-ink) }
+    .ss-sub { font-size: 12.5px; color: var(--gray-500) }
+    .ss-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 700; white-space: nowrap }
+    .ss-pill--ok { background: #e8f5e9; color: #2e7d32 }
+    .ss-pill--wait { background: #fff4e5; color: #b45309 }
+</style>
 
 @code {
     private bool loading = true, saving, showForm, ok;

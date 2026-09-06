@@ -634,7 +634,10 @@ else
             <div class="tabs-wrap" id="hjcTabsWrap">
                 <div class="tabs" id="hjcTabs">
                     <button class="tab-btn @(tab == "overview" ? "active" : "")" @onclick='() => tab = "overview"'>Overview</button>
-                    <button class="tab-btn @(tab == "faculty" ? "active" : "")"  @onclick='() => tab = "faculty"'>About The Faculty</button>
+                    @* "About The Faculty" tab removed on request. The faculty DATA is untouched —
+                       FacultyName / Designation / Bio / Photo / stats are still on the product, still
+                       editable in admin, and the /faculty/{code} profile pages still work. Restoring
+                       this button and its panel below is all it takes to bring the tab back. *@
                     @if (HasBookPreview)   { <button class="tab-btn @(tab == "book" ? "active" : "")"         @onclick='() => tab = "book"'>Book Preview</button> }
                     @if (HasTestimonials)  { <button class="tab-btn @(tab == "testimonials" ? "active" : "")" @onclick='() => tab = "testimonials"'>Testimonials</button> }
                     @if (HasLectures)      { <button class="tab-btn @(tab == "lectures" ? "active" : "")"     @onclick='() => tab = "lectures"'>About The Lectures</button> }
@@ -777,52 +780,15 @@ else
                     }
                 </div>
             }
-            else if (tab == "faculty")
-            {
-                @* ── Entire faculty card is clickable → /faculty/{Code}. ShortDescription drives the
-                      one-liner; when blank, falls back to the first 250 chars of the full Bio so the
-                      card never looks empty for legacy data. Stats use real faculty KPIs when set. ── *@
-                var facultyHref = string.IsNullOrWhiteSpace(product.FacultyCode) ? null : $"/faculty/{product.FacultyCode}";
-                var facultyShortLine = RioCommerce.Core.DTOs.Faculty.FacultyShortDescription.Resolve(product.FacultyShortDescription, product.FacultyBio)
-                                       ?? "Experienced CA faculty at RioCommerce, known for a conceptual, student-friendly teaching style.";
-                <a class="faculty-tab faculty-tab--card @(facultyHref == null ? "faculty-tab--no-link" : "")"
-                   href="@facultyHref"
-                   title="@(facultyHref == null ? null : $"View full profile of {product.FacultyName}")">
-                    <div class="faculty-tab__avatar">
-                        @if (!string.IsNullOrWhiteSpace(product.FacultyPhotoUrl))
-                        {
-                            <img src="@product.FacultyPhotoUrl" alt="@product.FacultyName" loading="lazy" />
-                        }
-                        else
-                        {
-                            @FacultyInitials
-                        }
-                    </div>
-                    <div>
-                        <div class="faculty-tab__name">@product.FacultyName</div>
-                        <div class="faculty-tab__role">@(string.IsNullOrWhiteSpace(product.FacultyDesignation) ? "RioCommerce Faculty" : product.FacultyDesignation)</div>
-                        <p class="faculty-tab__bio">@facultyShortLine</p>
-                        <div class="faculty-tab__stats">
-                            @if (!string.IsNullOrWhiteSpace(product.FacultyStudentsTaught))
-                            {
-                                <span><strong>@product.FacultyStudentsTaught</strong> Students</span>
-                            }
-                            @if (!string.IsNullOrWhiteSpace(product.FacultyYearsOfExperience))
-                            {
-                                <span><strong>@product.FacultyYearsOfExperience</strong> Experience</span>
-                            }
-                            @if (product.RatingCount > 0)
-                            {
-                                <span><strong>@product.AvgRating.ToString("0.0")</strong> Rating</span>
-                            }
-                        </div>
-                        @if (facultyHref != null)
-                        {
-                            <span class="faculty-tab__more">Read Full Faculty Profile <span aria-hidden="true">→</span></span>
-                        }
-                    </div>
-                </a>
-            }
+            @* The "About The Faculty" panel used to render here — a clickable card with the
+               faculty's photo, name, designation, short bio, stats and a link to their full
+               profile. Removed along with its tab, above.
+
+               Only the display is gone. product.FacultyName / Designation / Bio / PhotoUrl /
+               StudentsTaught / YearsOfExperience / Code are all still populated and still edited
+               in admin, the /faculty/{code} profile pages still work, and "by <faculty>" still
+               appears on the recommendation cards below. Restoring this block and its tab button
+               brings the panel back with no data to re-enter. *@
             @* ── Offer / Combo Recommendations (admin-curated) ── *@
             @if (recommendations is { Count: > 0 })
             {
@@ -1370,6 +1336,8 @@ else
         CourseLevel.Books => "📚",
         _ => "🎓"
     };
+    // Was the avatar fallback for the removed "About The Faculty" panel; nothing renders it now.
+    // Kept so restoring that panel needs only its markup back, not this logic rewritten.
     private string FacultyInitials
     {
         get

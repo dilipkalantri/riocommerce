@@ -1,4 +1,4 @@
-﻿@page "/school/students"
+@page "/school/students"
 @layout SchoolLayout
 @using RioCommerce.Core.DTOs.School
 @attribute [Authorize(Roles = "school_principal,school_coordinator")]
@@ -83,17 +83,20 @@
                         @foreach (var r in Visible)
                         {
                             var pay = payStatus.TryGetValue(r.UserId, out var ps) ? ps : null;
+                            @* data-label carries each column heading into its cell so the mobile
+                               card layout can print it (erp-styles.css). The first cell is the
+                               card's title and deliberately carries none. *@
                             <tr>
-                                <td>
+                                <td class="td-title">
                                     <div class="ss-name">@r.FullName</div>
                                     <div class="ss-sub">Added @r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</div>
                                 </td>
-                                <td>
+                                <td data-label="Contact">
                                     <div class="ss-sub">@(r.Email ?? "—")</div>
                                     <div class="ss-sub">@(r.Phone ?? "—")</div>
                                 </td>
-                                <td>@(string.IsNullOrWhiteSpace(r.StudentClass) ? "—" : r.StudentClass)</td>
-                                <td>
+                                <td data-label="Class">@(string.IsNullOrWhiteSpace(r.StudentClass) ? "—" : r.StudentClass)</td>
+                                <td data-label="Status">
                                     @* IsVerified is the activation signal: it flips to true only when
                                        the student completes the OTP and sets their own password. *@
                                     <span class="ss-pill @(r.IsVerified ? "ss-pill--ok" : "ss-pill--wait")"
@@ -101,7 +104,7 @@
                                         @(r.IsVerified ? "Active" : "Pending")
                                     </span>
                                 </td>
-                                <td>
+                                <td data-label="Payment">
                                     @* SCHOOL-paid status, from persisted orders. A student with no
                                        school enrolment order has no entry here at all — which is the
                                        right answer for someone who merely named this school when
@@ -123,7 +126,7 @@
                                         <span class="ss-pill ss-pill--wait" title="@($"Order {pay.OrderNumber}")">🟡 Payment Pending</span>
                                     }
                                 </td>
-                                <td style="white-space:nowrap">
+                                <td data-label="Invoice" style="white-space:nowrap">
                                     @* Invoice actions require BOTH a successful payment and an invoice
                                        that actually exists — never a status label alone.
 
@@ -153,7 +156,7 @@
                                         <span class="ss-sub">—</span>
                                     }
                                 </td>
-                                <td style="text-align:right">
+                                <td class="td-action" style="text-align:right">
                                     <button class="btn btn-outline btn-sm" @onclick="() => Remove(r)">Remove</button>
                                 </td>
                             </tr>
@@ -213,38 +216,42 @@
                     {
                         var idx = i;
                         var row = bulkRows[idx];
+                        @* data-label carries each column's heading down to the cell. On desktop it
+                           is unused; on mobile the table becomes a stack of per-student cards and
+                           CSS prints it via td::before, because <thead> is hidden there and the
+                           fields would otherwise be unlabelled. Same pattern admin-grid.css uses. *@
                         <tr>
-                            <td>
+                            <td class="c-st">
                                 <span class="rst rst--@RowStatusClass(row)" title="@RowStatusText(row)">
                                     @RowStatusIcon(row)
                                 </span>
                             </td>
                             <td class="rnum">@(idx + 1)</td>
-                            <td class="cell @(RowFieldError(row, "FullName") ? "cell--err" : "")">
+                            <td class="cell @(RowFieldError(row, "FullName") ? "cell--err" : "")" data-label="Student Name *">
                                 <input @bind="row.FullName" placeholder="Full name" />
                             </td>
-                            <td class="cell @(RowFieldError(row, "Email") ? "cell--err" : "")">
+                            <td class="cell @(RowFieldError(row, "Email") ? "cell--err" : "")" data-label="Email (optional)">
                                 <input type="email" @bind="row.Email" placeholder="student@school.in" />
                             </td>
-                            <td class="cell mono @(RowFieldError(row, "Phone") ? "cell--err" : "")">
+                            <td class="cell mono @(RowFieldError(row, "Phone") ? "cell--err" : "")" data-label="Mobile *">
                                 <input @bind="row.Phone" placeholder="10-digit mobile" />
                             </td>
-                            <td class="cell @(RowFieldError(row, "DateOfBirth") ? "cell--err" : "")">
+                            <td class="cell @(RowFieldError(row, "DateOfBirth") ? "cell--err" : "")" data-label="Date of Birth *">
                                 <input type="date" @bind="row.DateOfBirth" />
                             </td>
-                            <td class="cell @(RowFieldError(row, "Gender") ? "cell--err" : "")">
+                            <td class="cell @(RowFieldError(row, "Gender") ? "cell--err" : "")" data-label="Gender *">
                                 <select @bind="row.Gender">
                                     <option value="">Select</option>
                                     <option>Male</option><option>Female</option><option>Other</option>
                                 </select>
                             </td>
-                            <td class="cell @(RowFieldError(row, "StudentClass") ? "cell--err" : "")">
+                            <td class="cell @(RowFieldError(row, "StudentClass") ? "cell--err" : "")" data-label="Class">
                                 <select @bind="row.StudentClass">
                                     <option value="">—</option>
                                     @for (var c = 1; c <= 12; c++) { <option value="@c">@c</option> }
                                 </select>
                             </td>
-                            <td>
+                            <td class="c-act">
                                 <button class="row-del" title="Remove row" @onclick="() => RemoveBulkRow(idx)" disabled="@saving">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
                                 </button>
@@ -273,7 +280,9 @@
                 <span><span class="dot dot--warn"></span>Missing fields</span>
                 <span><span class="dot dot--err"></span>Server error</span>
             </div>
-            <span style="flex:1"></span>
+            @* Desktop spacer that pushes the buttons right. Classed rather than inline-styled so the
+               mobile rules can drop it out of the stacked footer — presentation only. *@
+            <span class="bulk-foot__spacer"></span>
             <div class="bulk-count">
                 <strong>@ReadyCount</strong> ready
                 @if (IncompleteCount > 0) { <span>&nbsp;·&nbsp;@IncompleteCount incomplete</span> }
@@ -392,7 +401,9 @@
                     }
                 </div>
             }
-            <span style="flex:1"></span>
+            @* Desktop spacer that pushes the buttons right. Classed rather than inline-styled so the
+               mobile rules can drop it out of the stacked footer — presentation only. *@
+            <span class="bulk-foot__spacer"></span>
             <button class="btn btn-outline" @onclick="CloseImport" disabled="@importing">
                 @(importResult is null ? "Cancel" : "Close")
             </button>
@@ -482,6 +493,7 @@
     .bulk-addrow__hint{color:var(--gray-500);font-size:12px;margin-left:auto}
 
     .bulk-modal__foot{display:flex;align-items:center;gap:12px;padding:14px 24px;border-top:1px solid var(--gray-200);background:#fff}
+    .bulk-foot__spacer{flex:1}
 
     /* ── Excel import modal ── */
     .imp-body{padding:18px 24px;overflow:auto;flex:1}
@@ -519,6 +531,125 @@
     .ss-filter{padding:6px 14px;border-radius:999px;border:1px solid var(--gray-200,#e5e7eb);background:#fff;font-size:12.5px;font-weight:700;color:var(--gray-600,#4b5563);cursor:pointer}
     .ss-filter.is-on{background:var(--navy,#5d38de);border-color:var(--navy,#5d38de);color:#fff}
     .ss-pill--fail{background:#FEE2E2;color:#991B1B}
+
+    /* ══ MODAL RESPONSIVE ═════════════════════════════════════════════════════════════════════
+       Applies to BOTH dialogs on this page — bulk Add Students and Excel Import — because they
+       share the .bulk-modal shell. Every selector is .bulk-* / .imp-* prefixed, so this cannot
+       reach the admin shell, the other school pages, or the public site.
+       Breakpoints: 768 (phone) · 400 (stack the footer buttons). */
+
+    @@media (max-width:768px){
+        /* Sized to the viewport, never a desktop width. dvh first so mobile browser chrome does
+           not crop the footer; vh stays as the fallback. */
+        .bulk-modal{width:calc(100vw - 24px);max-width:calc(100vw - 24px);
+            max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);border-radius:20px}
+
+        /* Header — the 18px/13px desktop sizes were below the readable floor on a phone. */
+        .bulk-modal__head{padding:18px 18px 14px}
+        .bulk-modal__title{font-size:22px}
+        .bulk-modal__lede{font-size:14.5px;line-height:1.5;margin-top:8px}
+        .bulk-chip{font-size:11.5px;padding:4px 11px}
+
+        /* Defaults row: label on its own line, then a pill wide enough that "Class" cannot break
+           into "Cla / ss". nowrap on the pill is what actually prevents the break; the min-width
+           stops the flex item from being squeezed below the word in the first place. */
+        .bulk-toolbar{padding:12px 18px;gap:8px}
+        .bulk-toolbar__lbl{flex:1 1 100%;font-size:12.5px}
+        .bulk-toolbar__pill{min-width:132px;padding:6px 10px;white-space:nowrap;
+            overflow:hidden;text-overflow:ellipsis;min-height:44px}
+        .bulk-toolbar__pill select{min-height:32px;flex:1;min-width:0}
+
+        /* ── The grid must not collapse ───────────────────────────────────────────────────────
+           .bulk-grid-wrap carries `flex:1` for desktop, i.e. flex-basis:0 — it takes whatever
+           height is LEFT inside the modal's max-height. On a phone the header's long description,
+           the toolbar, the add-row bar and the now-stacked footer already consume the whole
+           `100dvh - 24px`, so nothing was left and the grid rendered 0px tall: the student rows
+           vanished entirely, leaving an empty strip.
+
+           On mobile the modal itself becomes the vertical scroller and every section takes its
+           natural height instead, so the rows are always there and the writer scrolls to them. */
+        .bulk-modal{overflow-y:auto;-webkit-overflow-scrolling:touch}
+        .bulk-modal__head,.bulk-toolbar,.bulk-addrow,.bulk-modal__foot{flex:none}
+        /* flex:none + natural height, and nothing left to scroll sideways (see the card layout
+           below), so the wrapper is a plain container on mobile. */
+        .bulk-grid-wrap{flex:0 0 auto;min-height:120px;
+            overflow-x:visible;overflow-y:visible;max-width:100%;padding:14px 16px}
+
+        /* ── One card per student, fields stacked ─────────────────────────────────────────────
+           A 1080px table inside a ~300px modal meant swiping sideways to reach Mobile, Date of
+           Birth, Gender and Class — you could never see one whole student at a time, and it was
+           easy to fill row 1's name and row 2's mobile by mistake. So on mobile the table stops
+           behaving like a table: every row becomes a card and every field sits under its label.
+
+           NO horizontal scrolling remains. The column headings are hidden and reprinted per field
+           from data-label, so nothing is unlabelled and no column is dropped. */
+        .bulk-grid,.bulk-grid tbody,.bulk-grid tr,.bulk-grid td{display:block;width:auto}
+        .bulk-grid{min-width:0;border-spacing:0}
+        .bulk-grid thead{display:none}
+        .bulk-grid th{position:static}
+
+        .bulk-grid tbody tr{
+            position:relative;margin:0 0 14px;padding:46px 14px 14px;
+            border:1px solid var(--gray-200);border-radius:14px;background:#fff}
+        .bulk-grid tbody tr:last-of-type{margin-bottom:2px}
+
+        /* Status badge and row number pinned to the card's header strip. */
+        .bulk-grid td.c-st{position:absolute;top:12px;left:12px;padding:0;border:0}
+        .bulk-grid td.rnum{position:absolute;top:13px;left:44px;padding:0;border:0;
+            font-size:13px;font-weight:700;color:var(--gray-500)}
+        /* Delete sits top-right of its own card, at a real tap size. */
+        .bulk-grid td.c-act{position:absolute;top:8px;right:8px;padding:0;border:0}
+        .bulk-grid td.c-act .row-del{width:40px;height:40px;display:grid;place-items:center}
+
+        /* Field rows: label above the control. */
+        .bulk-grid td.cell{padding:0 0 12px;border:0}
+        .bulk-grid tbody tr td.cell:last-of-type{padding-bottom:0}
+        .bulk-grid td.cell::before{
+            content:attr(data-label);display:block;margin:0 0 5px;
+            font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--gray-600,#4b5563)}
+        .bulk-grid td.cell input,.bulk-grid td.cell select{width:100%;min-height:44px;font-size:14px}
+
+        /* Per-row server error becomes a strip in the flow rather than a table row. */
+        .bulk-grid tr.row-error-line{margin:-8px 0 14px;padding:10px 14px;border-radius:12px;
+            border:1px solid #f5c2c0;background:#fdecea}
+        .bulk-grid tr.row-error-line td{padding:0;border:0}
+        .bulk-grid tr.row-error-line td:empty{display:none}
+
+        /* Same collapse applies to the Excel-import dialog, which shares the shell. */
+        .imp-body{flex:0 0 auto;overflow:visible}
+
+        /* Must match the desktop rule's specificity: `.bulk-grid .cell input` is (0,0,2,1) and a
+           plainer `.bulk-grid input` (0,0,1,1) loses to it however late it appears. The mono cell
+           (mobile number) carries its own 12px rule at (0,0,3,1), so it needs naming too. */
+        .bulk-grid .cell input,.bulk-grid .cell select{font-size:14px;min-height:44px}
+        .bulk-grid .cell.mono input{font-size:14px}
+
+        /* Add-another-row: button on its own line, hint beneath it. */
+        .bulk-addrow{flex-direction:column;align-items:stretch;gap:8px;padding:12px 18px}
+        .bulk-addrow__btn{width:100%;min-height:44px;font-size:14px}
+        .bulk-addrow__hint{margin-left:0;font-size:12.5px}
+
+        /* Footer: legend wraps onto its own line, count next to it, buttons on a row below. */
+        .bulk-modal__foot{flex-wrap:wrap;gap:10px;padding:14px 18px}
+        .bulk-foot__spacer{display:none}
+        .bulk-legend{flex:1 1 100%;flex-wrap:wrap;gap:10px 14px;font-size:13px}
+        .bulk-count{flex:1 1 100%;font-size:15px}
+        .bulk-modal__foot .btn{flex:1 1 0;min-height:48px;font-size:15px;justify-content:center}
+
+        /* Excel-import dialog shares the shell — keep its body and stats readable too. */
+        .imp-body{padding:16px 18px}
+        .imp-table-wrap{max-height:none}
+        .imp-table-wrap{max-width:100%;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+        .imp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }
+
+    /* Below 400px the two footer buttons no longer read cleanly side by side. */
+    @@media (max-width:400px){
+        .bulk-modal__foot .btn{flex:1 1 100%}
+        .bulk-modal__head{padding:16px 16px 12px}
+        .bulk-toolbar,.bulk-addrow,.bulk-modal__foot{padding-left:16px;padding-right:16px}
+        .imp-body{padding:14px 16px}
+    }
 </style>
 
 @code {

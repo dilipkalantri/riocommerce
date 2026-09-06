@@ -1,1 +1,568 @@
-/* Admin styles are in app.css — this is for admin-specific overrides */
+/* ============================================================================================
+   ADMIN / SCHOOL PORTAL — mobile & responsive shell
+   ============================================================================================
+
+   WHY THIS FILE, AND NOT app.css
+   ------------------------------
+   app.css is loaded on EVERY page, public site included. This file is loaded by exactly two
+   components — AdminLayout.razor and SchoolLayout.razor — and it is injected inside <body>, so it
+   cascades after every stylesheet in <head> (app.css, responsive-normalize.css and the rest).
+   That gives two properties worth relying on:
+
+     1. Nothing here can reach the public site. The homepage, course pages, student and school
+        registration, login and checkout never load this file.
+     2. Equal-specificity rules here WIN, so almost nothing below needs !important.
+
+   THE BUG THIS FIXES
+   ------------------
+   app.css already defines a proper off-canvas drawer:
+
+       @media (max-width: 1024px) {
+         .sidebar { transform: translateX(-100%); ... }
+         .admin-layout--mobile-open .sidebar { transform: translateX(0); }
+         .topbar__hamburger { display: inline-flex; }
+       }
+
+   …but app.css also carries, in a *different* @media (max-width: 768px) block shared with eight
+   public selectors, the single declaration:
+
+       .sidebar { display: none }
+
+   `display:none` cannot be animated around: below 768px the sidebar was removed from the layout
+   entirely, so the hamburger and the translate rule did nothing. The drawer therefore worked ONLY
+   in the narrow 769–1024px band, and on a real phone the admin was a sidebar-less, squeezed
+   desktop page. Every element the drawer needs — markup, backdrop, C# state — already existed and
+   is reused as-is; the block below simply restores `display:flex` and finishes the mobile shell.
+
+   Breakpoints used here: 1024px (drawer + tablet), 768px (phone), 600px, 430px, 360px.
+   ============================================================================================ */
+
+
+/* ── 1. DRAWER ───────────────────────────────────────────────────────────────────────────────
+   Everything at or below 1024px. `.admin-layout .sidebar` is specificity (0,0,2,0) and beats the
+   bare `.sidebar{display:none}` (0,0,1,0) that broke this, without !important. */
+
+/* Desktop: the drawer close button is not a control at all. Written as min-width rather than as a
+   bare rule placed after the block below — an unscoped rule of equal specificity later in the file
+   wins at EVERY width, media query or not, which would hide the button on phones too. */
+@media (min-width: 1025px) {
+    .admin-layout .sidebar__close { display: none; }
+}
+
+@media (max-width: 1024px) {
+
+    .admin-layout .sidebar {
+        display: flex;                      /* undoes app.css's `.sidebar{display:none}` */
+        position: fixed;
+        top: 0;
+        left: 0;
+        /* dvh first so the drawer is not cut off by mobile browser chrome; vh is the fallback for
+           anything that does not understand dvh. */
+        height: 100vh;
+        height: 100dvh;
+        width: min(86vw, 320px);
+        max-width: 320px;
+        transform: translateX(-100%);
+        transition: transform .24s ease;
+        z-index: 1200;                      /* above the backdrop, above sticky topbars */
+        overflow-y: auto;
+        overscroll-behavior: contain;       /* scrolling the drawer must not scroll the page behind */
+        -webkit-overflow-scrolling: touch;
+        box-shadow: 0 0 44px rgba(0, 0, 0, .42);
+    }
+
+    .admin-layout--mobile-open .sidebar { transform: translateX(0); }
+
+    /* Backdrop. Hidden until the drawer opens, then covers the page and closes on tap. */
+    .admin-layout .nav-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 1199;                      /* one below the drawer */
+        background: rgba(15, 23, 42, .5);
+        -webkit-tap-highlight-color: transparent;
+    }
+    .admin-layout--mobile-open .nav-overlay { display: block; }
+
+    /* The desktop sidebar rail is gone at this width, so the content must reclaim it. */
+    .admin-layout .main-content {
+        margin-left: 0;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    /* Drawer close button — only exists as a control at drawer widths. */
+    .admin-layout .sidebar__close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        border: 0;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, .1);
+        color: #fff;
+        cursor: pointer;
+        z-index: 2;
+    }
+    .admin-layout .sidebar__close svg { width: 20px; height: 20px; }
+    .admin-layout .sidebar__close:hover { background: rgba(255, 255, 255, .18); }
+
+    /* Keep the logo clear of the close button. */
+    .admin-layout .sidebar__logo { padding-right: 62px; }
+
+    /* Hamburger in, desktop collapse rail out.
+       Sized HERE, at the drawer's own breakpoint, not in the ≤768 phone block — otherwise a tablet
+       between 769px and 1024px got a visible hamburger that was still only 30px tall. That is the
+       one control the whole navigation depends on at exactly the widths people use a finger. */
+    .admin-layout .topbar__hamburger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        border-radius: 12px;
+    }
+    .admin-layout .topbar__hamburger svg { width: 22px; height: 22px; }
+    .admin-layout .topbar__collapse { display: none; }
+}
+
+/* Above 1024px nothing changes: the close button is hidden by the min-width block at the top of
+   this section, and the desktop sidebar / collapse rail behave exactly as before this file. */
+
+
+/* ── 1b. SIDEBAR LOGOUT ──────────────────────────────────────────────────────────────────────
+   Not inside a media query: the control was invisible at EVERY size, so this applies to mobile,
+   tablet and desktop alike.
+
+   What was wrong: the button's only content was "⎋" (U+238B), a glyph almost no shipped font
+   carries, so it painted as a dot or a tofu box; and it used .btn-ghost, whose `color:var(--navy)`
+   is navy text on the navy-dark sidebar. Invisible twice over.
+
+   Now: an inline SVG (matching every other icon in this shell) plus the word "Logout", in a
+   colour that reads on the dark panel. The word is inside .sidebar__txt, so the collapsed desktop
+   rail hides it and leaves the icon — the same convention the nav links follow. */
+.admin-layout .sidebar__logout-form { margin: 0 0 0 auto; }
+.admin-layout .sidebar__logout {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .06);
+    color: rgba(255, 255, 255, .92);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s, border-color .15s;
+}
+.admin-layout .sidebar__logout:hover {
+    background: rgba(239, 68, 68, .22);
+    border-color: rgba(239, 68, 68, .55);
+    color: #fff;
+}
+.admin-layout .sidebar__logout:focus-visible {
+    outline: 2px solid var(--orange, #ea580c);
+    outline-offset: 2px;
+}
+/* Sized explicitly — responsive-normalize.css clamps bare SVGs globally, which would otherwise
+   shrink this one along with everything else. */
+.admin-layout .sidebar__logout svg { width: 17px; height: 17px; flex: none; }
+
+/* Collapsed desktop rail: icon only, centred, still a real target. */
+.admin-layout--collapsed .sidebar__logout { padding: 8px; min-width: 40px; justify-content: center; }
+.admin-layout--collapsed .sidebar__logout-form { margin: 0; }
+
+/* Phone/tablet: a comfortable 44px, and the footer wraps rather than crushing the name. */
+@media (max-width: 1024px) {
+    .admin-layout .sidebar__user { flex-wrap: wrap; gap: 10px 12px; }
+    .admin-layout .sidebar__logout { min-height: 44px; padding: 10px 14px; font-size: 14px; }
+    .admin-layout .sidebar__logout svg { width: 18px; height: 18px; }
+}
+
+
+/* ── 2. MOBILE HEADER ────────────────────────────────────────────────────────────────────────
+   [ ☰ ]                                                        [ store ] [ bell ] [ avatar ] */
+@media (max-width: 768px) {
+
+    .admin-layout .admin-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        height: 56px;                       /* 52px was too tight for a 44px tap target */
+        padding: 0 12px;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .admin-layout .topbar__left,
+    .admin-layout .topbar__right { display: flex; align-items: center; min-width: 0; }
+    .admin-layout .topbar__right { gap: 6px; margin-left: auto; }
+
+    /* 44x44 is the accessibility floor for a touch target; the old button was ~31px tall.
+       :not(.topbar__collapse) matters — the desktop collapse rail is hidden in section 1, but this
+       block comes LATER in the file at equal specificity, so a bare .topbar__btn{display:inline-flex}
+       silently un-hid it and put a useless second button next to the hamburger on every phone. */
+    .admin-layout .topbar__btn:not(.topbar__collapse) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        border-radius: 12px;
+        background: var(--gray-100, #f1f5f9);
+        color: var(--navy-dark, #1e293b);
+        flex: 0 0 auto;
+    }
+    .admin-layout .topbar__btn svg { width: 22px; height: 22px; }
+    .admin-layout .topbar__btn:active { background: var(--gray-200, #e2e8f0); }
+
+    /* Visible focus, required for keyboard users and cheap to provide. */
+    .admin-layout .topbar__btn:focus-visible,
+    .admin-layout .sidebar__close:focus-visible {
+        outline: 2px solid var(--orange, #ea580c);
+        outline-offset: 2px;
+    }
+
+    /* Store link collapses to its icon — app.css already hides the label at this width. */
+    .admin-layout .topbar__store {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0 10px;
+        flex: 0 0 auto;
+    }
+    .admin-layout .topbar__profile { flex: 0 0 auto; }
+}
+
+
+/* ── 3. PAGE CONTENT ─────────────────────────────────────────────────────────────────────────
+   Fit the viewport, never a fixed desktop width. */
+@media (max-width: 768px) {
+
+    .admin-layout .page {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        padding: 16px;
+        min-width: 0;
+    }
+
+    /* Titles and the school-name / UDISE line must wrap rather than push the page sideways. */
+    .admin-layout .page__header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .admin-layout .page__header h1 { font-size: 26px; line-height: 1.25; margin-bottom: 0; }
+    .admin-layout .page,
+    .admin-layout .page h1,
+    .admin-layout .page h2,
+    .admin-layout .page p { overflow-wrap: anywhere; word-break: break-word; }
+
+    /* Any direct child of .page is bounded, which is what stops a stray fixed width leaking out. */
+    .admin-layout .page > * { max-width: 100%; min-width: 0; }
+}
+
+
+/* ── 4. DASHBOARD CARDS ──────────────────────────────────────────────────────────────────────
+   Two equal columns on a phone; one below 360px where two become unreadable. */
+@media (max-width: 768px) {
+    .admin-layout .kpi-grid:not(.kpi-grid--fixed),
+    .admin-layout .dash-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+    .admin-layout .kpi-card,
+    .admin-layout .dash-card {
+        min-width: 0;
+        padding: 14px;
+        border-radius: 14px;
+        overflow-wrap: anywhere;
+    }
+    /* Readability floors from the brief: labels 12px+, values 20px+. */
+    .admin-layout .kpi-card__label { font-size: 12px; line-height: 1.35; }
+    .admin-layout .kpi-card__value { font-size: 22px; line-height: 1.2; }
+}
+
+/* Below 360px two columns leave ~138px per card, which truncates labels like "ACTIVE ENROLLMENTS".
+   One column instead.
+
+   !important is required, not decorative: responsive-normalize.css sets
+   `.kpi-grid:not(.kpi-grid--fixed){grid-template-columns:repeat(2,1fr)!important}` for everything
+   under 1024px, and an !important declaration cannot be beaten by specificity or source order.
+   Scoped to .admin-layout so the public site keeps its own two-column behaviour untouched. */
+@media (max-width: 360px) {
+    .admin-layout .kpi-grid:not(.kpi-grid--fixed),
+    .admin-layout .dash-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+
+/* ── 5. ACTION BUTTONS ───────────────────────────────────────────────────────────────────────
+   Full width and thumb-sized, without stretching buttons that sit inside a table row. */
+@media (max-width: 600px) {
+    .admin-layout .page > div > .btn,
+    .admin-layout .btn-row .btn,
+    .admin-layout .form-actions .btn {
+        width: 100%;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: normal;                /* a long label wraps instead of being ellipsised */
+    }
+    .admin-layout .btn-row,
+    .admin-layout .form-actions { display: flex; flex-direction: column; gap: 10px; }
+
+    /* Row-level actions stay compact — full-width buttons inside a table would be unusable. */
+    .admin-layout table .btn,
+    .admin-layout .btn-sm { width: auto; min-height: 34px; }
+}
+
+
+/* ── 6. FORMS ────────────────────────────────────────────────────────────────────────────────
+   Desktop two-column forms become one column. */
+@media (max-width: 768px) {
+    .admin-layout .form-grid,
+    .admin-layout .form-grid--3col,
+    .admin-layout .form-row { grid-template-columns: minmax(0, 1fr); display: grid; gap: 14px; }
+
+    .admin-layout .form-input,
+    .admin-layout input:not([type=checkbox]):not([type=radio]):not([type=hidden]),
+    .admin-layout select,
+    .admin-layout textarea {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        min-height: 44px;
+        box-sizing: border-box;
+    }
+    .admin-layout textarea { min-height: 88px; }
+    .admin-layout label { font-size: 12.5px; }
+}
+
+
+/* ── 7. TABLES ───────────────────────────────────────────────────────────────────────────────
+   A wide table must scroll INSIDE its own box. The body stays clipped, so a table that escaped
+   its wrapper would otherwise hide content off-screen with no way to reach it. */
+@media (max-width: 1024px) {
+    .admin-layout .table-wrap,
+    .admin-layout .table-responsive,
+    .admin-layout .ag__wrap,
+    .admin-layout .ap-table-wrap,
+    .admin-layout .fba-wrap {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    /* .data-card is overflow:hidden by design (rounded corners); that clips a wide table's own
+       scrollbar, so the card must not also be the scroll container. */
+    .admin-layout .data-card { max-width: 100%; min-width: 0; }
+}
+
+
+/* ── 7b. SHARED PORTAL TABLE SHELL ───────────────────────────────────────────────────────────
+   .ss-table-wrap / .ss-table are used by BOTH /school/students and /school/coordinators, but
+   their CSS lived only inside SchoolStudents.razor's <style> block — and a component's <style>
+   is in the DOM only while that component is rendered. So on the Coordinators page the wrapper
+   had the class and none of the behaviour: no overflow-x, no border, and its rows painted
+   400px wide inside a 288px box with nothing to scroll them. The content was simply unreachable.
+
+   The STRUCTURAL rules therefore live here, where every portal page can see them. Cosmetic and
+   page-specific rules (column widths, per-page min-width) stay with their page. No min-width is
+   set here on purpose: the two tables have different column counts and each declares its own. */
+.admin-layout .ss-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    border: 1px solid var(--gray-200, #e5e7eb);
+    border-radius: 14px;
+    background: #fff;
+}
+.admin-layout .ss-table { width: 100%; border-collapse: collapse; }
+
+
+/* ── 8. MODALS ───────────────────────────────────────────────────────────────────────────────
+   Fit the viewport and scroll internally, per the brief's limits. */
+@media (max-width: 768px) {
+    .admin-layout .modal__card,
+    .admin-layout [class*="-modal__card"] {
+        width: calc(100vw - 24px);
+        max-width: calc(100vw - 24px);
+        max-height: calc(100dvh - 24px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        box-sizing: border-box;
+    }
+    .admin-layout .modal__foot,
+    .admin-layout [class*="-modal__foot"] { flex-wrap: wrap; gap: 10px; }
+}
+
+
+/* ── 8b. PORTAL-WIDE MOBILE POLISH ───────────────────────────────────────────────────────────
+   Everything below came out of an automated sweep of /school, /students, /enrollment, /billing
+   and /coordinators at 320 / 375 / 430 / 768px, which measured every rendered element rather
+   than relying on inspection. Each rule fixes something that sweep actually found. */
+@media (max-width: 768px) {
+
+    /* Text that measured under 12px: uppercase table headings, status pills and KPI labels.
+       Uppercase at 11px on a phone is the hardest kind of small text to read. */
+    .admin-layout .page th,
+    .admin-layout .ss-table th,
+    .admin-layout .sb-table th { font-size: 12px; letter-spacing: .04em; white-space: nowrap; }
+    .admin-layout .ss-pill,
+    .admin-layout .sb-pill,
+    .admin-layout .se-pill { font-size: 12px; }
+    .admin-layout .sb-kpi__label,
+    .admin-layout .kpi-card__label { font-size: 12px; }
+    /* Avatar initials — a badge rather than prose, but 11px inside a 32px circle still reads thin. */
+    .admin-layout .topbar__profile-avatar { font-size: 12px; }
+
+    /* Tap targets. The sweep found 32-37px on filter chips, row actions and form buttons.
+       44px for anything that stands alone; 40px for controls that sit inside a table row, where
+       a full 44px would push the rows apart without helping the thumb. */
+    .admin-layout .page .btn,
+    .admin-layout .ss-filter { min-height: 44px; }
+    .admin-layout .page table .btn,
+    .admin-layout .page .btn-sm { min-height: 40px; }
+    .admin-layout .ss-filter { padding: 8px 15px; font-size: 13px; }
+
+    /* Long button labels were being ellipsised — responsive-normalize sets
+       `.btn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` globally, which turned
+       "View payments & invoices" into a clipped stub at 320px. Inside the portal a button may
+       wrap to a second line instead of losing its own words. */
+    .admin-layout .page .btn {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        line-height: 1.3;
+        height: auto;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    /* Row actions stay on one line — they are short, and wrapping them ragged a table. */
+    .admin-layout .page table .btn { white-space: nowrap; }
+
+    /* ── PORTAL DATA TABLES BECOME CARDS ─────────────────────────────────────────────────────
+       These tables held 7–8 columns. Compressed into a phone they made 150px-tall rows; widened
+       to their natural size they made the reader swipe sideways to see a single person's details.
+       Both were solved before, and both were still wrong: you could never see one record at once.
+
+       So on mobile they stop being tables. Each row becomes a card, each cell a labelled line.
+       The heading row is hidden and reprinted per cell from data-label, so every column is still
+       there and NOTHING is truncated, hidden, or scrolled out of reach. */
+    .admin-layout .ss-table, .admin-layout .ss-table tbody,
+    .admin-layout .ss-table tr, .admin-layout .ss-table td,
+    .admin-layout .sb-table, .admin-layout .sb-table tbody,
+    .admin-layout .sb-table tr, .admin-layout .sb-table td { display: block; width: auto; }
+
+    .admin-layout .ss-table thead, .admin-layout .sb-table thead { display: none; }
+    .admin-layout .ss-table, .admin-layout .sb-table { min-width: 0; }
+
+    /* The wrapper has nothing left to scroll. */
+    .admin-layout .ss-table-wrap, .admin-layout .sb-scroll {
+        overflow-x: visible;
+        border: 0;
+        background: transparent;
+        padding: 0;
+    }
+
+    .admin-layout .ss-table tbody tr,
+    .admin-layout .sb-table tbody tr {
+        margin: 0 0 12px;
+        padding: 14px;
+        border: 1px solid var(--gray-200, #e5e7eb);
+        border-radius: 14px;
+        background: #fff;
+    }
+    .admin-layout .ss-table tbody tr:last-child,
+    .admin-layout .sb-table tbody tr:last-child { margin-bottom: 0; }
+
+    /* A labelled line: caption left, value right. */
+    .admin-layout .ss-table tbody td,
+    .admin-layout .sb-table tbody td {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 7px 0;
+        border: 0;
+        text-align: left !important;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .admin-layout .ss-table tbody td::before,
+    .admin-layout .sb-table tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 38%;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--gray-500, #6b7280);
+    }
+    /* Cells with no data-label — the card title and the action row — span the full width. */
+    .admin-layout .ss-table tbody td:not([data-label])::before,
+    .admin-layout .sb-table tbody td:not([data-label])::before { content: none; }
+    .admin-layout .ss-table tbody td.td-title,
+    .admin-layout .sb-table tbody td.td-title {
+        display: block;
+        padding: 0 0 10px;
+        margin-bottom: 6px;
+        border-bottom: 1px solid var(--gray-100, #f1f5f9);
+    }
+    .admin-layout .ss-table tbody td.td-action,
+    .admin-layout .sb-table tbody td.td-action {
+        display: block;
+        padding: 12px 0 0;
+        margin-top: 6px;
+        border-top: 1px solid var(--gray-100, #f1f5f9);
+    }
+    .admin-layout .ss-table tbody td.td-action .btn,
+    .admin-layout .sb-table tbody td.td-action .btn { width: 100%; justify-content: center; }
+
+    /* Values align right against their caption.
+       A cell holding two sub-lines (email over phone) has TWO element children, and in a flex row
+       they sat side by side — the email wrapped over two lines with the phone beside it. Letting
+       the cell wrap and forcing every sub-line after the first onto its own full-width row puts
+       them back under one another, with the first still sharing the caption's line. */
+    .admin-layout .ss-table tbody td,
+    .admin-layout .sb-table tbody td { flex-wrap: wrap; }
+    .admin-layout .ss-table tbody td .ss-sub,
+    .admin-layout .sb-table tbody td .ss-sub { display: block; text-align: right; flex: 1 1 auto; min-width: 0; }
+    .admin-layout .ss-table tbody td .ss-sub ~ .ss-sub,
+    .admin-layout .sb-table tbody td .ss-sub ~ .ss-sub { flex: 1 1 100%; }
+    .admin-layout .ss-table tbody td.td-title .ss-sub { text-align: left; }
+    .admin-layout .ss-table tbody td.td-title .ss-name { font-size: 15.5px; }
+}
+
+
+/* ── 9. OVERFLOW BACKSTOP ────────────────────────────────────────────────────────────────────
+   The measurable requirement is document.body.scrollWidth <= window.innerWidth. app.css and
+   responsive-normalize already set overflow-x:clip on html/body; these bound the admin shell
+   itself so nothing inside can push the document wider in the first place. */
+@media (max-width: 1024px) {
+    .admin-layout { width: 100%; max-width: 100%; overflow-x: clip; }
+    .admin-layout .main-content,
+    .admin-layout .page,
+    .admin-layout .data-card { box-sizing: border-box; }
+}

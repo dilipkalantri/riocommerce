@@ -37,9 +37,13 @@
 </style>
 
 <div class="admin-layout @(collapsed ? "admin-layout--collapsed" : "") @(mobileOpen ? "admin-layout--mobile-open" : "")">
-    <div class="nav-overlay" @onclick="CloseMobile"></div>
+    <div class="nav-overlay" @onclick="CloseMobile" aria-hidden="true"></div>
 
     <aside class="sidebar" id="sidebar">
+        @* Mobile drawer close control — hidden above 1024px by erp-styles.css. *@
+        <button type="button" class="sidebar__close" @onclick="CloseMobile" aria-label="Close navigation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
         <div class="sidebar__logo">
             <a href="/school"><img src="@LogoSrc" alt="Vijaypath" /></a>
             <span class="sidebar__role @(IsPrincipal ? "sidebar__role--principal" : "sidebar__role--coord") sidebar__txt">
@@ -81,8 +85,15 @@
                         <div class="sidebar__user-name">@(context.User.Identity?.Name ?? "User")</div>
                         <div class="sidebar__user-role">@(IsPrincipal ? "Principal" : "Coordinator")</div>
                     </div>
-                    <form method="post" action="/account/logout" data-enhance="false" style="margin:0 0 0 auto">
-                        <button type="submit" class="btn btn-ghost btn-sm" title="Logout">⎋</button>
+                    @* The button read "U+238B" styled .btn-ghost. Two things made it invisible:
+                       almost no shipped font carries that glyph, so it rendered as a dot or tofu,
+                       and .btn-ghost sets color:var(--navy) - navy text on the navy-dark sidebar.
+                       Now an inline SVG plus a real word, coloured for a dark background. *@
+                    <form method="post" action="/account/logout" data-enhance="false" class="sidebar__logout-form">
+                        <button type="submit" class="sidebar__logout" title="Logout" aria-label="Logout">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+                            <span class="sidebar__txt">Logout</span>
+                        </button>
                     </form>
                 </div>
             </Authorized>
@@ -92,7 +103,21 @@
     <div class="main-content">
         <div class="admin-topbar">
             <div class="topbar__left">
-                <button class="topbar__btn topbar__hamburger" @onclick="ToggleMobile" aria-label="Toggle menu">☰</button>
+                @* SVG rather than the ☰ glyph — see the matching note in AdminLayout. *@
+                <button class="topbar__btn topbar__hamburger" @onclick="ToggleMobile"
+                        aria-label="@(mobileOpen ? "Close navigation" : "Open navigation")"
+                        aria-expanded="@(mobileOpen ? "true" : "false")" aria-controls="sidebar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        @if (mobileOpen)
+                        {
+                            <path d="M18 6 6 18M6 6l12 12" />
+                        }
+                        else
+                        {
+                            <path d="M3 6h18M3 12h18M3 18h18" />
+                        }
+                    </svg>
+                </button>
                 <button class="topbar__btn topbar__collapse" @onclick="ToggleCollapse" aria-label="Collapse sidebar" title="Collapse sidebar">@(collapsed ? "⮞" : "⮜")</button>
             </div>
             <div class="topbar__right">

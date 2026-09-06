@@ -1,4 +1,4 @@
-﻿@page "/school/enrollment"
+@page "/school/enrollment"
 @layout SchoolLayout
 @using RioCommerce.Core.DTOs.School
 @* PRINCIPAL ONLY. Enrolment commits the school to money, so it is not a coordinator's action:
@@ -106,23 +106,61 @@
                 }
                 else
                 {
+                    @* ── Course picker ─────────────────────────────────────────────────────────
+                       A CUSTOM dropdown, not a native select element. The course titles run to about 70
+                       characters ("7th Scholarship Exam –Online classes I English Medium I Self
+                       registration (₹200)"), and a native popup sizes itself to the longest option
+                       on ONE line — so it painted far outside the phone viewport with no way to
+                       constrain it, because the popup is drawn by the browser, not the page.
+
+                       This panel is ordinary DOM, so it obeys max-width and wraps. Behaviour and
+                       binding are unchanged: it writes the same `productId` string and calls the
+                       same OnCourseChanged path, so pricing, validation and submission are
+                       untouched. *@
                     <div class="se-field">
-                        <label class="form-label" for="se-course">Select Course *</label>
-                        <div class="se-select">
-                            <span class="se-select__ico" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                            </span>
-                            <select id="se-course" class="se-select__input" value="@productId"
-                                    @onchange="OnCourseChanged">
-                                <option value="">Choose a course…</option>
-                                @foreach (var p in products)
-                                {
-                                    <option value="@p.Id">@p.Title (@Money.Inr0(p.Price))</option>
-                                }
-                            </select>
-                            <span class="se-select__chev" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                            </span>
+                        <span class="form-label" id="se-course-label">Select Course *</span>
+                        <div class="se-select @(courseOpen ? "se-select--open" : "")">
+                            @if (courseOpen)
+                            {
+                                @* Full-screen catcher: a tap anywhere else closes the panel. Sits
+                                   BELOW the panel so option clicks still land on the option. *@
+                                <div class="se-select__backdrop" @onclick="CloseCourse"></div>
+                            }
+                            <button type="button" id="se-course" class="se-select__input"
+                                    @onclick="ToggleCourse" @onkeydown="OnCourseKeyDown"
+                                    aria-haspopup="listbox" aria-expanded="@courseOpen"
+                                    aria-labelledby="se-course-label">
+                                <span class="se-select__ico" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                </span>
+                                <span class="se-select__text @(Chosen is null ? "se-select__text--ph" : "")">
+                                    @(Chosen is null ? "Choose a course…" : $"{Chosen.Title} ({Money.Inr0(Chosen.Price)})")
+                                </span>
+                                <span class="se-select__chev" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                </span>
+                            </button>
+
+                            @if (courseOpen)
+                            {
+                                <div class="se-select__panel" role="listbox" aria-labelledby="se-course-label">
+                                    <button type="button" role="option" aria-selected="@(Chosen is null)"
+                                            class="se-opt @(Chosen is null ? "se-opt--on" : "")"
+                                            @onclick="() => PickCourse(null)">
+                                        Choose a course…
+                                    </button>
+                                    @foreach (var p in products)
+                                    {
+                                        var prod = p;
+                                        <button type="button" role="option" aria-selected="@(Chosen?.Id == prod.Id)"
+                                                class="se-opt @(Chosen?.Id == prod.Id ? "se-opt--on" : "")"
+                                                @onclick="() => PickCourse(prod.Id)">
+                                            <span class="se-opt__name">@prod.Title</span>
+                                            <span class="se-opt__price">@Money.Inr0(prod.Price)</span>
+                                        </button>
+                                    }
+                                </div>
+                            }
                         </div>
                     </div>
 
@@ -189,6 +227,8 @@
                                 {
                                     var isOn = selected.Contains(r.UserId);
                                     n++;
+                                    @* data-label feeds the mobile card layout below. The checkbox,
+                                       row number and name form the card's header and carry none. *@
                                     <tr class="@(isOn ? "is-on" : null)">
                                         <td class="se-table__check">
                                             <input type="checkbox" checked="@isOn"
@@ -197,13 +237,13 @@
                                         </td>
                                         <td class="se-table__num">@n</td>
                                         <td class="se-name">@r.FullName</td>
-                                        <td>@(string.IsNullOrWhiteSpace(r.StudentClass) ? "—" : r.StudentClass)</td>
-                                        <td>@(string.IsNullOrWhiteSpace(r.Section) ? "—" : r.Section)</td>
-                                        <td>@(string.IsNullOrWhiteSpace(r.RollNumber) ? "—" : r.RollNumber)</td>
-                                        <td>@(string.IsNullOrWhiteSpace(r.Phone) ? "—" : r.Phone)</td>
-                                        <td>@(Chosen?.Title ?? "—")</td>
-                                        <td>@(Chosen is null ? "—" : Money.Inr0(Chosen.Price))</td>
-                                        <td>
+                                        <td data-label="Class">@(string.IsNullOrWhiteSpace(r.StudentClass) ? "—" : r.StudentClass)</td>
+                                        <td data-label="Division">@(string.IsNullOrWhiteSpace(r.Section) ? "—" : r.Section)</td>
+                                        <td data-label="Roll No.">@(string.IsNullOrWhiteSpace(r.RollNumber) ? "—" : r.RollNumber)</td>
+                                        <td data-label="Mobile Number">@(string.IsNullOrWhiteSpace(r.Phone) ? "—" : r.Phone)</td>
+                                        <td data-label="Course">@(Chosen?.Title ?? "—")</td>
+                                        <td data-label="Price">@(Chosen is null ? "—" : Money.Inr0(Chosen.Price))</td>
+                                        <td data-label="Payment">
                                             @* Failed attempts stay selectable — they still owe — but are
                                                labelled honestly rather than shown as merely pending. *@
                                             @if (payStatus.TryGetValue(r.UserId, out var ps) && ps.IsFailed)
@@ -278,10 +318,39 @@
     .se-select__chev{position:absolute;right:13px;color:var(--gray-500);display:grid;place-items:center;pointer-events:none}
     .se-select__input{width:100%;height:48px;padding:0 42px 0 42px;border:1px solid var(--gray-200);
         border-radius:12px;background:#fff;font-family:var(--font-primary);font-size:14.5px;color:var(--vp-ink);
-        appearance:none;-webkit-appearance:none;cursor:pointer;transition:border-color .2s,box-shadow .2s}
+        appearance:none;-webkit-appearance:none;cursor:pointer;transition:border-color .2s,box-shadow .2s;
+        display:flex;align-items:center;text-align:left}
     .se-select__input:hover{border-color:#c9bef4}
     .se-select__input:focus,.se-select__input:focus-visible{outline:none;border-color:#5d38de;
         box-shadow:0 0 0 3px rgba(93,56,222,.16)}
+    /* The closed control shows one line and ellipsises — the full title is always visible in the
+       open panel and in the "Selected Course" strip below, so nothing is lost. */
+    .se-select__text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .se-select__text--ph{color:var(--gray-500)}
+    .se-select--open .se-select__input{border-color:#5d38de;box-shadow:0 0 0 3px rgba(93,56,222,.16)}
+    .se-select--open .se-select__chev{transform:rotate(180deg)}
+    .se-select__chev{transition:transform .18s}
+
+    /* THE FIX. A native select element's popup is drawn by the BROWSER, sized to the longest
+       option on one line, and cannot be constrained by CSS — which is why 70-character course
+       titles spilled far outside the phone screen. This panel is ordinary DOM: bounded by the
+       field, never wider than the viewport, and long titles WRAP instead of forcing width.
+       (Razor parses this style block as markup, so an angle-bracketed tag name cannot appear
+       even inside a CSS comment — it is read as a real unclosed element.) */
+    .se-select__backdrop{position:fixed;inset:0;z-index:40}
+    .se-select__panel{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:41;
+        width:100%;max-width:min(100%,calc(100vw - 24px));
+        max-height:min(52vh,340px);overflow-y:auto;overscroll-behavior:contain;
+        background:#fff;border:1px solid var(--gray-200);border-radius:14px;
+        box-shadow:0 22px 44px -18px rgba(15,23,42,.4)}
+    .se-opt{display:flex;flex-direction:column;gap:2px;width:100%;padding:11px 14px;border:0;
+        background:none;font:inherit;font-size:14px;color:var(--vp-ink);text-align:left;cursor:pointer;
+        border-bottom:1px solid var(--gray-100)}
+    .se-opt:last-child{border-bottom:0}
+    .se-opt:hover{background:#f6f2ff}
+    .se-opt--on{background:#efeaff}
+    .se-opt__name{line-height:1.35;overflow-wrap:anywhere}
+    .se-opt__price{font-size:13px;font-weight:700;color:#e0441f}
 
     .se-chosen{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;max-width:520px;
         padding:14px 16px;border-radius:14px;border:1px solid #ded4fb;
@@ -347,21 +416,91 @@
     .se-sub .se-sub__add svg:not([width]):not([data-large]):not(.svg-noclamp){width:17px;height:17px;flex:none}
     .se-success .se-success__ico svg:not([width]):not([data-large]):not(.svg-noclamp){width:22px;height:22px}
 
+    .se-pill--fail{background:#FEE2E2;color:#991B1B}
+
+    /* ══ RESPONSIVE ═══════════════════════════════════════════════════════════════════════════
+       Every selector below is .se-* prefixed, so this block is effectively scoped to this page:
+       it cannot reach the admin shell, the other school pages, or the public site.
+       Breakpoints: 1024 (tablet) · 768 (phone) · 560 (stack the footer) · 420 · 340. */
+
     @@media (max-width:1024px){
         .se-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
     }
-    @@media (max-width:560px){
-        .se-panel{padding:18px}
-        .se-foot{flex-direction:column;align-items:stretch}
-        .se-total{max-width:none}
-        .se-submit{width:100%;justify-content:center}
-        .se-field{max-width:none}
+
+    /* ── Phone: compact everything ────────────────────────────────────────────────────────────
+       The four summary cards were ~180px tall each and, below 400px, stacked one per row — so
+       the four of them pushed the actual enrolment form more than a full screen down. They are
+       now a 2×2 grid of ~120px cards, which keeps the form reachable without scrolling. */
+    @@media (max-width:768px){
+        .se-stats{gap:12px;margin:14px 0 18px}
+        .se-stat{padding:16px;border-radius:16px}
+        .se-stat__ico{width:34px;height:34px;border-radius:10px;margin-bottom:8px}
+        .se-stats .se-stat .se-stat__ico svg:not([width]):not([data-large]):not(.svg-noclamp){width:17px;height:17px}
+        .se-stat__value{font-size:22px}
+        .se-stat__value--text{font-size:13.5px;line-height:1.3}
+        .se-stat__label{font-size:12.5px;line-height:1.3}
+
+        .se-panel{padding:18px;border-radius:18px}
+        .se-panel__title{font-size:20px;margin-bottom:14px}
+
+        /* 50px clears the 44px touch floor and matches the field height used elsewhere. */
+        .se-select__input{height:50px;font-size:15px}
+        .se-field{max-width:none;margin-bottom:16px}
         .se-chosen{max-width:none}
+
+        /* ── Student picker becomes cards ─────────────────────────────────────────────────────
+           Ten columns in a 760px table meant swiping to see one student's class, division, roll
+           number and mobile — while the tick box that actually matters sat off to the left. Each
+           student is now a card: tick box, number and name across the top, details beneath.
+           No horizontal scrolling, no hidden columns. */
+        .se-table-wrap{max-width:100%;overflow-x:visible;border:0;background:transparent}
+        .se-table,.se-table tbody,.se-table tr,.se-table td{display:block;width:auto}
+        .se-table{min-width:0}
+        .se-table thead{display:none}
+
+        .se-table tbody tr{position:relative;margin:0 0 12px;padding:52px 14px 12px;
+            border:1px solid var(--gray-200);border-radius:14px;background:#fff}
+        .se-table tbody tr:last-child{margin-bottom:0}
+        .se-table tbody tr.is-on{background:#f8f5ff;border-color:#c9bef4}
+
+        /* Card header: tick box, number, name. */
+        .se-table td.se-table__check{position:absolute;top:13px;left:12px;width:auto;padding:0;border:0}
+        .se-table td.se-table__check input[type=checkbox]{width:22px;height:22px}
+        .se-table td.se-table__num{position:absolute;top:16px;left:46px;width:auto;padding:0;border:0;
+            font-size:13px;font-weight:700;color:var(--gray-500)}
+        .se-table td.se-name{position:absolute;top:14px;left:72px;right:14px;padding:0;border:0;
+            font-size:15px;font-weight:600;overflow-wrap:anywhere}
+
+        /* Detail lines: caption left, value right. */
+        .se-table tbody td[data-label]{display:flex;align-items:flex-start;justify-content:space-between;
+            gap:14px;padding:6px 0;border:0;font-size:13.5px;white-space:normal;overflow-wrap:anywhere}
+        .se-table tbody td[data-label]::before{content:attr(data-label);flex:0 0 40%;
+            font-size:12px;font-weight:700;color:var(--gray-500)}
+        .se-table tbody tr td[data-label]:first-of-type{border-top:1px solid var(--gray-100);padding-top:10px}
+
+        .se-total{padding:18px;border-radius:16px}
+        .se-total__row{font-size:14px}
+        .se-total__row--sum{font-size:20px}
+        .se-total__hint{font-size:12.5px}
     }
-    @@media (max-width:400px){
+
+    @@media (max-width:560px){
+        .se-foot{flex-direction:column;align-items:stretch;gap:14px}
+        .se-total{max-width:none;min-width:0}
+        .se-submit{width:100%;justify-content:center;height:50px}
+    }
+
+    /* ── Narrow: give "Add student" its own line rather than squeezing the heading ── */
+    @@media (max-width:420px){
+        .se-sub{flex-direction:column;align-items:stretch;gap:10px;margin:20px 0 12px}
+        .se-sub__add{width:100%;justify-content:center;min-height:44px}
+        .se-panel{padding:16px}
+    }
+
+    /* ── Very narrow: two cards per row finally become too cramped to read. ── */
+    @@media (max-width:340px){
         .se-stats{grid-template-columns:minmax(0,1fr)}
     }
-    .se-pill--fail{background:#FEE2E2;color:#991B1B}
 </style>
 
 @code {
@@ -428,10 +567,38 @@
 
     private async Task ReloadProducts() => await LoadProductsAsync();
 
-    private void OnCourseChanged(ChangeEventArgs e)
+    /// <summary>Open state of the custom course dropdown. Presentation only.</summary>
+    private bool courseOpen;
+
+    private void ToggleCourse() => courseOpen = !courseOpen;
+    private void CloseCourse() => courseOpen = false;
+
+    /// <summary>
+    /// Picks a course. Writes exactly what the old &lt;select&gt; wrote — the product id as a
+    /// string, or "" for none — so every downstream rule (Chosen, TotalPayable, CanSubmit,
+    /// Submit) behaves identically. Nothing here decides a price.
+    /// </summary>
+    private void PickCourse(Guid? id)
     {
-        productId = e.Value?.ToString() ?? "";
+        productId = id?.ToString() ?? "";
         error = null;
+        courseOpen = false;
+    }
+
+    /// <summary>Keyboard parity with the native control it replaced.</summary>
+    private void OnCourseKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                courseOpen = false;
+                break;
+            case "Enter":
+            case " ":
+            case "ArrowDown":
+                courseOpen = true;
+                break;
+        }
     }
 
     private void Toggle(Guid userId, ChangeEventArgs e)
