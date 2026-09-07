@@ -81,4 +81,25 @@ public interface ISchoolEnrollmentService
     /// </summary>
     Task<(byte[] bytes, string filename)?> RenderInvoicePdfAsync(
         Guid actingUserId, Guid invoiceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Per-coordinator enrolment activity for the principal's dashboard: students enrolled, orders
+    /// placed, paid vs pending amounts, last activity — grouped over the requested time window.
+    /// Includes every active Coordinator on the caller's school, so a coordinator with zero
+    /// activity still appears (with zeros) rather than being invisible. Principal-only in intent;
+    /// a coordinator caller resolves to their own school only and would see the same numbers
+    /// scoped by CreatedById below anyway, but this is a dashboard method.
+    /// </summary>
+    Task<CoordinatorActivitySummary> GetCoordinatorActivityAsync(
+        Guid actingUserId, CoordinatorActivityRange range, CancellationToken ct = default);
+
+    /// <summary>
+    /// The students a single coordinator enrolled in the given time window — powers the inline
+    /// expander on the principal's Coordinator Activity card. Returns at most <paramref name="take"/>
+    /// rows plus the untruncated total, so the UI can render "N more…" without a second query.
+    /// School scope is enforced from <paramref name="actingUserId"/>; asking about a coordinator
+    /// on another school returns an empty list, not a leak.
+    /// </summary>
+    Task<CoordinatorEnrolmentDetails> GetCoordinatorEnrolmentsAsync(
+        Guid actingUserId, Guid coordinatorUserId, CoordinatorActivityRange range, int take = 5, CancellationToken ct = default);
 }

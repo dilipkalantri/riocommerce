@@ -59,6 +59,47 @@ public record SchoolPaymentSummary(
     int PendingStudents,
     decimal TotalPaid);
 
+/// <summary>The window a principal can view Coordinator Activity against.</summary>
+public enum CoordinatorActivityRange { Month, Year, All }
+
+/// <summary>One coordinator's contribution to school enrolment orders in a range.</summary>
+public record CoordinatorActivityRow(
+    Guid UserId,
+    string FullName,
+    string? Standard,
+    string? Medium,
+    int StudentsEnrolled,
+    int OrdersPlaced,
+    decimal PaidAmount,
+    decimal PendingAmount,
+    DateTime? LastActivityUtc);
+
+/// <summary>School-wide totals for the Coordinator Activity card, mirroring the row aggregates.</summary>
+public record CoordinatorActivitySummary(
+    CoordinatorActivityRange Range,
+    int CoordinatorsActive,
+    int StudentsEnrolled,
+    decimal PaidAmount,
+    decimal PendingAmount,
+    List<CoordinatorActivityRow> Rows);
+
+/// <summary>One enrolment line inside a coordinator's expander on the Coordinator Activity card.
+/// Amount is the frozen order-item unit price; PaymentStatus is the parent order's live status.</summary>
+public record CoordinatorEnrolmentRow(
+    string StudentName,
+    string CourseTitle,
+    decimal Amount,
+    string PaymentStatus,
+    string? OrderNumber,
+    DateTime EnrolledAtUtc);
+
+/// <summary>Details returned when a principal expands a coordinator row on the dashboard.
+/// TotalCount lets the UI say "5 shown · 13 more" without a second query.</summary>
+public record CoordinatorEnrolmentDetails(
+    Guid CoordinatorUserId,
+    int TotalCount,
+    List<CoordinatorEnrolmentRow> Rows);
+
 /// <summary>One student's tax invoice, as shown in the School portal.</summary>
 public record SchoolStudentInvoiceRow(
     Guid InvoiceId,

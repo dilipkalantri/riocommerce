@@ -2,6 +2,7 @@
 @layout SchoolLayout
 @attribute [Authorize(Roles = "school_principal,school_coordinator")]
 @using RioCommerce.Core
+@using RioCommerce.Core.DTOs.School
 @inject ISchoolRegistrationService RegSvc
 @inject ISchoolStudentService StudentSvc
 @inject ISchoolEnrollmentService Enrollment
@@ -67,18 +68,301 @@ else
             <a href="/school/students" class="btn btn-primary">Manage Students</a>
             <a href="/school/billing" class="btn btn-outline">Payment History &amp; Invoices →</a>
         </div>
+
+        @* ── Coordinator Activity ────────────────────────────────────────────────────
+           Principal-only view: how many students each coordinator has enrolled and the
+           amount their enrolments have raised. Every number is grouped from persisted
+           enrolment orders (Order.CreatedById), so a coordinator can never influence
+           the figures except by placing real orders. *@
+        <div class="ca-card">
+            <div class="ca-head">
+                <div>
+                    <h2>Coordinator Activity</h2>
+                    <div class="ca-sub">Enrolments each coordinator has placed on your school's roll.</div>
+                </div>
+                <div class="ca-filters">
+                    <button type="button" class="@(activityRange == CoordinatorActivityRange.Month ? "is-on" : null)"
+                            @onclick="() => SetRange(CoordinatorActivityRange.Month)">This month</button>
+                    <button type="button" class="@(activityRange == CoordinatorActivityRange.Year ? "is-on" : null)"
+                            @onclick="() => SetRange(CoordinatorActivityRange.Year)">This year</button>
+                    <button type="button" class="@(activityRange == CoordinatorActivityRange.All ? "is-on" : null)"
+                            @onclick="() => SetRange(CoordinatorActivityRange.All)">All time</button>
+                </div>
+            </div>
+
+            @if (activity is null)
+            {
+                <div class="ca-empty">Loading…</div>
+            }
+            else
+            {
+                <div class="ca-agg">
+                    <div class="ca-agg__cell">
+                        <div class="ca-agg__lbl">Coordinators active</div>
+                        <div class="ca-agg__val">@activity.CoordinatorsActive</div>
+                    </div>
+                    <div class="ca-agg__cell">
+                        <div class="ca-agg__lbl">Students enrolled</div>
+                        <div class="ca-agg__val">@activity.StudentsEnrolled</div>
+                    </div>
+                    <div class="ca-agg__cell">
+                        <div class="ca-agg__lbl">Paid</div>
+                        <div class="ca-agg__val ca-agg__val--paid">@Money.Inr(activity.PaidAmount)</div>
+                    </div>
+                    <div class="ca-agg__cell">
+                        <div class="ca-agg__lbl">Pending</div>
+                        <div class="ca-agg__val ca-agg__val--pending">@Money.Inr(activity.PendingAmount)</div>
+                    </div>
+                </div>
+
+                @if (activity.Rows.Count == 0)
+                {
+                    <div class="ca-empty">No coordinators have been added yet. <a href="/school/coordinators">Add one</a>.</div>
+                }
+                else
+                {
+                    <div class="ca-tbl-wrap">
+                        <table class="ca-tbl">
+                            <thead>
+                                <tr>
+                                    <th>Coordinator</th>
+                                    <th class="num">Students enrolled</th>
+                                    <th class="num">Orders</th>
+                                    <th class="num">Paid</th>
+                                    <th class="num">Pending</th>
+                                    <th>Last activity</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ var idle = activity.Rows.Where(r => r.StudentsEnrolled == 0).ToList();
+                                   var active = activity.Rows.Where(r => r.StudentsEnrolled > 0).ToList(); }
+                                @foreach (var r in active)
+                                {
+                                    var isOpen = openCoord == r.UserId;
+                                    <tr class="row-coord @(isOpen ? "is-open" : null)" @onclick="() => ToggleCoord(r.UserId)">
+                                        <td>
+                                            <div class="ca-name">
+                                                <span class="chev">▶</span>
+                                                <span class="ca-avatar">@Initials(r.FullName)</span>
+                                                <div>
+                                                    <div class="ca-name__n">@r.FullName</div>
+                                                    <div class="ca-name__scope">@ScopeLabel(r)</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="num" style="font-weight:600">@r.StudentsEnrolled</td>
+                                        <td class="num">@r.OrdersPlaced</td>
+                                        <td class="num amt-paid">@Money.Inr(r.PaidAmount)</td>
+                                        <td class="num @(r.PendingAmount > 0 ? "amt-pending" : "amt-zero")">@Money.Inr(r.PendingAmount)</td>
+                                        <td class="ca-sub">@(r.LastActivityUtc?.ToLocalTime().ToString("dd MMM yyyy, HH:mm") ?? "—")</td>
+                                    </tr>
+                                    @if (isOpen)
+                                    {
+                                        <tr class="row-expand">
+                                            <td colspan="6">
+                                                <div class="expand">
+                                                    @if (openDetails is null)
+                                                    {
+                                                        <div class="empty-note">Loading enrolments…</div>
+                                                    }
+                                                    else if (openDetails.Rows.Count == 0)
+                                                    {
+                                                        <div class="empty-note">No enrolments in this range for @r.FullName.</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="expand__head">
+                                                            <strong>@openDetails.TotalCount student@(openDetails.TotalCount == 1 ? "" : "s")</strong>
+                                                            enrolled by @r.FullName in this range · @r.OrdersPlaced order@(r.OrdersPlaced == 1 ? "" : "s")
+                                                            · @Money.Inr(r.PaidAmount + r.PendingAmount)
+                                                        </div>
+                                                        <table class="enrol-tbl">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Student</th>
+                                                                    <th>Course</th>
+                                                                    <th>Enrolled on</th>
+                                                                    <th style="text-align:right">Amount &amp; Status</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                @foreach (var e in openDetails.Rows)
+                                                                {
+                                                                    <tr>
+                                                                        <td><div class="stud">@e.StudentName</div></td>
+                                                                        <td>@e.CourseTitle</td>
+                                                                        <td class="ca-sub">@e.EnrolledAtUtc.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                                                        <td class="amt">
+                                                                            @Money.Inr(e.Amount)
+                                                                            <span class="pill @PillClass(e.PaymentStatus)">
+                                                                                <span class="dot"></span>@PillLabel(e.PaymentStatus)
+                                                                            </span>
+                                                                        </td>
+                                                                    </tr>
+                                                                }
+                                                                @if (openDetails.TotalCount > openDetails.Rows.Count)
+                                                                {
+                                                                    var more = openDetails.TotalCount - openDetails.Rows.Count;
+                                                                    <tr>
+                                                                        <td colspan="4" style="text-align:center;padding:12px" class="ca-sub">
+                                                                            @more more … <a href="/school/students?addedBy=@r.UserId" style="color:var(--info,#2563eb);font-weight:600;text-decoration:none">View all →</a>
+                                                                        </td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </table>
+                                                    }
+                                                    <div class="expand__foot">
+                                                        <a class="link-btn" href="/school/students?addedBy=@r.UserId">View all their students →</a>
+                                                        <a class="link-btn" href="/school/billing">Their orders &amp; invoices →</a>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                @if (idle.Count > 0)
+                                {
+                                    <tr><td colspan="6" class="ca-divider">No activity in this range</td></tr>
+                                    @foreach (var r in idle)
+                                    {
+                                        <tr class="row-inactive">
+                                            <td>
+                                                <div class="ca-name">
+                                                    <span class="ca-avatar ca-avatar--idle">@Initials(r.FullName)</span>
+                                                    <div>
+                                                        <div class="ca-name__n">@r.FullName</div>
+                                                        <div class="ca-name__scope">@ScopeLabel(r)</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="num amt-zero">0</td>
+                                            <td class="num amt-zero">0</td>
+                                            <td class="num amt-zero">@Money.Inr(0m)</td>
+                                            <td class="num amt-zero">@Money.Inr(0m)</td>
+                                            <td class="ca-sub">—</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        </div>
     }
 }
+
+<style>
+    .ca-card{background:#fff;border:1px solid var(--gray-200);border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.06);overflow:hidden;margin-top:24px}
+    .ca-head{display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--gray-200);flex-wrap:wrap}
+    .ca-head h2{margin:0;font-size:16px;font-weight:700;color:var(--navy)}
+    .ca-sub{color:var(--gray-500);font-size:12.5px}
+    .ca-filters{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+    .ca-filters button{border:1px solid var(--gray-300);background:#fff;padding:5px 12px;border-radius:999px;font:inherit;font-size:12.5px;color:var(--gray-600);cursor:pointer}
+    .ca-filters button.is-on{background:var(--navy);color:#fff;border-color:var(--navy)}
+
+    .ca-agg{display:grid;grid-template-columns:repeat(4,1fr);background:#fafbfd;border-bottom:1px solid var(--gray-200)}
+    .ca-agg__cell{padding:14px 22px;border-right:1px dashed var(--gray-200)}
+    .ca-agg__cell:last-child{border-right:0}
+    .ca-agg__lbl{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gray-500)}
+    .ca-agg__val{font-size:20px;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;margin-top:3px}
+    .ca-agg__val--paid{color:#16a34a}
+    .ca-agg__val--pending{color:#d97706}
+
+    .ca-tbl-wrap{overflow-x:auto}
+    .ca-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13.5px;min-width:780px}
+    .ca-tbl th{text-align:left;padding:12px 14px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--gray-500);background:#fbfcfe;border-bottom:1px solid var(--gray-200)}
+    .ca-tbl td{padding:14px 14px;border-bottom:1px solid var(--gray-200);vertical-align:middle}
+    .ca-tbl tbody tr:last-child td{border-bottom:0}
+    .ca-tbl .num{font-variant-numeric:tabular-nums}
+    .amt-paid{color:#16a34a;font-weight:700;font-variant-numeric:tabular-nums}
+    .amt-pending{color:#d97706;font-weight:700;font-variant-numeric:tabular-nums}
+    .amt-zero{color:var(--gray-400);font-variant-numeric:tabular-nums}
+    .ca-name{display:flex;align-items:center;gap:12px}
+    .ca-avatar{width:36px;height:36px;border-radius:50%;background:#DBEAFE;color:#2563eb;display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+    .ca-avatar--idle{background:#eef1f6;color:var(--gray-500)}
+    .ca-name__n{font-weight:600;color:var(--navy);line-height:1.15}
+    .ca-name__scope{color:var(--gray-500);font-size:12px}
+    .ca-divider{padding:10px 22px;background:#f9fafc;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gray-500);font-weight:700}
+    .row-inactive td{color:var(--gray-500);background:#fbfcfe}
+    .row-inactive .ca-name__n{color:var(--gray-500)}
+    .ca-empty{padding:40px 24px;text-align:center;color:var(--gray-500)}
+
+    /* Row is clickable when the coordinator has activity. Chevron rotates when open. */
+    .ca-tbl tr.row-coord{cursor:pointer;transition:background .12s}
+    .ca-tbl tr.row-coord:hover{background:#fbfcfe}
+    .ca-tbl tr.row-coord.is-open{background:#EFF6FF}
+    .ca-tbl tr.row-coord .chev{
+        display:inline-block;width:20px;height:20px;border-radius:6px;
+        background:#DBEAFE;color:#2563eb;text-align:center;line-height:20px;
+        font-size:11px;margin-right:8px;transition:transform .18s,background .12s;flex:none
+    }
+    .ca-tbl tr.row-coord.is-open .chev{transform:rotate(90deg);background:#2563eb;color:#fff}
+    /* Idle rows: keep the chevron slot for alignment but not interactive. */
+    .ca-tbl tr.row-inactive{cursor:default}
+    .ca-tbl tr.row-inactive:hover{background:#fbfcfe}
+    .ca-tbl tr.row-inactive .chev{visibility:hidden}
+
+    /* Expander body */
+    .ca-tbl tr.row-expand td{padding:0;background:#fbfcfe}
+    .expand{padding:4px 22px 18px;background:#fbfcfe;border-bottom:1px solid var(--gray-200)}
+    .expand__head{display:flex;align-items:center;gap:12px;padding:12px 0;font-size:12px;color:var(--gray-500)}
+    .expand__head strong{color:var(--navy);font-weight:600}
+    .enrol-tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;
+               background:#fff;border:1px solid var(--gray-200);border-radius:10px;overflow:hidden}
+    .enrol-tbl th{text-align:left;padding:9px 12px;font-size:10px;font-weight:700;
+                  text-transform:uppercase;letter-spacing:.12em;color:var(--gray-500);
+                  background:#fbfcfe;border-bottom:1px solid var(--gray-200)}
+    .enrol-tbl td{padding:10px 12px;border-bottom:1px solid var(--gray-200);vertical-align:middle}
+    .enrol-tbl tbody tr:last-child td{border-bottom:0}
+    .enrol-tbl .amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+    .enrol-tbl .stud{font-weight:600;color:var(--navy)}
+    .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;margin-left:6px}
+    .pill--paid{background:#DCFCE7;color:#16a34a}
+    .pill--pending{background:#FEF3C7;color:#d97706}
+    .pill--failed{background:#FEE2E2;color:#dc2626}
+    .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+    .expand__foot{display:flex;align-items:center;gap:10px;padding:14px 0 2px;
+                  border-top:1px dashed var(--gray-200);margin-top:10px;flex-wrap:wrap}
+    .expand__foot .link-btn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;
+                            color:#2563eb;text-decoration:none;border:1px solid #DBEAFE;
+                            background:#fff;padding:6px 12px;border-radius:8px}
+    .expand__foot .link-btn:hover{background:#DBEAFE}
+
+    .empty-note{padding:20px 12px;text-align:center;color:var(--gray-500);font-size:13px;
+                background:#fff;border:1px dashed var(--gray-300);border-radius:10px}
+
+    @@media (max-width:768px){
+        .ca-agg{grid-template-columns:repeat(2,1fr)}
+        .ca-agg__cell:nth-child(2){border-right:0}
+    }
+</style>
 
 @code {
     private int studentCount;
     private int myStudentCount;
     private bool loading = true;
     private bool isCoordinator;
-    private RioCommerce.Core.DTOs.School.SchoolPortalDashboard? dash;
+    private Guid actingUserId;
+    private SchoolPortalDashboard? dash;
 
     /// <summary>Payment headline figures, counted from persisted orders for THIS school only.</summary>
-    private RioCommerce.Core.DTOs.School.SchoolPaymentSummary pay = new(0, 0, 0, 0m);
+    private SchoolPaymentSummary pay = new(0, 0, 0, 0m);
+
+    // Principal-only "Coordinator Activity" card. `activity` stays null while loading; the
+    // page shows "Loading…" until the first fetch lands. `activityRange` drives the chip filter.
+    private CoordinatorActivityRange activityRange = CoordinatorActivityRange.Month;
+    private CoordinatorActivitySummary? activity;
+
+    // Inline expander. Only one row is open at a time (a school with 8 coordinators would
+    // otherwise blow the card open). `openDetails` is the currently-visible expander's data;
+    // `detailsCache` keeps previously fetched (coordinator, range) pairs so re-opening the same
+    // row is instant. Range change clears the cache — different window, different rows.
+    private Guid? openCoord;
+    private CoordinatorEnrolmentDetails? openDetails;
+    private readonly Dictionary<(Guid coord, CoordinatorActivityRange range), CoordinatorEnrolmentDetails> detailsCache = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -93,6 +377,7 @@ else
         var uid = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (uid != null && Guid.TryParse(uid, out var userId))
         {
+            actingUserId = userId;
             dash = await RegSvc.GetDashboardAsync(userId);
 
             if (isCoordinator)
@@ -108,8 +393,88 @@ else
                 // take the real figure from the scoped student service instead.
                 studentCount = await StudentSvc.CountAsync(userId);
                 pay = await Enrollment.GetPaymentSummaryAsync(userId);
+                activity = await Enrollment.GetCoordinatorActivityAsync(userId, activityRange);
             }
         }
         loading = false;
+    }
+
+    private async Task SetRange(CoordinatorActivityRange range)
+    {
+        if (activityRange == range) return;
+        activityRange = range;
+        activity = null;                                            // show the "Loading…" strip while the new range fetches
+        // Clear the expander state too: a different range means different rows, and the id we had
+        // open may not be in the new row-set (or the numbers behind it will be stale).
+        openCoord = null;
+        openDetails = null;
+        detailsCache.Clear();
+        StateHasChanged();
+        activity = await Enrollment.GetCoordinatorActivityAsync(actingUserId, range);
+    }
+
+    // Clicking the currently-open row closes it; clicking any other opens that one (and closes
+    // the previous). Data fetches only when a row is first opened and is memoised for the rest
+    // of the range, so repeated open/close pairs cost nothing.
+    private async Task ToggleCoord(Guid coordinatorUserId)
+    {
+        if (openCoord == coordinatorUserId)
+        {
+            openCoord = null;
+            openDetails = null;
+            return;
+        }
+
+        openCoord = coordinatorUserId;
+        var key = (coordinatorUserId, activityRange);
+        if (detailsCache.TryGetValue(key, out var cached))
+        {
+            openDetails = cached;
+            return;
+        }
+
+        openDetails = null;    // show "Loading enrolments…" while the fetch runs
+        StateHasChanged();
+        var fetched = await Enrollment.GetCoordinatorEnrolmentsAsync(actingUserId, coordinatorUserId, activityRange);
+        // Guard against a mid-flight range change: don't stamp the wrong data if the user has
+        // moved on. The key match against activityRange is the check.
+        if (openCoord == coordinatorUserId)
+        {
+            detailsCache[key] = fetched;
+            openDetails = fetched;
+        }
+    }
+
+    // Payment status → pill class. Server passes the raw PaymentStatus enum name.
+    private static string PillClass(string status) => status?.ToLowerInvariant() switch
+    {
+        "success" => "pill--paid",
+        "failed"  => "pill--failed",
+        _         => "pill--pending",
+    };
+    private static string PillLabel(string status) => status?.ToLowerInvariant() switch
+    {
+        "success" => "Paid",
+        "failed"  => "Failed",
+        _         => "Pending",
+    };
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
+                                 : name[..Math.Min(2, name.Length)].ToUpper();
+    }
+
+    // "Std 8 · English" — falls back gracefully when either half is missing so early rows
+    // that were created before the scope fields existed still render a name row.
+    private static string ScopeLabel(CoordinatorActivityRow r)
+    {
+        var std = string.IsNullOrWhiteSpace(r.Standard) ? null
+                : r.Standard!.Equals("All", StringComparison.OrdinalIgnoreCase) ? "All classes"
+                : $"Std {r.Standard}";
+        var med = string.IsNullOrWhiteSpace(r.Medium) ? null : r.Medium;
+        return string.Join(" · ", new[] { std, med }.Where(s => s != null));
     }
 }

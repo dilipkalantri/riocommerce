@@ -562,4 +562,159 @@ public class SchoolEnrollmentService(
     /// with every other order rather than a parallel numbering of their own.</summary>
     private async Task<string> GenerateOrderNumberAsync(CancellationToken ct) =>
         await OrderNumberGenerator.NextAsync(_db.Orders, (await _company.GetAsync()).OrderSeries, ct);
+
+    public async Task<CoordinatorActivitySummary> GetCoordinatorActivityAsync(
+        Guid actingUserId, CoordinatorActivityRange range, CancellationToken ct = default)
+    {
+        // School scope is authoritative: never take a schoolId from the caller. A user not linked
+        // to any school gets an empty row-set, same as elsewhere in this service.
+        var schoolId = await _students.ResolveSchoolIdAsync(actingUserId, ct);
+        if (schoolId is null)
+            return new CoordinatorActivitySummary(range, 0, 0, 0m, 0m, new());
+
+        var now = DateTime.UtcNow;
+        DateTime? sinceUtc = range switch
+        {
+            CoordinatorActivityRange.Month => new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc),
+            CoordinatorActivityRange.Year  => new DateTime(now.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            _ => null,
+        };
+
+        // Every active Coordinator on this school. Included in the result even with zero activity
+        // so the principal can see who isn't pulling weight — matches the mockup's "no activity"
+        // divider. Principal rows are deliberately excluded here (this is Coordinator Activity).
+        var coordinators = await _db.SchoolUsers.AsNoTracking()
+            .Where(su => su.SchoolId == schoolId.Value
+                      && su.IsActive
+                      && su.Role == SchoolUserRole.Coordinator)
+            .Select(su => new
+            {
+                su.UserId,
+                Name = su.User.FullName,
+                su.Standard,
+                su.Medium,
+            })
+            .ToListAsync(ct);
+
+        // Enrolment orders these coordinators placed. Filter drives from the roster table (which
+        // is the structural link between an order and the school) so that any order lacking a
+        // roster row can never appear here — same rule the rest of this service uses to identify
+        // "school orders". OrderBy is applied after the join so EF-side aggregation stays clean.
+        var rosterForSchool = _db.SchoolEnrollmentStudents.AsNoTracking()
+            .Where(r => r.SchoolId == schoolId.Value);
+        if (sinceUtc is { } since)
+            rosterForSchool = rosterForSchool.Where(r => r.Order.CreatedAt >= since);
+
+        // Group by order first, then by CreatedById — students + amount per order collapse to one
+        // row-per-coordinator without double-counting a two-course pupil against the paid total.
+        // A missing CreatedById (null) is grouped under Guid.Empty and dropped when we join to
+        // the coordinators list below.
+        var perOrder = await rosterForSchool
+            .GroupBy(r => new { r.OrderId, CreatedById = r.Order.CreatedById ?? Guid.Empty, r.Order.PaymentStatus, r.Order.CreatedAt, r.Order.TotalAmount })
+            .Select(g => new
+            {
+                g.Key.OrderId,
+                g.Key.CreatedById,
+                g.Key.PaymentStatus,
+                g.Key.CreatedAt,
+                g.Key.TotalAmount,
+                Students = g.Count(),
+            })
+            .ToListAsync(ct);
+
+        // Aggregate per coordinator in memory: the working set is bounded by the number of orders
+        // a school raises per range, which is small even for a busy school (a few hundred at most).
+        var byCoord = perOrder
+            .GroupBy(o => o.CreatedById)
+            .ToDictionary(
+                g => g.Key,
+                g => new
+                {
+                    Students = g.Sum(o => o.Students),
+                    Orders   = g.Count(),
+                    Paid     = g.Where(o => o.PaymentStatus == PaymentStatus.Success).Sum(o => (decimal?)o.TotalAmount) ?? 0m,
+                    Pending  = g.Where(o => o.PaymentStatus == PaymentStatus.Pending || o.PaymentStatus == PaymentStatus.Failed)
+                                .Sum(o => (decimal?)o.TotalAmount) ?? 0m,
+                    Last     = g.Max(o => o.CreatedAt),
+                });
+
+        var rows = coordinators
+            .Select(c =>
+            {
+                var s = byCoord.TryGetValue(c.UserId, out var agg) ? agg : null;
+                return new CoordinatorActivityRow(
+                    c.UserId, c.Name, c.Standard, c.Medium,
+                    s?.Students ?? 0,
+                    s?.Orders   ?? 0,
+                    s?.Paid     ?? 0m,
+                    s?.Pending  ?? 0m,
+                    s?.Last);
+            })
+            // Paid amount desc first, then students desc — the mockup's "leaderboard" order.
+            .OrderByDescending(r => r.PaidAmount)
+            .ThenByDescending(r => r.StudentsEnrolled)
+            .ThenBy(r => r.FullName)
+            .ToList();
+
+        return new CoordinatorActivitySummary(
+            range,
+            rows.Count(r => r.StudentsEnrolled > 0),
+            rows.Sum(r => r.StudentsEnrolled),
+            rows.Sum(r => r.PaidAmount),
+            rows.Sum(r => r.PendingAmount),
+            rows);
+    }
+
+    public async Task<CoordinatorEnrolmentDetails> GetCoordinatorEnrolmentsAsync(
+        Guid actingUserId, Guid coordinatorUserId, CoordinatorActivityRange range, int take = 5, CancellationToken ct = default)
+    {
+        var schoolId = await _students.ResolveSchoolIdAsync(actingUserId, ct);
+        if (schoolId is null)
+            return new CoordinatorEnrolmentDetails(coordinatorUserId, 0, new());
+
+        // Coordinator must belong to THIS school and be active. Passing another school's staff id
+        // — or the caller's own id, or a garbage guid — yields an empty result rather than a leak.
+        var belongs = await _db.SchoolUsers.AsNoTracking()
+            .AnyAsync(su => su.SchoolId == schoolId.Value
+                         && su.UserId == coordinatorUserId
+                         && su.IsActive
+                         && su.Role == SchoolUserRole.Coordinator, ct);
+        if (!belongs)
+            return new CoordinatorEnrolmentDetails(coordinatorUserId, 0, new());
+
+        var now = DateTime.UtcNow;
+        DateTime? sinceUtc = range switch
+        {
+            CoordinatorActivityRange.Month => new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc),
+            CoordinatorActivityRange.Year  => new DateTime(now.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            _ => null,
+        };
+
+        // Drives from the roster (structural link between an order and the school). Filter matches
+        // GetCoordinatorActivityAsync above, so the totals line up: the aggregate row for a
+        // coordinator shows the same StudentsEnrolled count that this method returns as TotalCount.
+        var q = _db.SchoolEnrollmentStudents.AsNoTracking()
+            .Where(r => r.SchoolId == schoolId.Value
+                     && r.Order.CreatedById == coordinatorUserId);
+        if (sinceUtc is { } since) q = q.Where(r => r.Order.CreatedAt >= since);
+
+        var total = await q.CountAsync(ct);
+
+        // Take a small page, newest first — the accordion is for scanning, not paging. Beyond `take`
+        // the UI shows "N more…" and links to the roster / billing page for the full list.
+        var pageSize = Math.Clamp(take, 1, 50);
+        var rows = await q
+            .OrderByDescending(r => r.Order.CreatedAt)
+            .Take(pageSize)
+            .Select(r => new CoordinatorEnrolmentRow(
+                r.StudentUser.FullName,
+                r.Product.Title,
+                r.UnitPrice,
+                r.Order.PaymentStatus.ToString(),
+                r.Order.OrderNumber,
+                r.Order.CreatedAt))
+            .ToListAsync(ct);
+
+        return new CoordinatorEnrolmentDetails(coordinatorUserId, total, rows);
+    }
 }
