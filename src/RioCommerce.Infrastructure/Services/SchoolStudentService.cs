@@ -60,7 +60,7 @@ public class SchoolStudentService(
     }
 
     public async Task<List<SchoolStudentListItem>> ListAsync(
-        Guid actingUserId, string? search = null, CancellationToken ct = default)
+        Guid actingUserId, string? search = null, Guid? addedByUserId = null, CancellationToken ct = default)
     {
         var scope = await ResolveScopeAsync(actingUserId, ct);
         // No school -> no rows. Never fall back to "all students".
@@ -78,6 +78,17 @@ public class SchoolStudentService(
         if (scope.RestrictToAddedByUserId is { } addedBy)
             q = q.Where(ss => ss.AddedByUserId == addedBy);
 
+        // Principal-only "Added by" filter. Coordinators can't widen past their own students
+        // (the isolation filter above still applies) — a coordinator passing another id here
+        // would produce an empty AND with their own restriction, matching nothing. Guid.Empty
+        // is treated as "unassigned" so the principal can list pre-0050 rows that carry no creator.
+        if (addedByUserId is { } byId)
+        {
+            q = byId == Guid.Empty
+                ? q.Where(ss => ss.AddedByUserId == null)
+                : q.Where(ss => ss.AddedByUserId == byId);
+        }
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = $"%{search.Trim()}%";
@@ -87,12 +98,38 @@ public class SchoolStudentService(
                            || (ss.RollNumber != null && EF.Functions.ILike(ss.RollNumber, s)));
         }
 
-        return await q
-            .OrderBy(ss => ss.User.FullName)
-            .Select(ss => new SchoolStudentListItem(
+        // "Added by" projection joins Users through the FK on SchoolStudent.AddedByUserId. Left-join
+        // via GroupJoin/DefaultIfEmpty keeps rows whose creator is null (pre-0050) instead of dropping
+        // them — the row still shows, "Added by" reads "—" on the page.
+        var rows =
+            from ss in q
+            join creator in _db.Users.AsNoTracking()
+                on ss.AddedByUserId equals creator.Id into creatorJoin
+            from creator in creatorJoin.DefaultIfEmpty()
+            orderby ss.User.FullName
+            select new SchoolStudentListItem(
                 ss.Id, ss.UserId, ss.User.FullName, ss.User.Email, ss.User.Phone,
                 ss.StudentClass, ss.Section, ss.RollNumber, ss.School.Name,
-                ss.IsActive, ss.User.IsVerified, ss.CreatedAt))
+                ss.IsActive, ss.User.IsVerified, ss.CreatedAt,
+                ss.AddedByUserId, creator != null ? creator.FullName : null);
+
+        return await rows.ToListAsync(ct);
+    }
+
+    public async Task<List<SchoolCoordinatorPick>> ListSchoolStaffAsync(Guid actingUserId, CancellationToken ct = default)
+    {
+        var schoolId = await ResolveSchoolIdAsync(actingUserId, ct);
+        if (schoolId is null) return new();
+
+        // Coordinators only — the principal isn't listed here because this dropdown is on the
+        // principal's own screen and the "All staff" default already includes their students.
+        // Ordered alphabetically. UserId is what the caller passes back to ListAsync as the filter.
+        return await _db.SchoolUsers.AsNoTracking()
+            .Where(su => su.SchoolId == schoolId.Value
+                      && su.IsActive
+                      && su.Role == RioCommerce.Core.Enums.SchoolUserRole.Coordinator)
+            .OrderBy(su => su.User.FullName)
+            .Select(su => new SchoolCoordinatorPick(su.UserId, su.User.FullName))
             .ToListAsync(ct);
     }
 

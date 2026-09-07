@@ -51,6 +51,23 @@
                 <button type="button" class="ss-filter @(payFilter == f ? "is-on" : null)"
                         @onclick="() => payFilter = f">@f (@CountFor(f))</button>
             }
+
+            @* Principal-only "Added by" filter. Coordinators only see their own students already,
+               so the picker would list a single name and confuse the meaning — hidden for them. *@
+            <AuthorizeView Roles="school_principal" Context="cf">
+                <div class="ss-coordfilter">
+                    <label for="coordFilter" class="ss-coordfilter__lbl">Added by</label>
+                    <select id="coordFilter" class="ss-coordfilter__sel"
+                            @bind="addedByFilter" @bind:after="OnAddedByChanged">
+                        <option value="">All staff</option>
+                        @foreach (var s in staff)
+                        {
+                            <option value="@s.UserId">@s.FullName</option>
+                        }
+                        <option value="unassigned">— Unassigned (legacy)</option>
+                    </select>
+                </div>
+            </AuthorizeView>
         </div>
 
         @if (message != null)
@@ -76,6 +93,7 @@
                                .RollNumber still hold every value already recorded, and the list DTO
                                still carries them; this table simply stops rendering them. *@
                             <th>Student</th><th>Contact</th><th>Class</th>
+                            <th>Added By</th>
                             <th>Status</th><th>Payment</th><th>Invoice</th><th></th>
                         </tr>
                     </thead>
@@ -96,6 +114,9 @@
                                     <div class="ss-sub">@(r.Phone ?? "—")</div>
                                 </td>
                                 <td data-label="Class">@(string.IsNullOrWhiteSpace(r.StudentClass) ? "—" : r.StudentClass)</td>
+                                <td data-label="Added By">
+                                    @(string.IsNullOrWhiteSpace(r.AddedByName) ? "—" : r.AddedByName)
+                                </td>
                                 <td data-label="Status">
                                     @* IsVerified is the activation signal: it flips to true only when
                                        the student completes the OTP and sets their own password. *@
@@ -527,9 +548,12 @@
     .bulk-legend .dot--warn{background:#d97706}
     .bulk-legend .dot--err{background:#dc2626}
     .bulk-count{color:var(--vp-ink);font-size:13px}
-    .ss-filters{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+    .ss-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
     .ss-filter{padding:6px 14px;border-radius:999px;border:1px solid var(--gray-200,#e5e7eb);background:#fff;font-size:12.5px;font-weight:700;color:var(--gray-600,#4b5563);cursor:pointer}
     .ss-filter.is-on{background:var(--navy,#5d38de);border-color:var(--navy,#5d38de);color:#fff}
+    .ss-coordfilter{display:inline-flex;align-items:center;gap:8px;margin-left:auto;padding:4px 10px;border:1px solid var(--gray-200,#e5e7eb);border-radius:999px;background:#fff}
+    .ss-coordfilter__lbl{font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--gray-500,#6b7280)}
+    .ss-coordfilter__sel{border:0;background:transparent;font:inherit;font-size:13px;font-weight:600;color:var(--vp-ink,#0e1a33);outline:none;cursor:pointer;padding:2px 22px 2px 4px}
     .ss-pill--fail{background:#FEE2E2;color:#991B1B}
 
     /* ══ MODAL RESPONSIVE ═════════════════════════════════════════════════════════════════════
@@ -801,6 +825,12 @@
 
     private int CountFor(string filter) => rows.Count(r => Matches(r, filter));
 
+    // Principal-only "Added by" filter. Empty string = All staff; "unassigned" = pre-0050 rows
+    // whose creator was never recorded; otherwise the userId of the staff member. Coordinators
+    // don't see the dropdown and this stays "".
+    private string addedByFilter = "";
+    private List<SchoolCoordinatorPick> staff = new();
+
     // Bulk-add state. bulkRows is the working grid. `saveRan` flips to true after a save so
     // the row-status column switches from "waiting for input" (idle) to "missing fields" (warn)
     // for the row where a required field is still empty — no red before the writer has tried.
@@ -829,18 +859,32 @@
             // Goes through Reload() rather than calling ListAsync directly: Reload also loads the
             // payment verdicts. Loading the roster on its own left payStatus empty on first paint,
             // so every student rendered as "Pending" even when the school had paid for them.
-            if (schoolId is not null) await Reload();
+            if (schoolId is not null)
+            {
+                staff = await Students.ListSchoolStaffAsync(actingUserId);
+                await Reload();
+            }
         }
         loading = false;
     }
 
     private async Task Reload()
     {
-        rows = await Students.ListAsync(actingUserId, search);
+        rows = await Students.ListAsync(actingUserId, search, AddedByFilterValue);
         // Re-read the payment verdicts alongside the roster so a settled payment is reflected
         // immediately after any refresh.
         payStatus = await Enrollment.GetStudentPaymentStatusesAsync(actingUserId);
     }
+
+    // Maps the dropdown selection to what the service expects. Empty string = no filter (all staff);
+    // literal "unassigned" = Guid.Empty which the service interprets as "AddedByUserId IS NULL"
+    // (pre-0050 rows); anything else must parse as a Guid.
+    private Guid? AddedByFilterValue =>
+        string.IsNullOrWhiteSpace(addedByFilter) ? null
+        : addedByFilter == "unassigned" ? Guid.Empty
+        : Guid.TryParse(addedByFilter, out var g) ? g : null;
+
+    private Task OnAddedByChanged() => Reload();
 
     private async Task OnSearchKey(KeyboardEventArgs e)
     {

@@ -25,8 +25,20 @@ public interface ISchoolStudentService
     /// </summary>
     Task<SchoolAccessScope?> ResolveScopeAsync(Guid actingUserId, CancellationToken ct = default);
 
-    /// <summary>Students of the acting user's own school. Empty when they administer none.</summary>
-    Task<List<SchoolStudentListItem>> ListAsync(Guid actingUserId, string? search = null, CancellationToken ct = default);
+    /// <summary>
+    /// Students of the acting user's own school. Empty when they administer none.
+    /// <paramref name="addedByUserId"/> narrows the roster to students added by that staff
+    /// member — used by the principal's "Added by" filter. Coordinators see only their own
+    /// students regardless of this argument (the scope helper enforces it).
+    /// </summary>
+    Task<List<SchoolStudentListItem>> ListAsync(Guid actingUserId, string? search = null, Guid? addedByUserId = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// The active staff members (Principal + Coordinators) of the acting user's school. Powers the
+    /// principal's "Added by" filter on the Students page — so returns the whole staff list, not
+    /// just people who happen to have created a student row.
+    /// </summary>
+    Task<List<SchoolCoordinatorPick>> ListSchoolStaffAsync(Guid actingUserId, CancellationToken ct = default);
 
     /// <summary>
     /// Adds a student to the acting user's school. If an account already exists for the given

@@ -96,7 +96,12 @@ public record SchoolStudentListItem(
     string SchoolName,
     bool IsActive,
     bool IsVerified,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    Guid? AddedByUserId,
+    string? AddedByName);
+
+/// <summary>Pick for the principal's "Added by" filter on the Students page.</summary>
+public record SchoolCoordinatorPick(Guid UserId, string FullName);
 
 /// <summary>
 /// Payload for a principal adding a student.
