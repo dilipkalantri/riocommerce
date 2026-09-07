@@ -19,7 +19,7 @@ namespace RioCommerce.Infrastructure.Services;
 public sealed class InvoiceService : IInvoiceService
 {
     private const int NumberRetryAttempts = 3;
-    private const string CompanyDefaultsName = "RioCommerce";
+    private const string CompanyDefaultsName = "Vijaypath";
 
     private readonly RioCommerceDbContext _db;
     private readonly ISettingService _settings;

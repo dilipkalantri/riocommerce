@@ -12,7 +12,7 @@ namespace RioCommerce.Infrastructure.Services;
 public sealed class ReceiptService : IReceiptService
 {
     private const string SellerState = "Maharashtra";
-    private const string CompanyDefaultName = "RioCommerce";
+    private const string CompanyDefaultName = "Vijaypath";
 
     private readonly RioCommerceDbContext _db;
     private readonly ISettingService _settings;

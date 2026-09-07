@@ -1,4 +1,6 @@
-﻿using System.Text.Json;
+﻿using System.Net;
+using System.Text.Json;
+using RioCommerce.Core.Constants;
 using RioCommerce.Core.DTOs.Attributes;
 using RioCommerce.Core.DTOs.Checkout;
 using RioCommerce.Core.DTOs.Realtime;
@@ -28,12 +30,23 @@ public class CheckoutService : ICheckoutService
     /// <summary>Optional: supplies the configured order series. Null (as in unit tests that build
     /// this service by hand) falls back to the original RIO- numbering.</summary>
     private readonly ICompanySettingsService? _company;
+    /// <summary>Resolves and sends the DB-managed "student_enrollment_success" template (and every
+    /// other admin-editable template) — see SendSchoolEnrollmentNotificationsAsync. Same concrete
+    /// NotificationService instance the narrower _notify field above resolves to; both are injected
+    /// because each exposes a different slice of it (INotificationSender vs INotificationService).</summary>
+    private readonly INotificationService _notifySvc;
+    private readonly ISmsSender _sms;
+    /// <summary>Optional: supplies App:BaseUrl for the login link in the school-enrolment student
+    /// email. Null (as in unit tests) falls back to the production URL — see
+    /// SendSchoolEnrollmentNotificationsAsync.</summary>
+    private readonly Microsoft.Extensions.Configuration.IConfiguration? _config;
     private readonly ILogger<CheckoutService> _log;
 
     public CheckoutService(RioCommerceDbContext db, IPaymentGatewayFactory gateways, INotificationSender notify,
         INotificationCenterService center, IRealtimeBus bus, ISerialKeyService serialKeys,
-        IInvoiceService invoices, IFacultySharingService facultyShares, ILogger<CheckoutService> log,
-        ICompanySettingsService? company = null)
+        IInvoiceService invoices, IFacultySharingService facultyShares, INotificationService notifySvc, ISmsSender sms,
+        ILogger<CheckoutService> log,
+        ICompanySettingsService? company = null, Microsoft.Extensions.Configuration.IConfiguration? config = null)
     {
         _db = db;
         _gateways = gateways;
@@ -43,7 +56,10 @@ public class CheckoutService : ICheckoutService
         _serialKeys = serialKeys;
         _invoices = invoices;
         _facultyShares = facultyShares;
+        _notifySvc = notifySvc;
+        _sms = sms;
         _company = company;
+        _config = config;
         _log = log;
     }
 
@@ -345,7 +361,14 @@ public class CheckoutService : ICheckoutService
     /// the grants and the roster confirmation commit atomically. Invoices follow afterwards through
     /// the idempotent EnsureForOrderAsync, exactly as they do for storefront orders.</para>
     /// </summary>
-    private async Task GrantSchoolEnrollmentAsync(Order order, List<SchoolEnrollmentStudent> roster)
+    /// <returns>
+    /// The roster rows THIS call actually confirmed for the first time — i.e. ConfirmedAt was null
+    /// before this call. A replayed/duplicate webhook re-runs the loop but finds ConfirmedAt already
+    /// set, so it grants nothing new and this list comes back empty. Callers use this list, and only
+    /// this list, to decide who gets a fresh enrolment-confirmation email/SMS — so a duplicate
+    /// callback can never re-notify a student who was already told once.
+    /// </returns>
+    private async Task<List<SchoolEnrollmentStudent>> GrantSchoolEnrollmentAsync(Order order, List<SchoolEnrollmentStudent> roster)
     {
         var modeIds = order.Items.Where(i => i.ProductModeId.HasValue).Select(i => i.ProductModeId!.Value).ToList();
         var modeTypes = await _db.ProductModes.Where(m => modeIds.Contains(m.Id))
@@ -365,6 +388,8 @@ public class CheckoutService : ICheckoutService
                 .ToListAsync())
             .Select(x => (x.SchoolId, x.UserId))
             .ToHashSet();
+
+        var freshlyConfirmed = new List<SchoolEnrollmentStudent>();
 
         foreach (var row in roster)
         {
@@ -398,11 +423,117 @@ public class CheckoutService : ICheckoutService
                 if (prod != null) prod.TotalOrders++;
             }
 
-            // ??= so a replay never rewrites the original confirmation timestamp.
+            // This IS the idempotency gate: null → freshly confirmed; already set → a replay, and
+            // ??= leaves it untouched so the original confirmation timestamp never moves.
+            if (row.ConfirmedAt is null) freshlyConfirmed.Add(row);
             row.ConfirmedAt ??= DateTime.UtcNow;
             row.UpdatedAt = DateTime.UtcNow;
         }
+
+        return freshlyConfirmed;
     }
+
+    /// <summary>
+    /// Email (and, once a DLT template is approved, SMS) confirming a school-paid enrolment —
+    /// one message per student, sent through the admin-managed "student_enrollment_success"
+    /// template (0052_add_student_enrollment_success_template.sql), the SAME NotificationService
+    /// {{token}} pipeline every other transactional email in this codebase already uses — not a
+    /// hard-coded HTML string. This method's job is narrowed to preparing the token values and
+    /// firing the send; the subject/HTML/branding live in the database row and are the admin's to
+    /// edit from Admin → Configuration → Email Templates.
+    ///
+    /// Never sends a temporary plaintext password: students the school added have no PasswordHash
+    /// (see SchoolStudentService.AddAsync) and claim their account through the EXISTING
+    /// forgot-password OTP flow, which already accepts a phone number as well as an email
+    /// (POST /api/account/forgot-otp) — passwordLine points there instead of inventing a second,
+    /// less secure credential-delivery mechanism. This branch stays in code, not the template,
+    /// because the renderer does plain {{token}} substitution with no conditionals.
+    /// </summary>
+    private async Task SendSchoolEnrollmentNotificationsAsync(List<SchoolEnrollmentStudent> freshlyConfirmed)
+    {
+        var studentIds = freshlyConfirmed.Select(r => r.StudentUserId).Distinct().ToList();
+        var productIds = freshlyConfirmed.Select(r => r.ProductId).Distinct().ToList();
+
+        var students = await _db.Users.AsNoTracking()
+            .Where(u => studentIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id);
+        var products = await _db.Products.AsNoTracking()
+            .Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id);
+
+        var baseUrl = (_config?["App:BaseUrl"] ?? "https://vijaypath.org").TrimEnd('/');
+        var loginUrl = $"{baseUrl}/login";
+        var websiteUrl = $"{baseUrl}/";
+
+        // Grouped by student so one student covered on two products in the same order gets ONE
+        // email listing both courses, not two separate emails.
+        foreach (var group in freshlyConfirmed.GroupBy(r => r.StudentUserId))
+        {
+            if (!students.TryGetValue(group.Key, out var student)) continue;
+
+            // Login ID follows the codebase's existing precedence — Email when set, else Phone.
+            var loginId = student.Email ?? student.Phone;
+            if (string.IsNullOrWhiteSpace(loginId)) continue;   // no channel to address the account by
+
+            var passwordLine = string.IsNullOrEmpty(student.PasswordHash)
+                ? "Not set yet — tap “Login to Vijaypath” below, then use “Forgot Password” with the Login ID above to create one."
+                : "Use your existing Vijaypath password.";
+
+            foreach (var row in group)
+            {
+                if (!products.TryGetValue(row.ProductId, out var product)) continue;
+
+                // Course Duration is deliberately NOT read/used anywhere in this email — the
+                // stored template must never show it.
+                var courseName = product.Title;
+
+                // Values that came from the student/product records are HTML-encoded before going
+                // into the token dictionary: NotificationService.Render does a plain string
+                // Replace into an HTML body, with no encoding step of its own.
+                var tokens = new Dictionary<string, string>
+                {
+                    ["name"] = WebUtility.HtmlEncode(student.FullName),
+                    ["login_id"] = WebUtility.HtmlEncode(loginId!),
+                    ["password_line"] = WebUtility.HtmlEncode(passwordLine),
+                    ["course_name"] = WebUtility.HtmlEncode(courseName),
+                    ["enrollment_status"] = "Active",
+                    ["login_url"] = loginUrl,
+                    ["support_mobile"] = PublicContactDefaults.Phone,
+                    ["support_email"] = PublicContactDefaults.Email,
+                    ["website_url"] = websiteUrl,
+                };
+
+                var (ok, error, channelsSent) = await _notifySvc.SendAsync(
+                    "student_enrollment_success",
+                    new NotificationRecipient(student.Email, student.Phone),
+                    tokens,
+                    triggeredBy: "School Enrollment");
+                if (!ok)
+                    _log.LogWarning("School-enrolment notification failed for student {StudentId}: {Err}", student.Id, error);
+                else if (channelsSent == 0)
+                    _log.LogInformation("School-enrolment notification SENT NOWHERE for student {StudentId} — no active channel/recipient matched.", student.Id);
+
+                // SMS: dormant until a DLT-approved template exists for this exact event — same
+                // wiring SchoolRegistrationService uses for its own (also dormant) success SMS.
+                // Sending arbitrary text through the configured URLTEMPLATE provider would likely be
+                // silently dropped by the carrier's DLT filter even though the HTTP call returns 200,
+                // so this stays a documented no-op rather than a send that looks like it worked.
+                // Deliberately NOT routed through the message_templates system: it isn't safe to
+                // send until a real DLT-approved template/templateId exists for this event, and
+                // this file remains the single place that decides whether it's dormant or live.
+                if (!string.IsNullOrWhiteSpace(EnrollmentSuccessSmsTemplate) && !string.IsNullOrWhiteSpace(student.Phone))
+                {
+                    var text = string.Format(EnrollmentSuccessSmsTemplate, courseName);
+                    var (smsOk, smsErr) = await _sms.SendAsync(student.Phone!, text);
+                    if (!smsOk) _log.LogWarning("School-enrolment SMS failed for student {StudentId}: {Err}", student.Id, smsErr);
+                }
+            }
+        }
+    }
+
+    // Empty = dormant. Fill with the DLT-approved template text (and re-order the {0} placeholder
+    // to match it) once the client registers one for this event — see SendSchoolEnrollmentNotificationsAsync.
+    private static readonly string EnrollmentSuccessSmsTemplate = string.Empty;
 
     public async Task<OrderReceipt?> ConfirmPaymentAsync(PaymentCallback cb, GatewayPaymentInstrument? instrument = null)
     {
@@ -529,9 +660,10 @@ public class CheckoutService : ICheckoutService
             .Where(r => r.OrderId == order.Id)
             .ToListAsync();
 
+        var freshlyConfirmedRoster = new List<SchoolEnrollmentStudent>();
         if (schoolRoster.Count > 0)
         {
-            await GrantSchoolEnrollmentAsync(order, schoolRoster);
+            freshlyConfirmedRoster = await GrantSchoolEnrollmentAsync(order, schoolRoster);
         }
         // Grant course access. One enrollment per order item, idempotent.
         else if (order.UserId.HasValue)
@@ -621,6 +753,25 @@ public class CheckoutService : ICheckoutService
         catch (Exception ex)
         {
             _log.LogError(ex, "Invoice generation threw on order completion orderNumber={OrderNumber}", order.OrderNumber);
+        }
+
+        // ── School-enrolment student notifications ──────────────────────────────
+        // Fires ONLY for roster rows THIS call just confirmed for the first time
+        // (freshlyConfirmedRoster — see GrantSchoolEnrollmentAsync). A replayed/duplicate callback
+        // finds every row already confirmed, freshlyConfirmedRoster comes back empty, and no student
+        // is re-notified. One email per student, containing only that student's own course/login —
+        // never another student's on the same order. Best-effort: a failed send must never undo the
+        // payment that already succeeded above.
+        if (freshlyConfirmedRoster.Count > 0)
+        {
+            try
+            {
+                await SendSchoolEnrollmentNotificationsAsync(freshlyConfirmedRoster);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "School enrolment notifications threw on order completion orderNumber={OrderNumber}", order.OrderNumber);
+            }
         }
 
         // ── Faculty share ledger ────────────────────────────────────────────────

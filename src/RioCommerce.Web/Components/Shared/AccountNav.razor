@@ -1,6 +1,8 @@
 <nav class="account-nav">
     <NavLink href="/account" Match="NavLinkMatch.All" class="account-nav__link">Dashboard</NavLink>
-    <NavLink href="/account/courses" class="account-nav__link">My Courses</NavLink>
     <NavLink href="/account/orders" class="account-nav__link">Orders</NavLink>
     <NavLink href="/account/profile" class="account-nav__link">Profile</NavLink>
 </nav>
+@* The "My Courses" tab stood here, linking to /account/courses — removed from this nav on
+   request. The route/page itself (MyCourses.razor) is untouched: the Dashboard's "My Courses"
+   card still links there via its "View All" button, so enrolled-course access is unaffected. *@

@@ -18,9 +18,10 @@ public interface ISchoolEnrollmentService
 {
     /// <summary>
     /// Courses a principal may enrol students on: every product the catalogue currently marks
-    /// Active, in the catalogue's own display order. Empty when the catalogue has none.
+    /// Active, in the catalogue's own display order, priced for the CALLER'S school (district
+    /// affects the school-tier price on some courses). Empty when the catalogue has none.
     /// </summary>
-    Task<List<SchoolEnrollmentProduct>> ListProductsAsync(CancellationToken ct = default);
+    Task<List<SchoolEnrollmentProduct>> ListProductsAsync(Guid actingUserId, CancellationToken ct = default);
 
     /// <summary>
     /// Creates ONE unpaid order for the chosen course covering the chosen students.

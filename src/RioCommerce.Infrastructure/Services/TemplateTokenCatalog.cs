@@ -132,6 +132,20 @@ public sealed class TemplateTokenCatalog : ITemplateTokenCatalog
             CommonWebsite,
         },
 
+        ["student_enrollment_success"] = new[]
+        {
+            new TokenDef("name",              "Learner's full name",                             "Test Student"),
+            new TokenDef("login_id",          "Learner's login ID — email if set, else mobile",  "test.student@example.com"),
+            new TokenDef("password_line",     "Password / activation instructions (pre-composed — secure, no plaintext password)",
+                                               "Not set yet — tap “Login to Vijaypath” below, then use “Forgot Password” with the Login ID above to create one."),
+            new TokenDef("course_name",       "Actual purchased/enrolled course name",           "7th Scholarship Exam – Online Classes | Marathi Medium | Self Registration"),
+            new TokenDef("enrollment_status", "Enrollment status",                                "Active"),
+            new TokenDef("login_url",         "Direct login page URL",                            "https://vijaypath.org/login"),
+            new TokenDef("support_mobile",    "Support phone number",                             "+91 84118 82618"),
+            new TokenDef("support_email",     "Support email address",                            "contact@vijaypath.org"),
+            new TokenDef("website_url",       "Public site URL",                                  "https://vijaypath.org/"),
+        },
+
         ["wallet_recharged"] = new[]
         {
             new TokenDef("franchise_name",     "Franchise display name",   "Sample Centre"),

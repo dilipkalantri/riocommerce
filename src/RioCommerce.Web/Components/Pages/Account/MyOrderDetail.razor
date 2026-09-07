@@ -1,12 +1,9 @@
 @page "/account/orders/{OrderNumber}"
 @attribute [Authorize]
-@inject IAccountService AccountSvc
 @inject ICheckoutService CheckoutSvc
 @inject AuthenticationStateProvider AuthProvider
-@inject NavigationManager Nav
-@inject IJSRuntime JS
 
-<SeoHead Seo="@(new SeoMetadata { Title = $"Order {OrderNumber} — RioCommerce" })" />
+<SeoHead Seo="@(new SeoMetadata { Title = $"Order {OrderNumber} — Vijaypath" })" />
 
 <div class="container account-page">
     <div class="breadcrumb"><a href="/account">My Account</a><span>›</span><a href="/account/orders">Orders</a><span>›</span><span class="current">#@OrderNumber</span></div>
@@ -32,7 +29,7 @@
                     <div class="invoice-head__sub">@(r.InvoiceNumber ?? r.OrderNumber)</div>
                 </div>
                 <div class="invoice-head__brand">
-                    <strong>RioCommerce</strong><br />
+                    <strong>Vijaypath</strong><br />
                     <span style="color:var(--gray-500);font-size:12px">CA Coaching · Maharashtra</span>
                 </div>
             </div>
@@ -151,13 +148,10 @@
         }
 
         <div class="invoice-actions">
-            <button class="btn btn-outline" @onclick="Print">🖨 Print / Save PDF</button>
-            <a class="btn btn-outline" href="@($"/api/me/orders/{r.OrderNumber}/receipt.pdf?download=1")" target="_blank">⬇ Download Receipt</a>
             @if (r.PaymentStatus == PaymentStatus.Success && !r.IsFranchiseOrder)
             {
                 <a class="btn btn-outline" href="@($"/api/me/orders/{r.OrderNumber}/invoice.pdf?download=1")" target="_blank">⬇ Download Invoice</a>
             }
-            <button class="btn btn-primary" disabled="@reordering" @onclick="Reorder">@(reordering ? "Adding…" : "🛒 Reorder")</button>
             @if (r.PaymentStatus != PaymentStatus.Success)
             {
                 <a href="/checkout" class="btn btn-success">Complete Payment</a>
@@ -205,7 +199,7 @@
     [Parameter] public string OrderNumber { get; set; } = string.Empty;
 
     private OrderReceipt? r;
-    private bool loading = true, reordering;
+    private bool loading = true;
     private Guid userId;
 
     protected override async Task OnInitializedAsync()
@@ -215,8 +209,6 @@
             r = await CheckoutSvc.GetReceiptAsync(userId, OrderNumber);
         loading = false;
     }
-
-    private async Task Print() => await JS.InvokeVoidAsync("window.print");
 
     /// <summary>Customer-facing wording for the shipment state — "Pending" internally means the
     /// parcel is still being packed, which is not what that word says to a buyer.</summary>
@@ -228,17 +220,4 @@
         "Cancelled"  => "Cancelled",
         _            => status
     };
-
-    /// <summary>
-    /// Reorder still stages the previous order's lines through AccountService.ReorderAsync — that
-    /// service is unchanged — but it now lands on /checkout rather than /cart, because the cart is
-    /// no longer a page a student can open. Checkout shows exactly the same lines and the same
-    /// totals, so the feature works as before with one screen fewer.
-    /// </summary>
-    private async Task Reorder()
-    {
-        reordering = true;
-        await AccountSvc.ReorderAsync(userId, OrderNumber);
-        Nav.NavigateTo("/checkout");
-    }
 }

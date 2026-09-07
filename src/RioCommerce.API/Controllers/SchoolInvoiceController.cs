@@ -36,7 +36,7 @@ public class SchoolInvoiceController : ControllerBase
     /// opens the PDF in a tab; with it, the browser is told to save the file.
     /// </summary>
     [HttpGet("{invoiceId:guid}/pdf")]
-    public async Task<IActionResult> Download(Guid invoiceId, [FromQuery] bool download, CancellationToken ct)
+    public async Task<IActionResult> Download(Guid invoiceId, CancellationToken ct)
     {
         var raw = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(raw, out var userId)) return Unauthorized();
@@ -46,8 +46,17 @@ public class SchoolInvoiceController : ControllerBase
         var pdf = await _enrollment.RenderInvoicePdfAsync(userId, invoiceId, ct);
         if (pdf is null) return NotFound();
 
+        // Presence check, not a bound bool: [ApiController]'s automatic model validation rejects
+        // any value bool.TryParse doesn't accept, including "1" — which the "Download" links on
+        // SchoolStudents.razor and SchoolBilling.razor actually send (?download=1), and which
+        // every OTHER invoice/receipt endpoint in this codebase (InvoicesController,
+        // CustomerReceiptController, FranchiseDownloadController, ...) already handles this same
+        // way. Request.Query.ContainsKey("download") accepts "1", "true", or an empty value, and
+        // can never itself return a 400.
+        //
         // File(..., fileName) always sets an attachment disposition, so inline is set explicitly.
-        if (download) return File(pdf.Value.bytes, "application/pdf", pdf.Value.filename);
+        if (Request.Query.ContainsKey("download"))
+            return File(pdf.Value.bytes, "application/pdf", pdf.Value.filename);
 
         Response.Headers.ContentDisposition = $"inline; filename=\"{pdf.Value.filename}\"";
         return File(pdf.Value.bytes, "application/pdf");

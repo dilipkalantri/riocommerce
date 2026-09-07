@@ -5,20 +5,23 @@ using System.Security.Claims;
 
 namespace RioCommerce.API.Controllers;
 
-// Thin passthrough: lets a logged-in customer download THEIR own invoice PDF.
+// Thin passthrough: lets a logged-in customer/student view or download THEIR own invoice PDF.
 // Ownership is enforced via CheckoutService.GetReceiptAsync(userId, orderNumber) — only
-// the order's owner gets a non-null receipt. The PDF itself comes from the existing
-// IExportService.InvoicePdfAsync — no new invoice generation logic is added.
+// the order's owner gets a non-null receipt. The PDF itself comes from the SAME
+// IInvoiceService.RenderPdfAsync the School/Coordinator and Admin invoice views use — one
+// invoice template and one PDF renderer for every buyer type. No second invoice
+// template/generator is introduced here; this controller only resolves which existing
+// Invoice row belongs to this order and hands it to the shared renderer.
 [ApiController]
 [Authorize] // cookie scheme (default) — matches the public Blazor pages
 public class CustomerInvoiceController : ControllerBase
 {
     private readonly ICheckoutService _checkout;
-    private readonly IExportService _export;
-    public CustomerInvoiceController(ICheckoutService checkout, IExportService export)
+    private readonly IInvoiceService _invoices;
+    public CustomerInvoiceController(ICheckoutService checkout, IInvoiceService invoices)
     {
         _checkout = checkout;
-        _export = export;
+        _invoices = invoices;
     }
 
     [HttpGet("api/me/orders/{orderNumber}/invoice.pdf")]
@@ -35,7 +38,23 @@ public class CustomerInvoiceController : ControllerBase
         if (receipt.IsFranchiseOrder)
             return Forbid();
 
-        var res = await _export.InvoicePdfAsync(receipt.Id, franchiseScopeId: null);
-        return res == null ? NotFound() : File(res.Value.bytes, "application/pdf", res.Value.filename);
+        var invoice = await _invoices.GetByOrderAsync(receipt.Id);
+        if (invoice == null) return NotFound();
+
+        var res = await _invoices.RenderPdfAsync(invoice.Id);
+        if (res == null) return NotFound();
+
+        // "View Invoice" opens this inline in a new tab; "Download Invoice" (?download=1) forces
+        // the browser's save dialog. Same bytes either way — just the disposition differs.
+        //
+        // Presence check, not a bound bool: [ApiController]'s automatic model validation rejects
+        // any value bool.TryParse doesn't accept, including "1" — which every ?download= link in
+        // this codebase actually sends. This is the SAME pattern InvoicesController (admin) already
+        // uses for exactly this reason: Request.Query.ContainsKey("download") accepts "1", "true",
+        // or even an empty value, and can never itself return a 400.
+        var asAttachment = Request.Query.ContainsKey("download");
+        if (!asAttachment)
+            return File(res.Value.bytes, "application/pdf");
+        return File(res.Value.bytes, "application/pdf", res.Value.filename);
     }
 }

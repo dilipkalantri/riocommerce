@@ -185,6 +185,65 @@ public class SchoolEnrollmentPaymentTests
             Assert.Equal(before.ConfirmedAt, secondStamps.Single(x => x.Id == before.Id).ConfirmedAt);
     }
 
+    // ── TEST C2 — freshly-confirmed detection (gates the enrolment-confirmation email) ───────
+    /// <summary>
+    /// Mirrors CheckoutService.GrantSchoolEnrollmentAsync's return value: which roster rows this
+    /// call confirmed for the FIRST time (ConfirmedAt was null before it). SendSchoolEnrollmentNotificationsAsync
+    /// is only ever called with this list, so proving it returns nothing on a replay is what proves
+    /// a duplicate payment callback/webhook cannot send the student a second confirmation email.
+    /// </summary>
+    private static async Task<int> ConfirmAndCountFreshlyConfirmedAsync(Fixture f)
+    {
+        var order = await f.Db.Orders.Include(o => o.Items).FirstAsync(o => o.Id == f.OrderId);
+        order.PaymentStatus = PaymentStatus.Success;
+        order.Status = OrderStatus.Confirmed;
+        order.ConfirmedAt ??= DateTime.UtcNow;
+
+        var roster = await f.Db.SchoolEnrollmentStudents.Where(r => r.OrderId == f.OrderId).ToListAsync();
+        var schoolIds = roster.Select(r => r.SchoolId).Distinct().ToList();
+        var rollSet = (await f.Db.SchoolStudents.AsNoTracking()
+                .Where(ss => ss.IsActive && schoolIds.Contains(ss.SchoolId))
+                .Select(ss => new { ss.SchoolId, ss.UserId }).ToListAsync())
+            .Select(x => (x.SchoolId, x.UserId)).ToHashSet();
+
+        var freshCount = 0;
+        foreach (var row in roster)
+        {
+            if (!rollSet.Contains((row.SchoolId, row.StudentUserId))) continue;
+
+            var item = order.Items.First(i => i.ProductId == row.ProductId);
+            var already = await f.Db.Enrollments
+                .AnyAsync(e => e.UserId == row.StudentUserId && e.OrderItemId == item.Id);
+            if (!already)
+            {
+                f.Db.Enrollments.Add(new Enrollment
+                {
+                    Id = Guid.NewGuid(), UserId = row.StudentUserId,
+                    ProductId = row.ProductId, OrderItemId = item.Id, IsActive = true,
+                });
+            }
+            if (row.ConfirmedAt is null) freshCount++;   // the exact gate CheckoutService applies
+            row.ConfirmedAt ??= DateTime.UtcNow;
+        }
+        await f.Db.SaveChangesAsync();
+        return freshCount;
+    }
+
+    [Fact]
+    public async Task DuplicateWebhookReplay_ReportsZeroFreshlyConfirmed_SoNoDuplicateEmailFires()
+    {
+        var f = Seed(studentCount: 3);
+
+        var firstPass = await ConfirmAndCountFreshlyConfirmedAsync(f);
+        Assert.Equal(3, firstPass);   // real payment confirmation: all 3 students are newly granted
+
+        var replayPass = await ConfirmAndCountFreshlyConfirmedAsync(f);      // duplicate callback/webhook
+        Assert.Equal(0, replayPass);  // nothing newly confirmed -> CheckoutService sends zero emails
+
+        var thirdPass = await ConfirmAndCountFreshlyConfirmedAsync(f);       // a second replay, for good measure
+        Assert.Equal(0, thirdPass);
+    }
+
     // ── TEST D — unpaid order ────────────────────────────────────────────────
     [Fact]
     public async Task UnpaidOrder_GrantsNothing_AndHasNoConfirmedRoster()

@@ -68,6 +68,8 @@ public class DispatchNotificationTests
             new Mock<ISerialKeyService>().Object,
             new Mock<IInvoiceService>().Object,
             new Mock<IFacultySharingService>().Object,
+            new Mock<INotificationService>().Object,
+            new Mock<ISmsSender>().Object,
             NullLogger<CheckoutService>.Instance);
 
     private static async Task<Order> SeedOrderAsync(RioCommerceDbContext db, Guid? userId = null, string number = "RIO-9001")

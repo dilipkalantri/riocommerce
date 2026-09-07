@@ -44,7 +44,7 @@ public class CompanySettingsService : ICompanySettingsService
         var name = await settings.GetStringAsync(NameKey);
         return new CompanyProfile
         {
-            Name = string.IsNullOrWhiteSpace(name) ? (fallbackName ?? "RioCommerce") : name,
+            Name = string.IsNullOrWhiteSpace(name) ? (fallbackName ?? "Vijaypath") : name,
             Address = await settings.GetStringAsync(AddressKey),
             Gstin = await settings.GetStringAsync(GstinKey),
             Phone = await settings.GetStringAsync(PhoneKey),

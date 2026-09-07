@@ -36,39 +36,47 @@ public class SchoolEnrollmentService(
     private const decimal GstDivisor = 118m;
     private const decimal GstNumerator = 18m;
 
-    public async Task<List<SchoolEnrollmentProduct>> ListProductsAsync(CancellationToken ct = default)
+    // Pune district id (Districts."Pune") — the only district where SchoolStudentPrice (the
+    // concessional tier) applies. Every other district, including a school with no recorded
+    // district, pays the full EffectiveSellingPrice. See SchoolTierUnitPrice below.
+    private static readonly Guid PuneDistrictId = Guid.Parse("bc248342-26ec-4f05-9e21-b6e582002a08");
+
+    public async Task<List<SchoolEnrollmentProduct>> ListProductsAsync(Guid actingUserId, CancellationToken ct = default)
     {
-        var now = DateTime.UtcNow;
+        var scope = await _students.ResolveScopeAsync(actingUserId, ct);
+        if (scope is null) return new();
+
+        var districtId = await _db.Schools.AsNoTracking()
+            .Where(s => s.Id == scope.SchoolId)
+            .Select(s => s.DistrictId)
+            .FirstOrDefaultAsync(ct);
 
         // The catalogue shown here is ALWAYS priced at the school tier — this endpoint is gated to
         // school Principals / Coordinators, and every order it places is on behalf of enrolled
-        // school students. So the projected price is the minimum of (school-student price, active
-        // special price, regular price), with only the ones that are actually set considered.
-        //
-        // Re-expressed in EF-translatable form because Product.EffectivePriceFor is a computed C#
-        // method the query provider can't translate. The condition below mirrors it exactly.
-        return await _db.Products.AsNoTracking()
+        // school students. Materialised as entities (the catalogue is tiny) so the district rule
+        // can reuse Product.EffectivePriceFor / EffectiveSellingPrice in-memory instead of
+        // re-expressing them as EF-translatable SQL a second time.
+        var products = await _db.Products.AsNoTracking()
             .Where(p => p.Status == ProductStatus.Active)
             .OrderBy(p => p.DisplayOrder).ThenBy(p => p.Title)
-            .Select(p => new SchoolEnrollmentProduct(
-                p.Id,
-                p.Title,
-                // Regular effective price (special when active, else selling).
-                (p.SchoolStudentPrice != null && p.SchoolStudentPrice > 0
-                 && p.SchoolStudentPrice.Value <
-                    ((p.SpecialPrice != null && p.SpecialPrice > 0
-                      && (p.SpecialPriceStartDateUtc == null || now >= p.SpecialPriceStartDateUtc)
-                      && (p.SpecialPriceEndDateUtc == null || now <= p.SpecialPriceEndDateUtc))
-                        ? p.SpecialPrice.Value
-                        : p.SellingPrice))
-                    ? p.SchoolStudentPrice.Value
-                    : (p.SpecialPrice != null && p.SpecialPrice > 0
-                       && (p.SpecialPriceStartDateUtc == null || now >= p.SpecialPriceStartDateUtc)
-                       && (p.SpecialPriceEndDateUtc == null || now <= p.SpecialPriceEndDateUtc))
-                        ? p.SpecialPrice!.Value
-                        : p.SellingPrice))
             .ToListAsync(ct);
+
+        return products
+            .Select(p => new SchoolEnrollmentProduct(p.Id, p.Title, SchoolTierUnitPrice(p, districtId)))
+            .ToList();
     }
+
+    /// <summary>
+    /// School-tier unit price for one product, given the enrolling school's district.
+    /// SchoolStudentPrice is the Pune concession, not a blanket school discount: a Pune school
+    /// pays min(EffectiveSellingPrice, SchoolStudentPrice) as before; every other district — and a
+    /// school with no recorded district, since it can't be verified as Pune — pays the full
+    /// EffectiveSellingPrice.
+    /// </summary>
+    private static decimal SchoolTierUnitPrice(Product product, Guid? districtId) =>
+        districtId == PuneDistrictId
+            ? product.EffectivePriceFor(isSchoolStudent: true)
+            : product.EffectiveSellingPrice;
 
     public async Task<PlaceSchoolEnrollmentResult> PlaceAsync(
         Guid actingUserId, PlaceSchoolEnrollmentRequest request, CancellationToken ct = default)
@@ -116,16 +124,17 @@ public class SchoolEnrollmentService(
         if (product == null)
             return new(false, "That course is no longer available. Pick another and try again.", null, 0, 0m);
 
-        // School-tier price for the order line — same rule the enrollment catalogue displays. Route
-        // is gated to school staff, so the buyer always qualifies for the school tier.
-        var unit = product.EffectivePriceFor(isSchoolStudent: true);
-        var qty = studentIds.Count;
-        var total = Math.Round(unit * qty, 2);
-
         var school = await _db.Schools.AsNoTracking()
             .Include(s => s.State)
             .FirstOrDefaultAsync(s => s.Id == schoolId, ct);
         var principal = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actingUserId, ct);
+
+        // School-tier price for the order line — same district rule the enrollment catalogue
+        // displays (SchoolTierUnitPrice), computed from THIS school's own DistrictId, never from
+        // anything the browser sent.
+        var unit = SchoolTierUnitPrice(product, school?.DistrictId);
+        var qty = studentIds.Count;
+        var total = Math.Round(unit * qty, 2);
 
         var (cgst, sgst, igst) = SplitGst(total, school?.State?.Name);
 

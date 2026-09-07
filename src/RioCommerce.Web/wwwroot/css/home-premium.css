@@ -1768,74 +1768,11 @@
      and desktop/tablet keep the header search box. */
   .rc-app .header__actions{display:none}
 
-  /* 3 ── search: always expanded, icon on the left */
-  .rc-app .header__search{
-    position:relative;
-    flex:1 1 auto; min-width:0;
-    display:flex; align-items:center;
-  }
-  .rc-app .header__search-input,
-  .rc-app .header__search.is-open .header__search-input{
-    /* min-width:0 is essential — an <input> has an intrinsic min-content width
-       (~170px) and as a flex item would otherwise refuse to shrink, shoving the
-       cart off the right edge. */
-    width:100%; min-width:0; opacity:1;
-    height:46px; margin:0;                    /* spec: 44–48px */
-    padding:0 40px 0 42px;                    /* room for icon left, clear right */
-    border-radius:999px;
-    background:#fff;
-    font-size:14.5px; font-weight:500; letter-spacing:-.1px;
-    color:var(--p-navy);
-    box-shadow:inset 0 0 0 1px var(--gray-200), 0 1px 2px rgba(11,31,58,.04);
-    transition:box-shadow .25s var(--p-ease), background .25s;
-  }
-  .rc-app .header__search-input::placeholder{color:var(--gray-400);font-weight:500}
-  /* NOTE: padding is deliberately CONSTANT in both states. An earlier
-     :placeholder-shown rule shrank padding-right to 14px while empty and restored
-     40px once text existed — a real 26px padding change that reflowed the field the
-     moment you typed. The clear button's 40px lane is now always reserved. */
-  .rc-app .header__search-input:focus,
-  .rc-app .header__search.is-open .header__search-input:focus{
-    background:#fff;
-    box-shadow:inset 0 0 0 1.5px var(--p-orange), 0 0 0 4px rgba(10,199,229,.14),
-               0 6px 16px -8px rgba(10,199,229,.45);
-  }
-  /* suppress the native WebKit clear affordance — we render our own */
-  .rc-app .header__search-input::-webkit-search-cancel-button,
-  .rc-app .header__search-input::-webkit-search-decoration{-webkit-appearance:none;appearance:none}
-
-  /* the existing toggle/submit button becomes the leading magnifier */
-  .rc-app .header__search-btn,
-  .rc-app .header__search.is-open .header__search-btn{
-    position:absolute; left:5px; top:50%; transform:translateY(-50%);
-    width:34px; height:34px; border-radius:50%;
-    background:transparent; box-shadow:none; color:var(--gray-500);
-    transition:color .2s, background .2s;
-    z-index:2;
-  }
-  .rc-app .header__search-btn svg{width:17px;height:17px}
-  .rc-app .header__search:focus-within .header__search-btn{color:var(--p-orange)}
-
-  /* clear (X) — always present and always in the same place; only its VISIBILITY
-     changes. transform stays a constant translateY(-50%) (no scale keyframe), so the
-     button can never appear to move, and only opacity/visibility animate.
-     visibility:hidden also keeps it out of the tab order while empty. */
-  .rc-app .header__search-clear{
-    position:absolute; right:6px; top:50%; transform:translateY(-50%);
-    display:inline-flex; align-items:center; justify-content:center;
-    width:28px; height:28px; padding:0;
-    border:none; border-radius:50%;
-    background:var(--gray-100); color:var(--gray-500);
-    cursor:pointer; z-index:3;
-    opacity:0; visibility:hidden; pointer-events:none;
-    transition:opacity .18s ease, visibility .18s ease, background .18s, color .18s;
-  }
-  .rc-app .header__search.has-text .header__search-clear{
-    opacity:1; visibility:visible; pointer-events:auto;
-  }
-  .rc-app .header__search-clear:hover,
-  .rc-app .header__search-clear:active{background:var(--p-orange);color:#fff}
-  .rc-app .header__search-clear svg{width:13px;height:13px}
+  /* 3 ── search: removed from the mobile header entirely (spec: no search field in
+     the mobile header). The drawer's own "Search" link (-> /search) covers mobile
+     discovery, so nothing is lost — desktop/tablet (>=768px) keep the header search
+     box untouched; this rule is scoped to this max-width:767.98px block only. */
+  .rc-app .header__search{display:none}
 
   /* 4 ── cart: not shown on mobile.
      display:none on the anchor takes the icon, its container AND the count badge

@@ -593,7 +593,7 @@
     private async Task LoadProductsAsync()
     {
         loadError = false;
-        try { products = await Enrollment.ListProductsAsync(); }
+        try { products = await Enrollment.ListProductsAsync(actingUserId); }
         catch { products = new(); loadError = true; }   // the reason stays server-side
     }
 

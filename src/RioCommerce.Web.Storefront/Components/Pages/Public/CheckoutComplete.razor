@@ -6,7 +6,7 @@
 @inject IJSRuntime JS
 @inject ISiteSettingsService SettingsSvc
 
-<SeoHead Seo="@(new SeoMetadata { Title = $"Order {OrderNumber} — RioCommerce" })" />
+<SeoHead Seo="@(new SeoMetadata { Title = $"Order {OrderNumber} — Vijaypath" })" />
 
 <div class="container cart-page complete-v2">
     @if (loading)
@@ -50,7 +50,7 @@
             <p class="ok-hero__sub">
                 @if (paid)
                 {
-                    @:Your enrollment is confirmed. Welcome to RioCommerce.
+                    @:Your enrollment is confirmed. Welcome to Vijaypath.
                 }
                 else
                 {
@@ -159,47 +159,9 @@
                     </div>
                 </section>
 
-                @* ─── Next Steps timeline ─── *@
-                <section class="ok-card">
-                    <h2 class="ok-card__title">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                        What happens next?
-                    </h2>
-                    <ol class="ok-steps">
-                        <li class="ok-step @(paid ? "is-done" : "")">
-                            <span class="ok-step__dot"></span>
-                            <div class="ok-step__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
-                            <div class="ok-step__txt">
-                                <strong>Course Activated</strong>
-                                <small>within a few minutes</small>
-                            </div>
-                        </li>
-                        <li class="ok-step">
-                            <span class="ok-step__dot"></span>
-                            <div class="ok-step__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
-                            <div class="ok-step__txt">
-                                <strong>Notes Dispatch</strong>
-                                <small>within configured timeline</small>
-                            </div>
-                        </li>
-                        <li class="ok-step">
-                            <span class="ok-step__dot"></span>
-                            <div class="ok-step__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></div>
-                            <div class="ok-step__txt">
-                                <strong>WhatsApp Group</strong>
-                                <small>invitation sent shortly</small>
-                            </div>
-                        </li>
-                        <li class="ok-step">
-                            <span class="ok-step__dot"></span>
-                            <div class="ok-step__ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg></div>
-                            <div class="ok-step__txt">
-                                <strong>Start Learning</strong>
-                                <small>Go to My Courses</small>
-                            </div>
-                        </li>
-                    </ol>
-                </section>
+                @* The "What Happens Next?" timeline (Course Activated / Notes Dispatch / WhatsApp
+                   Group / Start Learning) stood here — removed on request. Nothing below depends
+                   on it, so the Share + Support row simply moves up. *@
 
                 @* ─── Share + Support row ─── *@
                 <div class="ok-row2">
@@ -319,24 +281,19 @@
                         </a>
                         @if (!string.IsNullOrEmpty(receipt.InvoiceNumber))
                         {
-                            <a href="@($"/api/me/orders/{receipt.OrderNumber}/invoice.pdf")" target="_blank" rel="noopener" class="ok-cta ok-cta--green">
+                            <a href="@($"/api/me/orders/{receipt.OrderNumber}/invoice.pdf?download=1")" target="_blank" rel="noopener" class="ok-cta ok-cta--green">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
                                 Download Invoice
                             </a>
-                            <button type="button" class="ok-cta ok-cta--blue" @onclick="() => showInvoice = true">
+                            <a href="@($"/api/me/orders/{receipt.OrderNumber}/invoice.pdf")" target="_blank" rel="noopener" class="ok-cta ok-cta--blue">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
                                 View Invoice
-                            </button>
+                            </a>
                         }
                         <a href="/account/orders" class="ok-cta ok-cta--outline">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                             My Orders
                         </a>
-                        <a href="/courses/ca-foundation" class="ok-cta ok-cta--ghost">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
-                            Continue Shopping
-                        </a>
-
                         <ul class="ok-sum__trust">
                             <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> SSL Secure</li>
                             <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Safe Payment</li>
@@ -346,113 +303,11 @@
             </aside>
         </div>
 
-        @* ─── Invoice modal ─── *@
-        @if (showInvoice && !string.IsNullOrEmpty(receipt.InvoiceNumber))
-        {
-            <div class="ok-modal" role="dialog" aria-modal="true" aria-labelledby="ok-invoice-title" @onclick="() => showInvoice = false">
-                <div class="ok-modal__card" @onclick:stopPropagation="true">
-                    <header class="ok-modal__head">
-                        <div>
-                            <div class="ok-modal__eyebrow">INVOICE</div>
-                            <div class="ok-modal__no" id="ok-invoice-title">#@receipt.InvoiceNumber</div>
-                        </div>
-                        <button class="ok-modal__close" @onclick="() => showInvoice = false" aria-label="Close">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-                        </button>
-                    </header>
-
-                    <div class="ok-modal__body ok-print">
-                        <div class="ok-inv__top">
-                            <div class="ok-inv__brand">
-                                <div class="ok-inv__brand-name">@(siteCfg?.CompanyName ?? "My Store")</div>
-                                <div class="ok-inv__brand-meta">GST Invoice</div>
-                            </div>
-                            <div class="ok-inv__order">
-                                <div><span>Order #</span><strong>@receipt.OrderNumber</strong></div>
-                                <div><span>Date</span><strong>@receipt.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</strong></div>
-                                <div><span>Status</span><strong>@receipt.PaymentStatus</strong></div>
-                            </div>
-                        </div>
-
-                        <div class="ok-inv__cols">
-                            <div>
-                                <h4>Billed To</h4>
-                                <p>
-                                    <strong>@(receipt.BillingName ?? receipt.StudentName)</strong><br />
-                                    @receipt.StudentPhone @(string.IsNullOrWhiteSpace(receipt.StudentEmail) ? "" : " · " + receipt.StudentEmail)<br />
-                                    @(string.Join(", ", new[] { receipt.BillingAddress, receipt.BillingCity, receipt.BillingState, receipt.BillingPincode }.Where(x => !string.IsNullOrWhiteSpace(x))))
-                                    @if (!string.IsNullOrWhiteSpace(receipt.GstNumber)) { <br /> <span>GSTIN: @receipt.GstNumber</span> }
-                                </p>
-                            </div>
-                            <div>
-                                <h4>Payment</h4>
-                                <p>
-                                    Method: <strong>@(receipt.PaymentMode?.ToString() ?? "—")</strong><br />
-                                    @if (!string.IsNullOrWhiteSpace(receipt.GatewayPaymentMode))
-                                    {
-                                        <text>Mode: <strong>@receipt.GatewayPaymentMode</strong><br /></text>
-                                    }
-                                    Status: <strong>@receipt.PaymentStatus</strong><br />
-                                    Order Status: <strong>@receipt.Status</strong>
-                                </p>
-                            </div>
-                        </div>
-
-                        <table class="ok-inv__table">
-                            <thead>
-                                <tr><th>Item</th><th>Qty</th><th class="r">Unit</th><th class="r">Amount</th></tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var it in receipt.Items)
-                                {
-                                    <tr>
-                                        <td>
-                                            <strong>@it.Title</strong>
-                                            @if (!string.IsNullOrWhiteSpace(it.ModeName)) { <div class="ok-inv__sub">@it.ModeName</div> }
-                                            @if (!string.IsNullOrWhiteSpace(it.Attributes)) { <div class="ok-inv__sub">@it.Attributes</div> }
-                                        </td>
-                                        <td>@it.Quantity</td>
-                                        <td class="r">₹@it.UnitPrice.ToString("N0")</td>
-                                        <td class="r">₹@it.LineTotal.ToString("N0")</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-
-                        <div class="ok-inv__totals">
-                            <div><span>Subtotal</span><strong>₹@receipt.Subtotal.ToString("N0")</strong></div>
-                            @if (receipt.Discount > 0)
-                            {
-                                <div><span>Discount</span><strong>− ₹@receipt.Discount.ToString("N0")</strong></div>
-                            }
-                            @if (receipt.IgstAmount > 0)
-                            {
-                                <div><span>IGST (18%, incl.)</span><strong>₹@receipt.IgstAmount.ToString("N0")</strong></div>
-                            }
-                            else
-                            {
-                                <div><span>CGST (9%, incl.)</span><strong>₹@receipt.CgstAmount.ToString("N0")</strong></div>
-                                <div><span>SGST (9%, incl.)</span><strong>₹@receipt.SgstAmount.ToString("N0")</strong></div>
-                            }
-                            <div class="ok-inv__grand"><span>Total</span><strong>₹@receipt.Total.ToString("N0")</strong></div>
-                        </div>
-
-                        <p class="ok-inv__foot">Thank you for choosing @(siteCfg?.CompanyName ?? "us"). For any queries about this invoice, contact @(siteCfg?.SupportEmail ?? siteCfg?.ContactEmail ?? "support").</p>
-                    </div>
-
-                    <footer class="ok-modal__foot">
-                        <button class="ok-cta ok-cta--ghost" @onclick="PrintInvoiceAsync">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                            Print
-                        </button>
-                        <a href="@($"/api/me/orders/{receipt.OrderNumber}/invoice.pdf")" target="_blank" rel="noopener" class="ok-cta ok-cta--green">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
-                            Download PDF
-                        </a>
-                    </footer>
-                </div>
-            </div>
-        }
+        @* The "View Invoice" ad-hoc HTML modal ("My Store" / "GST Invoice" — its own hand-rolled
+           layout, separate from the real Invoice PDF) stood here. Removed: Student invoices must
+           use the SAME rendering School/Coordinator invoices use (IInvoiceService.RenderPdfAsync,
+           the one real Invoice entity for this order), not a second template. "View Invoice" above
+           now opens that exact PDF inline instead of reproducing its content as a second layout. *@
     }
 </div>
 
@@ -521,18 +376,6 @@
     .complete-v2 .ok-course__amt{font-size:18px;font-weight:800;color:var(--ok-ink);letter-spacing:-.2px}
     .complete-v2 .ok-course__badge{font-size:11px;font-weight:800;color:#fff;background:linear-gradient(135deg,#0B45AB,#0A5BCF);padding:3px 10px;border-radius:999px;letter-spacing:.4px;box-shadow:0 4px 10px -6px rgba(22,163,74,.55)}
 
-    /* ── Next Steps timeline ── */
-    .complete-v2 .ok-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;position:relative}
-    .complete-v2 .ok-steps::before{content:"";position:absolute;left:32px;right:32px;top:34px;height:2px;background:repeating-linear-gradient(to right,var(--ok-line) 0 6px,transparent 6px 12px);z-index:0}
-    .complete-v2 .ok-step{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:10px;z-index:1}
-    .complete-v2 .ok-step__ico{width:48px;height:48px;border-radius:50%;background:#fff;border:2px solid var(--ok-line);color:var(--ok-primary);display:flex;align-items:center;justify-content:center;margin-bottom:8px;transition:all .25s}
-    .complete-v2 .ok-step__ico svg{width:18px;height:18px}
-    .complete-v2 .ok-step.is-done .ok-step__ico{background:linear-gradient(135deg,#0B45AB,#0AC7E5);border-color:#5AD9EF;color:#fff;box-shadow:0 8px 18px -8px rgba(11,69,171,.55)}
-    .complete-v2 .ok-step__dot{display:none}
-    .complete-v2 .ok-step__txt{display:flex;flex-direction:column;gap:2px;font-size:12.5px;color:var(--ok-mute)}
-    .complete-v2 .ok-step__txt strong{font-size:13.5px;color:var(--ok-ink);font-weight:700}
-    .complete-v2 .ok-step__txt small{font-size:11.5px;color:var(--ok-mute);font-weight:500}
-
     /* ── Row of two cards (share + help) ── */
     .complete-v2 .ok-row2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 
@@ -598,57 +441,13 @@
     .complete-v2 .ok-sum__trust li{display:inline-flex;align-items:center;gap:5px}
     .complete-v2 .ok-sum__trust svg{width:13px;height:13px;color:var(--ok-success)}
 
-    /* ── Invoice Modal ── */
-    .complete-v2 .ok-modal{position:fixed;inset:0;z-index:99999;background:rgba(15,27,51,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;animation:okFade .2s ease}
-    .complete-v2 .ok-modal__card{background:#fff;border-radius:22px;max-width:780px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 40px 80px -24px rgba(0,0,0,.4);animation:okPop .25s ease both;overflow:hidden}
-    .complete-v2 .ok-modal__head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;background:linear-gradient(135deg,#163A70,#1f4d92);color:#fff}
-    .complete-v2 .ok-modal__eyebrow{font-size:10.5px;font-weight:800;letter-spacing:1.5px;color:#FFB76E}
-    .complete-v2 .ok-modal__no{font-size:18px;font-weight:800;letter-spacing:.4px;margin-top:2px}
-    .complete-v2 .ok-modal__close{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .2s}
-    .complete-v2 .ok-modal__close:hover{background:rgba(255,255,255,.22)}
-    .complete-v2 .ok-modal__close svg{width:16px;height:16px}
-    .complete-v2 .ok-modal__body{padding:22px;overflow:auto}
-    .complete-v2 .ok-inv__top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;padding-bottom:14px;border-bottom:1px solid var(--ok-line);margin-bottom:14px}
-    .complete-v2 .ok-inv__brand-name{font-size:20px;font-weight:800;color:var(--ok-primary)}
-    .complete-v2 .ok-inv__brand-meta{font-size:12px;color:var(--ok-mute);font-weight:500}
-    .complete-v2 .ok-inv__order{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--ok-mute);text-align:right}
-    .complete-v2 .ok-inv__order span{margin-right:6px}
-    .complete-v2 .ok-inv__order strong{color:var(--ok-ink);font-weight:700}
-    .complete-v2 .ok-inv__cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:14px}
-    .complete-v2 .ok-inv__cols h4{margin:0 0 6px;font-size:11px;font-weight:800;color:var(--ok-mute);letter-spacing:1.2px}
-    .complete-v2 .ok-inv__cols p{margin:0;font-size:13px;color:var(--ok-ink);line-height:1.5}
-    .complete-v2 .ok-inv__table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}
-    .complete-v2 .ok-inv__table th,.complete-v2 .ok-inv__table td{padding:10px 8px;border-bottom:1px solid var(--ok-line);text-align:left;vertical-align:top}
-    .complete-v2 .ok-inv__table th{font-size:11px;font-weight:800;color:var(--ok-mute);letter-spacing:.6px;text-transform:uppercase;background:#F8FAFC}
-    .complete-v2 .ok-inv__table .r{text-align:right}
-    .complete-v2 .ok-inv__sub{font-size:11.5px;color:var(--ok-mute);font-weight:500;margin-top:2px}
-    .complete-v2 .ok-inv__totals{margin-top:6px;display:flex;flex-direction:column;gap:4px;max-width:280px;margin-left:auto;font-size:13px;color:var(--ok-mute)}
-    .complete-v2 .ok-inv__totals div{display:flex;justify-content:space-between}
-    .complete-v2 .ok-inv__totals strong{color:var(--ok-ink);font-weight:700}
-    .complete-v2 .ok-inv__grand{margin-top:6px;padding-top:8px;border-top:1px dashed var(--ok-line);font-size:15px}
-    .complete-v2 .ok-inv__grand strong{color:var(--ok-accent);font-weight:800;font-size:17px}
-    .complete-v2 .ok-inv__foot{font-size:11.5px;color:var(--ok-mute);margin-top:18px;padding-top:12px;border-top:1px dashed var(--ok-line);text-align:center}
-    .complete-v2 .ok-modal__foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px;background:#F8FAFC;border-top:1px solid var(--ok-line)}
-    .complete-v2 .ok-modal__foot .ok-cta{width:auto;height:42px;margin-top:0}
-
     /* ── Animations ── */
     @@keyframes okFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-    @@keyframes okPop{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:none}}
     @@keyframes okPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.55)}70%{box-shadow:0 0 0 20px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
     @@keyframes okGlow{0%,100%{opacity:.55}50%{opacity:1}}
     @@keyframes okDraw{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
     @@keyframes okCheck{to{stroke-dashoffset:0}}
     @@keyframes okConfetti{0%{transform:translate3d(0,-12px,0) rotate(0);opacity:0}10%{opacity:1}80%{opacity:1}100%{transform:translate3d(calc((var(--i) - 16) * 10px),520px,0) rotate(720deg);opacity:0}}
-
-    /* ── Print (used by Print Invoice) ── */
-    @@media print{
-        body *{visibility:hidden!important}
-        .complete-v2 .ok-print, .complete-v2 .ok-print *{visibility:visible!important}
-        .complete-v2 .ok-print{position:absolute;left:0;top:0;width:100%;padding:20px}
-        .complete-v2 .ok-modal{position:absolute;background:#fff!important;backdrop-filter:none!important;padding:0;inset:auto}
-        .complete-v2 .ok-modal__card{box-shadow:none;border-radius:0;max-width:none;max-height:none}
-        .complete-v2 .ok-modal__head,.complete-v2 .ok-modal__foot{display:none!important}
-    }
 
     /* ════════════════════════════════════════════════════════════════
        Responsive
@@ -663,9 +462,6 @@
         .complete-v2 .ok-rail{position:static}
         .complete-v2 .ok-meta{grid-template-columns:1fr}
         .complete-v2 .ok-row2{grid-template-columns:1fr}
-        .complete-v2 .ok-steps{grid-template-columns:1fr 1fr}
-        .complete-v2 .ok-steps::before{display:none}
-        .complete-v2 .ok-inv__cols{grid-template-columns:1fr}
     }
     @@media(max-width:640px){
         .complete-v2{padding-bottom:60px}
@@ -678,14 +474,7 @@
         .complete-v2 .ok-course{grid-template-columns:64px minmax(0,1fr);grid-template-rows:auto auto;padding:12px;border-radius:14px}
         .complete-v2 .ok-course__media{width:64px;height:64px;font-size:24px;border-radius:12px}
         .complete-v2 .ok-course__price{grid-column:1 / -1;flex-direction:row;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px dashed var(--ok-line)}
-        .complete-v2 .ok-steps{grid-template-columns:1fr;gap:8px}
-        .complete-v2 .ok-step{flex-direction:row;align-items:center;text-align:left;gap:10px;padding:8px 10px;border-radius:12px;background:#F8FAFC;border:1px solid var(--ok-line)}
-        .complete-v2 .ok-step__ico{margin:0;width:40px;height:40px}
         .complete-v2 .ok-share__btns{grid-template-columns:1fr 1fr}
-        .complete-v2 .ok-modal{padding:0}
-        .complete-v2 .ok-modal__card{border-radius:0;max-height:100vh;height:100vh}
-        .complete-v2 .ok-modal__body{padding:18px}
-        .complete-v2 .ok-inv__totals{max-width:none}
     }
 </style>
 
@@ -696,7 +485,6 @@
 
     private OrderReceipt? receipt;
     private bool loading = true;
-    private bool showInvoice;
     private bool showConfetti = true;
     private bool copied;
     private SiteSettings? siteCfg;
@@ -738,10 +526,5 @@
             StateHasChanged();
         }
         catch { /* clipboard not available — silent */ }
-    }
-
-    private async Task PrintInvoiceAsync()
-    {
-        try { await JS.InvokeVoidAsync("window.print"); } catch { }
     }
 }
