@@ -1,14 +1,15 @@
 @* Portal navigation.
-   A COORDINATOR sees only Dashboard and Students. Enroll Students, Payments & Invoices and
-   Coordinators are principal-only — each of those pages carries its own [Authorize] gate, and the
-   links are wrapped so a coordinator is not shown a link that would only 403 them.
-   The AuthorizeView is presentation, NOT the control: the gate is on the page and, for enrolment,
-   again in SchoolEnrollmentService.PlaceAsync. *@
+   A COORDINATOR sees Dashboard, Students and Enroll Students — their enrolment is scoped to the
+   students they added, both in the roster shown and in the server-side placement check. Payments
+   & Invoices and Coordinators remain principal-only: each of those pages carries its own
+   [Authorize] gate, and the links are wrapped so a coordinator is not shown a link that would
+   only 403 them. The AuthorizeView is presentation, NOT the control: every gate is on the page
+   and, for enrolment, again in SchoolEnrollmentService. *@
 <nav class="account-nav">
     <NavLink href="/school" Match="NavLinkMatch.All" class="account-nav__link">Dashboard</NavLink>
     <NavLink href="/school/students" class="account-nav__link">Students</NavLink>
+    <NavLink href="/school/enrollment" class="account-nav__link">Enroll Students</NavLink>
     <AuthorizeView Roles="school_principal">
-        <NavLink href="/school/enrollment" class="account-nav__link">Enroll Students</NavLink>
         <NavLink href="/school/billing" class="account-nav__link">Payments &amp; Invoices</NavLink>
         <NavLink href="/school/coordinators" class="account-nav__link">Coordinators</NavLink>
     </AuthorizeView>

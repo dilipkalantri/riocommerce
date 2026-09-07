@@ -78,20 +78,10 @@ public class SchoolEnrollmentService(
         if (scope is null)
             return new(false, "Your account is not linked to a school.", null, 0, 0m);
 
-        // ── 1a. PRINCIPAL ONLY. Enrolment raises an order and commits the school to payment, so it
-        //    is not something a coordinator may do — not through the page, and not by posting at the
-        //    API directly. The page carries [Authorize(Roles="school_principal")] as well; this is
-        //    the gate that does not depend on routing being configured correctly.
-        //
-        //    IsRestricted is precisely "the caller is a coordinator" (see SchoolAccessScope), read
-        //    from the SchoolUsers table rather than from a claim the client could stale-cache.
-        if (scope.IsRestricted)
-        {
-            _log.LogWarning("School enrolment DENIED — coordinator {UserId} attempted to place an enrolment for school {SchoolId}.",
-                actingUserId, scope.SchoolId);
-            return new(false, "Only the school principal can enrol students and make payments.", null, 0, 0m);
-        }
-
+        // Coordinators may place enrolments too — but only for students they themselves added.
+        // The ownership predicate below (scope.RestrictToAddedByUserId) narrows the ids that
+        // even count as "on the roll" for this caller, so a hand-made request that slips in
+        // someone else's student is rejected outright at ── 2. Principals see no such filter.
         var schoolId = scope.SchoolId;
 
         var studentIds = request.StudentUserIds.Where(id => id != Guid.Empty).Distinct().ToList();

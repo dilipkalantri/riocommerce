@@ -1,11 +1,12 @@
 @page "/school/enrollment"
 @layout SchoolLayout
 @using RioCommerce.Core.DTOs.School
-@* PRINCIPAL ONLY. Enrolment commits the school to money, so it is not a coordinator's action:
-   a coordinator adds students and manages their own, nothing more. The route guard is only the
-   first of two gates — SchoolEnrollmentService.PlaceAsync refuses a coordinator independently,
-   so removing this attribute would still not let one enrol anybody. *@
-@attribute [Authorize(Roles = "school_principal")]
+@* Principals and coordinators both reach this page. Their views are DIFFERENT: a coordinator's
+   roster is filtered server-side to the students they themselves added — a principal sees the
+   whole school. Both the page-side query (ISchoolStudentService.ListAsync via the scope helper)
+   and the placement side (SchoolEnrollmentService.PlaceAsync's ownership check) enforce that;
+   the [Authorize] here is only the route-level admittance. *@
+@attribute [Authorize(Roles = "school_principal,school_coordinator")]
 @inject ISchoolStudentService Students
 @inject ISchoolEnrollmentService Enrollment
 @inject AuthenticationStateProvider AuthProvider
